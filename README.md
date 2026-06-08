@@ -36,6 +36,19 @@ cd pro-panel
 - **admin-panel** – React + Vite (Web)
 - **Backend / BaaS** – Supabase
 
+## Documentation
+
+Reference documentation lives in the [`docs/`](./docs/) folder:
+
+| Document | Description |
+|----------|-------------|
+| [architecture.md](./docs/architecture.md) | System design & component diagram |
+| [api-reference.md](./docs/api-reference.md) | API operations & Edge Functions |
+| [database-schema.md](./docs/database-schema.md) | Supabase schema, tables & RLS |
+| [auth-flows.md](./docs/auth-flows.md) | Auth & authorization flows per role |
+| [deployment.md](./docs/deployment.md) | Deployment for all workspaces |
+| [contributing.md](./docs/contributing.md) | Git workflow & contribution guidelines |
+
 ## Contributing
 
 Please read the contributing guidelines before opening a pull request. All changes should target the appropriate workspace directory.

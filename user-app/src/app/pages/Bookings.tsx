@@ -1,0 +1,241 @@
+import { Circle, CheckCircle2, Clock, Package, PlayCircle, Video } from 'lucide-react';
+import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { Link } from 'react-router';
+import { useState } from 'react';
+import { useLanguage } from '../context/LanguageContext';
+
+export function Bookings() {
+  const { t } = useLanguage();
+  const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
+
+  const bookings = [
+    {
+      id: 'DS2026031801',
+      title: 'Satyanarayana Pooja',
+      temple: 'Tirumala Temple',
+      date: 'Tomorrow, 6:30 AM',
+      status: 'upcoming',
+      currentStage: 2,
+      imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
+    },
+    {
+      id: 'DS2026031502',
+      title: 'Rudrabhishekam',
+      temple: 'Rameshwaram Temple',
+      date: 'March 15, 2026',
+      status: 'completed',
+      currentStage: 9,
+      hasRecording: true,
+      imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
+    },
+  ];
+
+  const filteredBookings = bookings.filter(booking => 
+    activeTab === 'active' ? booking.status === 'upcoming' : booking.status === 'completed'
+  );
+
+  return (
+    <div className="min-h-full">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
+        <div className="max-w-lg mx-auto px-6 py-4">
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
+            {t('bookings.title')}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+            Track your pooja journey
+          </p>
+        </div>
+      </header>
+
+      <div className="max-w-lg mx-auto px-6 py-6 space-y-6">
+        {/* Tabs */}
+        <div className="flex gap-2 p-1 bg-card rounded-xl border border-border">
+          <button 
+            onClick={() => setActiveTab('active')}
+            className={`flex-1 py-2.5 rounded-lg font-medium text-sm transition-all ${
+              activeTab === 'active' 
+                ? 'bg-primary text-primary-foreground' 
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t('common.active')}
+          </button>
+          <button 
+            onClick={() => setActiveTab('completed')}
+            className={`flex-1 py-2.5 rounded-lg font-medium text-sm transition-all ${
+              activeTab === 'completed' 
+                ? 'bg-primary text-primary-foreground' 
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t('common.completed')}
+          </button>
+        </div>
+
+        {/* Bookings */}
+        <div className="space-y-4">
+          {filteredBookings.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-muted/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Package className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold mb-1" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
+                No {activeTab} bookings
+              </h3>
+              <p className="text-sm text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+                {activeTab === 'active' 
+                  ? 'Book your first pooja to get started' 
+                  : 'Your completed poojas will appear here'}
+              </p>
+            </div>
+          ) : (
+            filteredBookings.map((booking) => (
+              <BookingCard key={booking.id} {...booking} />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BookingCard({
+  id,
+  title,
+  temple,
+  date,
+  status,
+  currentStage,
+  imageUrl,
+  hasRecording,
+}: {
+  id: string;
+  title: string;
+  temple: string;
+  date: string;
+  status: string;
+  currentStage: number;
+  imageUrl: string;
+  hasRecording?: boolean;
+}) {
+  const stages = [
+    { label: 'Seva Offered', icon: CheckCircle2 },
+    { label: 'Confirmed', icon: CheckCircle2 },
+    { label: 'Scheduled', icon: Clock },
+    { label: 'Pooja Live', icon: PlayCircle },
+    { label: 'Completed', icon: CheckCircle2 },
+    { label: 'Recording Ready', icon: PlayCircle },
+    { label: 'Prasad Packed', icon: Package },
+    { label: 'Dispatched', icon: Package },
+    { label: 'Delivered', icon: CheckCircle2 },
+  ];
+
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="flex gap-4 p-4 border-b border-border">
+        <ImageWithFallback
+          src={imageUrl}
+          alt={title}
+          className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
+        />
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-lg mb-1" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
+            {title}
+          </h3>
+          <p className="text-sm text-muted-foreground mb-2" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+            {temple}
+          </p>
+          <div className="flex items-center gap-2">
+            <span
+              className="text-xs font-mono text-muted-foreground px-2 py-1 bg-muted/50 rounded"
+              style={{ fontFamily: "'Noto Sans Mono', monospace" }}
+            >
+              {id}
+            </span>
+          </div>
+        </div>
+        <div className="text-right">
+          <div
+            className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+              status === 'upcoming'
+                ? 'bg-primary/10 text-primary'
+                : 'bg-green-500/10 text-green-500'
+            }`}
+          >
+            {status === 'upcoming' ? 'Upcoming' : 'Completed'}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+            {date}
+          </p>
+        </div>
+      </div>
+
+      {/* Journey Timeline */}
+      <div className="p-4">
+        <h4 className="text-sm font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
+          Pooja Journey
+        </h4>
+        <div className="space-y-3">
+          {stages.slice(0, 5).map((stage, index) => {
+            const Icon = stage.icon;
+            const isCompleted = index < currentStage;
+            const isCurrent = index === currentStage;
+
+            return (
+              <div key={index} className="flex items-center gap-3">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    isCompleted
+                      ? 'bg-primary text-primary-foreground'
+                      : isCurrent
+                      ? 'bg-primary/20 text-primary ring-4 ring-primary/20'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {isCompleted ? (
+                    <CheckCircle2 className="w-4 h-4" />
+                  ) : isCurrent ? (
+                    <Circle className="w-4 h-4" />
+                  ) : (
+                    <Circle className="w-4 h-4" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p
+                    className={`text-sm font-medium ${
+                      isCompleted || isCurrent ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                    style={{ fontFamily: "'Noto Sans', sans-serif" }}
+                  >
+                    {stage.label}
+                  </p>
+                </div>
+                {isCompleted && (
+                  <div className="text-xs text-muted-foreground">✓</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        
+        <Link to={`/journey/${id}`}>
+          <button className="w-full mt-4 py-2.5 rounded-xl border-2 border-primary text-primary hover:bg-primary/5 transition-colors font-medium text-sm">
+            View Full Journey
+          </button>
+        </Link>
+        
+        {/* Recording Button for Completed Bookings */}
+        {hasRecording && (
+          <Link to={`/live/${id.replace('DS', '')}`}>
+            <button className="w-full mt-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-[#E05C10] transition-colors font-medium text-sm flex items-center justify-center gap-2">
+              <Video className="w-4 h-4" />
+              Watch Recording
+            </button>
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
