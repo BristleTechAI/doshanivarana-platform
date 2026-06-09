@@ -1,0 +1,466 @@
+import { useState } from 'react';
+import { View, Text, ScrollView, Pressable, Image, Modal, ActivityIndicator } from 'react-native';
+import { Circle, CheckCircle2, Clock, Package, PlayCircle, Video, CreditCard, AlertCircle, Check } from 'lucide-react-native';
+import { Link } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../src/old_app/context/ThemeContext';
+import { useLanguage } from '../../src/old_app/context/LanguageContext';
+
+interface BookingItem {
+  id: string;
+  title: string;
+  temple: string;
+  date: string;
+  status: string;
+  currentStage: number;
+  imageUrl: string;
+  hasRecording?: boolean;
+  totalAmount?: number;
+  paidAmount?: number;
+  remainingBalance?: number;
+  balanceDue?: boolean;
+}
+
+export default function Bookings() {
+  const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
+  const { theme } = useTheme();
+  const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
+
+  const [bookingsList, setBookingsList] = useState<BookingItem[]>([
+    {
+      id: 'DS2026031801',
+      title: 'Satyanarayana Pooja',
+      temple: 'Tirumala Temple',
+      date: 'Tomorrow, 6:30 AM',
+      status: 'upcoming',
+      currentStage: 2,
+      imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
+    },
+    {
+      id: 'DS2026032203',
+      title: 'Maha Mrityunjaya Homam',
+      temple: 'Kashi Vishwanath Temple',
+      date: 'March 22, 2026, 8:00 AM',
+      status: 'upcoming',
+      currentStage: 1,
+      imageUrl: 'https://images.unsplash.com/photo-1609137144814-7e77a28e75cf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaXJlJTIwYWx0YXIlMjBob21hbXxlbnwxfHx8fDE3NzM4MjU0NTR8MA&ixlib=rb-4.1.0&q=80&w=1080',
+      totalAmount: 2500,
+      paidAmount: 1000,
+      remainingBalance: 1500,
+      balanceDue: true,
+    },
+    {
+      id: 'DS2026031502',
+      title: 'Rudrabhishekam',
+      temple: 'Rameshwaram Temple',
+      date: 'March 15, 2026',
+      status: 'completed',
+      currentStage: 9,
+      hasRecording: true,
+      imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
+    },
+  ]);
+
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [payingBooking, setPayingBooking] = useState<BookingItem | null>(null);
+  const [paymentStep, setPaymentStep] = useState<'details' | 'processing' | 'success'>('details');
+
+  const processPayment = () => {
+    if (!payingBooking) return;
+    setPaymentStep('processing');
+    setTimeout(() => {
+      setBookingsList(prevBookings =>
+        prevBookings.map(b =>
+          b.id === payingBooking.id
+            ? {
+                ...b,
+                paidAmount: b.totalAmount,
+                remainingBalance: 0,
+                balanceDue: false,
+              }
+            : b
+        )
+      );
+      setPaymentStep('success');
+    }, 1500);
+  };
+
+  const filteredBookings = bookingsList.filter(booking => 
+    activeTab === 'active' ? booking.status === 'upcoming' : booking.status === 'completed'
+  );
+
+  return (
+    <View className="flex-1 bg-background">
+      {/* Header */}
+      <View 
+        className="pb-4 bg-background/95 border-b border-border z-40 px-6"
+        style={{ paddingTop: insets.top > 0 ? insets.top + 8 : 16 }}
+      >
+        <Text className="text-2xl font-bold text-foreground" style={{ fontFamily: 'System' }}>
+          {t('bookings.title')}
+        </Text>
+        <Text className="text-sm text-muted-foreground mt-1" style={{ fontFamily: 'System' }}>
+          Track your pooja journey
+        </Text>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 100 }} className="flex-1 space-y-6">
+        {/* Tabs */}
+        <View className="flex-row gap-2 p-1 bg-card rounded-xl border border-border mb-6">
+          <Pressable 
+            onPress={() => setActiveTab('active')}
+            className={`flex-1 py-2.5 rounded-lg items-center justify-center ${
+              activeTab === 'active' 
+                ? 'bg-primary' 
+                : 'bg-transparent'
+            }`}
+          >
+            <Text className={`font-medium text-sm ${
+              activeTab === 'active' ? 'text-primary-foreground' : 'text-muted-foreground'
+            }`} style={{ fontFamily: 'System' }}>
+              {t('common.active')}
+            </Text>
+          </Pressable>
+          <Pressable 
+            onPress={() => setActiveTab('completed')}
+            className={`flex-1 py-2.5 rounded-lg items-center justify-center ${
+              activeTab === 'completed' 
+                ? 'bg-primary' 
+                : 'bg-transparent'
+            }`}
+          >
+            <Text className={`font-medium text-sm ${
+              activeTab === 'completed' ? 'text-primary-foreground' : 'text-muted-foreground'
+            }`} style={{ fontFamily: 'System' }}>
+              {t('common.completed')}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Bookings */}
+        <View className="space-y-4">
+          {filteredBookings.length === 0 ? (
+            <View className="items-center py-12">
+              <View className="w-16 h-16 bg-muted/30 rounded-full items-center justify-center mb-4">
+                <Package size={32} color="#78716C" />
+              </View>
+              <Text className="font-semibold text-lg text-foreground mb-1" style={{ fontFamily: 'System' }}>
+                No {activeTab} bookings
+              </Text>
+              <Text className="text-sm text-muted-foreground text-center" style={{ fontFamily: 'System' }}>
+                {activeTab === 'active' 
+                  ? 'Book your first pooja to get started' 
+                  : 'Your completed poojas will appear here'}
+              </Text>
+            </View>
+          ) : (
+            filteredBookings.map((booking) => (
+              <BookingCard 
+                key={booking.id} 
+                {...booking} 
+                onPayBalance={(id) => {
+                  const target = bookingsList.find(b => b.id === id);
+                  if (target) {
+                    setPayingBooking(target);
+                    setPaymentStep('details');
+                    setShowPaymentModal(true);
+                  }
+                }}
+              />
+            ))
+          )}
+        </View>
+      </ScrollView>
+
+      {/* Payment Modal */}
+      <Modal visible={showPaymentModal} transparent animationType="slide">
+        <View className="flex-1 bg-black/60 justify-end">
+          <Pressable className="absolute inset-0" onPress={() => paymentStep !== 'processing' && setShowPaymentModal(false)} />
+          <View className="bg-card rounded-t-3xl p-6 border-t border-border/40">
+            {paymentStep === 'details' && payingBooking && (
+              <View className="space-y-4">
+                <View className="flex-row items-center justify-between border-b border-border pb-4">
+                  <Text className="font-bold text-lg text-foreground" style={{ fontFamily: 'System' }}>
+                    Complete Seva Payment
+                  </Text>
+                  <Pressable onPress={() => setShowPaymentModal(false)} className="p-1">
+                    <Text className="text-muted-foreground text-sm font-semibold">Cancel</Text>
+                  </Pressable>
+                </View>
+
+                <View className="bg-muted/30 p-4 rounded-xl space-y-2 mt-2">
+                  <Text className="text-xs text-muted-foreground uppercase tracking-wider font-semibold" style={{ fontFamily: 'System' }}>
+                    Seva Details
+                  </Text>
+                  <Text className="font-bold text-base text-foreground" style={{ fontFamily: 'System' }}>
+                    {payingBooking.title}
+                  </Text>
+                  <Text className="text-xs text-muted-foreground" style={{ fontFamily: 'System' }}>
+                    {payingBooking.temple}
+                  </Text>
+                  <View className="flex-row justify-between pt-2 border-t border-border/20 text-xs">
+                    <Text className="text-muted-foreground">Booking ID</Text>
+                    <Text className="font-semibold text-foreground">{payingBooking.id}</Text>
+                  </View>
+                </View>
+
+                <View className="space-y-2.5 mt-2">
+                  <View className="flex-row justify-between text-sm">
+                    <Text className="text-muted-foreground">Total Seva Price</Text>
+                    <Text className="text-foreground">₹{payingBooking.totalAmount}</Text>
+                  </View>
+                  <View className="flex-row justify-between text-sm">
+                    <Text className="text-muted-foreground">Paid Amount (Advance)</Text>
+                    <Text className="text-green-500">-₹{payingBooking.paidAmount}</Text>
+                  </View>
+                  <View className="flex-row justify-between pt-3 border-t border-border/40">
+                    <Text className="font-bold text-base text-foreground">Remaining Balance Due</Text>
+                    <Text className="font-bold text-lg text-primary">₹{payingBooking.remainingBalance}</Text>
+                  </View>
+                </View>
+
+                <Pressable
+                  onPress={processPayment}
+                  className="w-full mt-6 py-4 rounded-xl bg-primary active:bg-[#E05C10] items-center justify-center"
+                >
+                  <Text className="text-primary-foreground font-semibold text-base" style={{ fontFamily: 'System' }}>
+                    Pay Balance — ₹{payingBooking.remainingBalance}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {paymentStep === 'processing' && (
+              <View className="py-12 items-center justify-center space-y-4">
+                <ActivityIndicator size="large" color="#F97316" />
+                <Text className="font-bold text-lg text-foreground mt-4" style={{ fontFamily: 'System' }}>
+                  Processing Sacred Offering...
+                </Text>
+                <Text className="text-xs text-muted-foreground text-center px-6" style={{ fontFamily: 'System' }}>
+                  Please do not close the app or press back. We are connecting to the temple secure gateway.
+                </Text>
+              </View>
+            )}
+
+            {paymentStep === 'success' && payingBooking && (
+              <View className="py-8 items-center justify-center space-y-4">
+                <View className="w-16 h-16 bg-green-500/10 border border-green-500/20 rounded-full items-center justify-center mb-2">
+                  <Check size={32} color="#22C55E" />
+                </View>
+                <Text className="font-bold text-2xl text-green-500 text-center" style={{ fontFamily: 'System' }}>
+                  Payment Successful! 🙏
+                </Text>
+                <Text className="text-sm text-foreground text-center font-medium px-4" style={{ fontFamily: 'System' }}>
+                  Your seva '{payingBooking.title}' is now fully confirmed.
+                </Text>
+                <Text className="text-xs text-muted-foreground text-center px-8" style={{ fontFamily: 'System' }}>
+                  The temple priest will chant the sankalpam in your name. Prasad delivery tracking details will update shortly.
+                </Text>
+                <Pressable
+                  onPress={() => setShowPaymentModal(false)}
+                  className="w-full mt-6 py-3.5 rounded-xl bg-primary active:bg-[#E05C10] items-center justify-center"
+                >
+                  <Text className="text-[#1A0A00] font-semibold text-sm">Close</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function BookingCard({
+  id,
+  title,
+  temple,
+  date,
+  status,
+  currentStage,
+  imageUrl,
+  hasRecording,
+  totalAmount,
+  paidAmount,
+  remainingBalance,
+  balanceDue,
+  onPayBalance,
+}: {
+  id: string;
+  title: string;
+  temple: string;
+  date: string;
+  status: string;
+  currentStage: number;
+  imageUrl: string;
+  hasRecording?: boolean;
+  totalAmount?: number;
+  paidAmount?: number;
+  remainingBalance?: number;
+  balanceDue?: boolean;
+  onPayBalance?: (id: string) => void;
+}) {
+  const { theme } = useTheme();
+  const stages = [
+    { label: 'Seva Offered', icon: CheckCircle2 },
+    { label: 'Confirmed', icon: CheckCircle2 },
+    { label: 'Scheduled', icon: Clock },
+    { label: 'Pooja Live', icon: PlayCircle },
+    { label: 'Completed', icon: CheckCircle2 },
+    { label: 'Recording Ready', icon: PlayCircle },
+    { label: 'Prasad Packed', icon: Package },
+    { label: 'Dispatched', icon: Package },
+    { label: 'Delivered', icon: CheckCircle2 },
+  ];
+
+  return (
+    <View className="bg-card border border-border rounded-2xl overflow-hidden mb-4">
+      {/* Header */}
+      <View className="flex-row gap-4 p-4 border-b border-border">
+        <Image
+          source={{ uri: imageUrl }}
+          className="w-20 h-20 rounded-xl"
+          resizeMode="cover"
+        />
+        <View className="flex-1 justify-between">
+          <View>
+            <Text className="font-semibold text-lg text-foreground mb-1" style={{ fontFamily: 'System' }}>
+              {title}
+            </Text>
+            <Text className="text-sm text-muted-foreground mb-2" style={{ fontFamily: 'System' }}>
+              {temple}
+            </Text>
+            <View className="self-start px-2 py-1 bg-muted/50 rounded">
+              <Text
+                className="text-xs text-muted-foreground"
+                style={{ fontFamily: 'System' }}
+              >
+                {id}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View className="items-end justify-between">
+          <View
+            className={`px-3 py-1 rounded-full ${
+              balanceDue
+                ? 'bg-red-500/10'
+                : status === 'upcoming'
+                ? 'bg-primary/10'
+                : 'bg-green-500/10'
+            }`}
+          >
+            <Text className={`text-xs font-medium ${
+              balanceDue ? 'text-red-500' : status === 'upcoming' ? 'text-primary' : 'text-green-500'
+            }`}>
+              {balanceDue ? 'Balance Due' : status === 'upcoming' ? 'Upcoming' : 'Completed'}
+            </Text>
+          </View>
+          <Text className="text-xs text-muted-foreground mt-2" style={{ fontFamily: 'System' }}>
+            {date}
+          </Text>
+        </View>
+      </View>
+
+      {/* Remaining Balance Info Section */}
+      {balanceDue && remainingBalance && (
+        <View className="px-4 py-4 bg-red-500/5 border-b border-border">
+          <View className="flex-row items-center justify-between mb-2">
+            <View className="flex-row items-center gap-1.5">
+              <AlertCircle size={14} color="#EF4444" />
+              <Text className="text-xs font-bold text-red-500" style={{ fontFamily: 'System' }}>
+                Remaining Balance Due
+              </Text>
+            </View>
+            <Text className="text-base font-bold text-red-500" style={{ fontFamily: 'System' }}>
+              ₹{remainingBalance}
+            </Text>
+          </View>
+          
+          <View className="flex-row justify-between mb-3 text-xs text-muted-foreground">
+            <Text style={{ fontFamily: 'System' }}>Total Seva: ₹{totalAmount}</Text>
+            <Text style={{ fontFamily: 'System' }}>Paid: ₹{paidAmount}</Text>
+          </View>
+
+          <Pressable 
+            onPress={() => onPayBalance?.(id)}
+            className="w-full py-2.5 rounded-xl bg-primary active:bg-[#E05C10] items-center justify-center flex-row gap-2"
+          >
+            <CreditCard size={15} color={theme === 'dark' ? '#1A0A00' : '#F5F5F0'} />
+            <Text className="text-primary-foreground font-semibold text-xs" style={{ fontFamily: 'System' }}>
+              Pay Remaining Balance (₹{remainingBalance})
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Journey Timeline */}
+      <View className="p-4">
+        <Text className="text-sm font-semibold text-foreground mb-3" style={{ fontFamily: 'System' }}>
+          Pooja Journey
+        </Text>
+        <View className="space-y-3 mb-4">
+          {stages.slice(0, 5).map((stage, index) => {
+            const Icon = stage.icon;
+            const isCompleted = index < currentStage;
+            const isCurrent = index === currentStage;
+
+            return (
+              <View key={index} className="flex-row items-center gap-3 mt-2">
+                <View
+                  className={`w-8 h-8 rounded-full items-center justify-center ${
+                    isCompleted
+                      ? 'bg-primary'
+                      : isCurrent
+                      ? 'bg-primary/20 border-2 border-primary/40'
+                      : 'bg-muted'
+                  }`}
+                >
+                  <Icon size={16} color={
+                    isCompleted ? (theme === 'dark' ? '#1A0A00' : '#F5F5F0') : 
+                    isCurrent ? '#F97316' : 
+                    '#78716C'
+                  } />
+                </View>
+                <View className="flex-1">
+                  <Text
+                    className={`text-sm font-medium ${
+                      isCompleted || isCurrent ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                    style={{ fontFamily: 'System' }}
+                  >
+                    {stage.label}
+                  </Text>
+                </View>
+                {isCompleted && (
+                  <Text className="text-xs text-muted-foreground">✓</Text>
+                )}
+              </View>
+            );
+          })}
+        </View>
+        
+        <Link href={`/journey/${id}`} asChild>
+          <Pressable className="w-full mt-4 py-2.5 rounded-xl border-2 border-primary items-center justify-center active:bg-primary/5">
+            <Text className="text-primary font-medium text-sm">
+              View Full Journey
+            </Text>
+          </Pressable>
+        </Link>
+        
+        {/* Recording Button for Completed Bookings */}
+        {hasRecording && (
+          <Link href={`/live/${id.replace('DS', '')}`} asChild>
+            <Pressable className="w-full mt-3 py-2.5 rounded-xl bg-primary active:bg-[#E05C10] items-center justify-center flex-row gap-2">
+              <Video size={16} color={theme === 'dark' ? '#1A0A00' : '#F5F5F0'} />
+              <Text className="text-primary-foreground font-medium text-sm">
+                Watch Recording
+              </Text>
+            </Pressable>
+          </Link>
+        )}
+      </View>
+    </View>
+  );
+}

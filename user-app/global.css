@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* DOSHANIVARANA Figma Colors - Dark Purple Theme by Default */
+    --background: #1A0A00;          /* Dark Saffron Background */
+    --foreground: #F5F5F0;          /* Ivory Text */
+    
+    --card: #2D0A2E;               /* Dark Purple Surface */
+    --card-foreground: #F5F5F0;    /* Ivory Text */
+    
+    --popover: #2D0A2E;            /* Dark Purple Popover */
+    --popover-foreground: #F5F5F0;
+    
+    --primary: #F97316;             /* Saffron Brand Color */
+    --primary-foreground: #1A0A00;  /* Dark Saffron Text */
+    
+    --secondary: #2D0A2E;          /* Dark Purple Secondary */
+    --secondary-foreground: #F5F5F0;
+    
+    --muted: #44403C;                /* Charcoal */
+    --muted-foreground: #78716C;     /* Grey */
+    
+    --accent: #9A1515;               /* Vermillion Accent */
+    --accent-foreground: #F5F5F0;
+    
+    --destructive: #EF4444;
+    --destructive-foreground: #F5F5F0;
+    
+    --border: #302C2A;               /* Dark Borders */
+    --input: #302C2A;
+    --ring: #F97316;
+    --radius: 0.75rem;
+  }
+
+  .light {
+    --background: #F5F5F0;          /* Ivory Background */
+    --foreground: #1C1917;           /* Ink Text */
+    
+    --card: #FFFFFF;                 /* White Surface */
+    --card-foreground: #1C1917;      /* Ink Text */
+    
+    --popover: #FFFFFF;
+    --popover-foreground: #1C1917;
+    
+    --primary: #F97316;             /* Saffron Brand Color */
+    --primary-foreground: #F5F5F0;  /* Ivory Text */
+    
+    --secondary: #F5F5F0;
+    --secondary-foreground: #1C1917;
+    
+    --muted: #E7E5E4;                /* Light grey */
+    --muted-foreground: #78716C;     /* Grey */
+    
+    --accent: #9A1515;               /* Vermillion Accent */
+    --accent-foreground: #F5F5F0;
+    
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+    
+    --border: #E7E5E4;               /* Light borders */
+    --input: #E7E5E4;
+    --ring: #F97316;
+    --radius: 0.75rem;
+  }
+}

@@ -11,27 +11,11 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    // Check localStorage first
-    const savedTheme = localStorage.getItem('devaseva-theme') as Theme;
-    if (savedTheme) {
-      return savedTheme;
-    }
-    // Default to dark theme
-    return 'dark';
-  });
+  const [theme, setThemeState] = useState<Theme>('dark');
 
   useEffect(() => {
-    // Save theme to localStorage
-    localStorage.setItem('devaseva-theme', theme);
-    
-    // Apply theme to document root
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
+    // In React Native, we can use Appearance module or Async Storage
+    // For now, we will just keep it simple in state
   }, [theme]);
 
   const toggleTheme = () => {
@@ -56,3 +40,5 @@ export function useTheme() {
   }
   return context;
 }
+
+

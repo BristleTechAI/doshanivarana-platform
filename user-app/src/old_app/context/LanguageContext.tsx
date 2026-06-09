@@ -12,14 +12,10 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem('devaseva-language');
-    return (saved as Language) || 'en';
-  });
+  const [language, setLanguageState] = useState<Language>('en');
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem('devaseva-language', lang);
   };
 
   const toggleLanguage = () => {
@@ -41,7 +37,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    document.documentElement.lang = language;
+    // In React Native, handle RTL or other locale-specific behavior if needed
   }, [language]);
 
   return (
@@ -205,7 +201,7 @@ const translations: Record<Language, any> = {
     profile: {
       title: 'Profile',
       personalisation: 'Personalisation',
-      aiRecommendations: 'AI Recommendations',
+      aiRecommendations: 'Your Sacred Recommendations',
       settings: 'Settings',
       theme: 'Theme',
       darkMode: 'Dark mode',
@@ -408,7 +404,7 @@ const translations: Record<Language, any> = {
     profile: {
       title: 'ప్రొఫైల్',
       personalisation: 'వ్యక్తిగతీకరణ',
-      aiRecommendations: 'AI సిఫార్సులు',
+      aiRecommendations: 'మీ పవిత్ర సిఫార్సులు',
       settings: 'సెట్టింగ్‌లు',
       theme: 'థీమ్',
       darkMode: 'డార్క్ మోడ్',
@@ -611,7 +607,7 @@ const translations: Record<Language, any> = {
     profile: {
       title: 'प्रोफ़ाइल',
       personalisation: 'वैयक्तिकरण',
-      aiRecommendations: 'AI सिफारिशें',
+      aiRecommendations: 'आपकी पवित्र सिफारिशें',
       settings: 'सेटिंग्स',
       theme: 'थीम',
       darkMode: 'डार्क मोड',
@@ -814,7 +810,7 @@ const translations: Record<Language, any> = {
     profile: {
       title: 'પ્રોફાઇલ',
       personalisation: 'વ્યક્તિગતકરણ',
-      aiRecommendations: 'AI ભલામણો',
+      aiRecommendations: 'તમારી પવિત્ર ભલામણો',
       settings: 'સેટિંગ્સ',
       theme: 'થીમ',
       darkMode: 'ડાર્ક મોડ',
