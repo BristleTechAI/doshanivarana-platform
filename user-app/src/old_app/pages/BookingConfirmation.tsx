@@ -1,7 +1,20 @@
-import { Link } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { Bell, Share2 } from 'lucide-react';
 
 export function BookingConfirmation() {
+  const { id } = useParams();
+
+  // Load bookings from localStorage
+  const bookingsData = localStorage.getItem('doshanivarana_bookings');
+  const bookings = bookingsData ? JSON.parse(bookingsData) : [];
+  const booking = bookings.find((b: any) => b.id === id);
+
+  // Fallback defaults
+  const poojaName = booking ? booking.poojaName : 'Rudrabhishekam';
+  const temple = booking ? booking.temple : 'Sri Kalahasti Shivalayam, Tirupati';
+  const dateTime = booking ? booking.dateTime : '15 April 2026 — 9:00 AM';
+  const bookingId = id || 'BK-1001';
+
   return (
     <div className="min-h-screen bg-[#1A0A00] px-6 py-12 flex flex-col items-center justify-center">
       {/* Diya Animation */}
@@ -28,7 +41,7 @@ export function BookingConfirmation() {
         className="text-center text-sm mb-8 max-w-md"
         style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}
       >
-        The pooja will be performed in your name and Gothram. May the blessings of Lord Shiva be with you and your family.
+        The pooja will be performed in your name and Gothram. May the blessings of the Lord be with you and your family.
       </p>
 
       {/* Booking ID Card */}
@@ -54,13 +67,13 @@ export function BookingConfirmation() {
           className="text-xl font-bold mb-2"
           style={{ fontFamily: "'Anek Devanagari', sans-serif", color: '#F5F5F0' }}
         >
-          Rudrabhishek
+          {poojaName}
         </h2>
         <p className="text-xs mb-1" style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}>
-          Sri Kalahasti Shivalayam, Tirupati
+          {temple}
         </p>
         <p className="text-xs mb-4" style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}>
-          15 April 2026 — 9:00 AM
+          {dateTime}
         </p>
 
         {/* Divider */}
@@ -75,7 +88,7 @@ export function BookingConfirmation() {
             className="text-sm font-mono text-primary"
             style={{ fontFamily: "'Noto Sans Mono', monospace" }}
           >
-            BKG-20260415-00001
+            {bookingId}
           </p>
         </div>
       </div>

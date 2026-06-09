@@ -1,20 +1,50 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Share2, MapPin, Clock, Play, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Share2, MapPin, Clock, Play } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { POOJAS } from '../lib/poojas';
 
 export function PoojaDetail() {
   const [activeTab, setActiveTab] = useState<'overview' | 'where' | 'how' | 'why'>('overview');
   const navigate = useNavigate();
   const { id } = useParams();
 
+  const pooja = POOJAS.find((p) => p.id.toString() === id) || POOJAS[0];
+
+  // Load slots and filter active slots for this pooja
+  const slotsData = localStorage.getItem('doshanivarana_slots');
+  const allSlots = slotsData ? JSON.parse(slotsData) : [];
+
+  const matchesPoojaName = (slotName: string, poojaTitle: string): boolean => {
+    const s = slotName.toLowerCase();
+    const p = poojaTitle.toLowerCase();
+    if (s === p) return true;
+    if (s.includes('satyanarayana') && p.includes('satyanarayana')) return true;
+    if (s.includes('rudra') && p.includes('rudra')) return true;
+    if (s.includes('ganapathi') && p.includes('ganapathi')) return true;
+    if (s.includes('lakshmi') && p.includes('lakshmi')) return true;
+    if (s.includes('navagraha') && p.includes('navagraha')) return true;
+    return false;
+  };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const activeSlots = allSlots.filter((slot: any) => {
+    const matchesPooja = matchesPoojaName(slot.name, pooja.title);
+    const isActive = slot.status === true;
+    const hasCapacity = slot.bookings < slot.maxBookings;
+    const isFuture = new Date(slot.date) >= today;
+    return matchesPooja && isActive && hasCapacity && isFuture;
+  });
+
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Hero Image */}
       <div className="relative h-52">
         <ImageWithFallback
-          src="https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080"
-          alt="Temple"
+          src={pooja.imageUrl}
+          alt={pooja.title}
           className="w-full h-full object-cover"
         />
 
@@ -57,8 +87,8 @@ export function PoojaDetail() {
 
       {/* Tab Content */}
       <div className="px-6 py-6">
-        {activeTab === 'overview' && <OverviewTab />}
-        {activeTab === 'where' && <WhereTab />}
+        {activeTab === 'overview' && <OverviewTab pooja={pooja} activeSlots={activeSlots} />}
+        {activeTab === 'where' && <WhereTab pooja={pooja} />}
         {activeTab === 'how' && <HowTab />}
         {activeTab === 'why' && <WhyTab />}
       </div>
@@ -70,23 +100,28 @@ export function PoojaDetail() {
           className="w-full py-4 rounded-xl bg-primary text-primary-foreground font-medium text-base hover:bg-[#E05C10] transition-colors"
           style={{ fontFamily: "'Anek Devanagari', sans-serif" }}
         >
-          Offer This Pooja — ₹1,100
+          Offer This Pooja — {pooja.price}
         </button>
       </div>
     </div>
   );
 }
 
-function OverviewTab() {
+function OverviewTab({ pooja, activeSlots }: { pooja: any; activeSlots: any[] }) {
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
   return (
     <div className="space-y-6">
       {/* Title */}
       <div>
         <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-          Rudrabhishek
+          {pooja.title}
         </h1>
         <p className="text-sm text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-          Sacred bathing of the Shivalinga with holy water, milk and bilva leaves.
+          {pooja.purpose}
         </p>
       </div>
 
@@ -110,10 +145,10 @@ function OverviewTab() {
         <MapPin className="w-5 h-5 text-primary flex-shrink-0" />
         <div>
           <h3 className="font-medium text-sm" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-            Sri Kalahasti Shivalayam
+            {pooja.temple}
           </h3>
           <p className="text-xs text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-            Prithvi Linga Shrine, Tirupati
+            {pooja.deity} Shrine
           </p>
         </div>
       </div>
@@ -129,8 +164,8 @@ function OverviewTab() {
       {/* Video Thumbnail */}
       <div className="relative aspect-video bg-card border border-border rounded-xl overflow-hidden">
         <ImageWithFallback
-          src="https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080"
-          alt="Video"
+          src={pooja.imageUrl}
+          alt={pooja.title}
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 flex items-center justify-center">
@@ -146,14 +181,46 @@ function OverviewTab() {
           Seva Amount
         </p>
         <p className="text-3xl font-bold text-primary" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-          ₹1,100
+          {pooja.price}
         </p>
+      </div>
+
+      {/* Available Slots Section */}
+      <div className="pt-4 border-t border-border">
+        <h3 className="text-lg font-bold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
+          Available Slots
+        </h3>
+        {activeSlots.length === 0 ? (
+          <div className="p-4 bg-muted/20 border border-dashed border-border rounded-xl text-center text-sm text-muted-foreground italic">
+            Currently no active slots are available. Please check back later.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {activeSlots.slice(0, 4).map((slot: any) => (
+              <div key={slot.id} className="flex justify-between items-center p-3 bg-card border border-border rounded-xl shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">📅</span>
+                  <span className="text-sm font-semibold" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+                    {formatDate(slot.date)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">•</span>
+                  <span className="text-sm font-semibold" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+                    {slot.time}
+                  </span>
+                </div>
+                <span className="text-xs bg-green-500/10 text-green-500 px-3 py-1 rounded-full font-semibold">
+                  {slot.maxBookings - slot.bookings} spots left
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function WhereTab() {
+function WhereTab({ pooja }: { pooja: any }) {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
@@ -162,10 +229,10 @@ function WhereTab() {
 
       <div>
         <h3 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-          Sri Kalahasti Shivalayam
+          {pooja.temple}
         </h3>
         <p className="text-sm" style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}>
-          Prithvi Linga Shrine — one of the Pancha Bhuta Stalas
+          {pooja.deity} Shrine
         </p>
       </div>
 
@@ -176,12 +243,10 @@ function WhereTab() {
 
       <div>
         <p className="text-xs text-muted-foreground mb-4" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-          Kailasa Kona, Sri Kalahasti, Tirupati, Andhra Pradesh — 517640
+          Temple Area, {pooja.temple}
         </p>
         <p className="text-sm leading-relaxed" style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}>
-          Sri Kalahasti is one of the five Pancha Bhuta Stalas representing the element of Air (Vayu). 
-          The temple is renowned for its Rahu-Ketu pooja and is believed to be the place where the divine 
-          spider Kala, serpent Hasti, and elephant worshipped Lord Shiva, giving the temple its name.
+          This holy temple is renowned for its spiritual aura and traditional rituals performed in accordance with ancient Vedic rites.
         </p>
       </div>
 
@@ -190,7 +255,7 @@ function WhereTab() {
         {[1, 2, 3].map((i) => (
           <ImageWithFallback
             key={i}
-            src="https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080"
+            src={pooja.imageUrl}
             alt={`Temple ${i}`}
             className="w-48 h-32 rounded-xl object-cover flex-shrink-0"
           />
@@ -237,7 +302,6 @@ function HowTab() {
       {/* Duration & Language */}
       <div className="flex gap-3">
         <div className="px-4 py-2 rounded-lg bg-primary/10 text-primary flex items-center gap-2">
-          <Clock className="w-4 h-4" />
           <span className="text-sm font-medium" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
             2 Hours
           </span>
@@ -253,7 +317,7 @@ function HowTab() {
       <div className="space-y-4">
         {steps.map((step, index) => (
           <div key={index} className="flex gap-4">
-            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 font-semibold">
+            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 font-semibold text-sm">
               {index + 1}
             </div>
             <div className="flex-1">
@@ -289,15 +353,13 @@ function WhyTab() {
       </h2>
 
       <p className="text-sm leading-relaxed" style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}>
-        The Rudrabhishek is one of the most sacred rituals in Hindu tradition. It is performed to invoke 
-        Lord Shiva's blessings and to seek his grace for peace, prosperity, and spiritual growth. This 
-        pooja is particularly powerful for removing negative energies and obstacles from one's life.
+        Rituals are performed to invoke divine blessings and to seek grace for peace, prosperity, and spiritual growth. This pooja is particularly powerful for removing negative energies and obstacles from one's life.
       </p>
 
       {/* Puranic Reference */}
       <div className="bg-card border border-border rounded-xl p-4 italic">
         <p className="text-xs text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-          The Shiva Purana describes the Rudrabhishek as equivalent to performing a thousand Ashwamedha Yagnas.
+          Traditional texts describe the Abhishek as equivalent to performing a thousand yagnas.
         </p>
       </div>
 
@@ -316,35 +378,6 @@ function WhyTab() {
           <span className="px-4 py-2 rounded-full bg-blue-500/10 text-blue-500 text-sm font-medium">
             Peace of mind
           </span>
-        </div>
-      </div>
-
-      {/* Personalized Highlight */}
-      <div className="bg-primary/5 border-2 border-primary/30 rounded-xl p-4">
-        <h4 className="font-semibold text-primary mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-          Especially auspicious for you
-        </h4>
-        <p className="text-sm" style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}>
-          This pooja is especially auspicious for your Shravana Nakshatra. Lord Vishnu, the ruling deity 
-          of Shravana, is closely connected to Lord Shiva through this ritual.
-        </p>
-      </div>
-
-      {/* Suitable for Rashi */}
-      <div>
-        <h4 className="text-sm font-medium mb-2 text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-          Suitable for Rashi
-        </h4>
-        <div className="flex gap-2">
-          {['Makara ✓', 'Kumbha ✓', 'Simha ✓'].map((rashi) => (
-            <span
-              key={rashi}
-              className="px-3 py-1.5 rounded-full bg-card border border-border text-xs font-medium"
-              style={{ fontFamily: "'Noto Sans', sans-serif" }}
-            >
-              {rashi}
-            </span>
-          ))}
         </div>
       </div>
     </div>

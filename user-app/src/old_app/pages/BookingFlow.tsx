@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Calendar, Clock, User, Star, ChevronRight, X } from 'lucide-react';
+import { POOJAS } from '../lib/poojas';
 
 interface BookingFormData {
   selectedDate: string;
@@ -24,28 +25,59 @@ export function BookingFlow() {
     specialRequests: '',
   });
 
-  // Mock pooja data - in real app, fetch based on ID
-  const poojaData = {
-    title: 'Rudrabhishekam',
-    temple: 'Rameshwaram Temple',
-    deity: 'Lord Shiva',
-    duration: '45 mins',
-    price: '₹1,200',
-    imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
+  const poojaData = POOJAS.find((p) => p.id.toString() === id) || POOJAS[0];
+
+  // Helper to match pooja variations
+  const matchesPoojaName = (slotName: string, poojaTitle: string): boolean => {
+    const s = slotName.toLowerCase();
+    const p = poojaTitle.toLowerCase();
+    if (s === p) return true;
+    if (s.includes('satyanarayana') && p.includes('satyanarayana')) return true;
+    if (s.includes('rudra') && p.includes('rudra')) return true;
+    if (s.includes('ganapathi') && p.includes('ganapathi')) return true;
+    if (s.includes('lakshmi') && p.includes('lakshmi')) return true;
+    if (s.includes('navagraha') && p.includes('navagraha')) return true;
+    return false;
   };
 
-  const availableDates = [
-    { date: '2026-03-20', label: 'Tomorrow', day: 'Thursday' },
-    { date: '2026-03-21', label: 'Mar 21', day: 'Friday' },
-    { date: '2026-03-22', label: 'Mar 22', day: 'Saturday' },
-    { date: '2026-03-23', label: 'Mar 23', day: 'Sunday' },
-    { date: '2026-03-24', label: 'Mar 24', day: 'Monday' },
-  ];
+  // Load and filter slots dynamically from localStorage
+  const slotsData = localStorage.getItem('doshanivarana_slots');
+  const allSlots: any[] = slotsData ? JSON.parse(slotsData) : [];
 
-  const availableTimes = [
-    '6:00 AM', '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
-    '11:00 AM', '4:00 PM', '5:00 PM', '6:00 PM'
-  ];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const activePoojaSlots = allSlots.filter((slot) => {
+    const matchesPooja = matchesPoojaName(slot.name, poojaData.title);
+    const isActive = slot.status === true;
+    const hasCapacity = slot.bookings < slot.maxBookings;
+    const isFuture = new Date(slot.date) >= today;
+    return matchesPooja && isActive && hasCapacity && isFuture;
+  });
+
+  // Derive unique available dates from active slots
+  const uniqueDates = Array.from(new Set(activePoojaSlots.map((s) => s.date))).sort();
+  const availableDates = uniqueDates.map((dateStr) => {
+    const d = new Date(dateStr);
+    const formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+
+    // Check if it's tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = d.toDateString() === tomorrow.toDateString();
+
+    return {
+      date: dateStr,
+      label: isTomorrow ? 'Tomorrow' : formattedDate,
+      day: dayName,
+    };
+  });
+
+  // Derive available times for selected date
+  const availableTimes = activePoojaSlots
+    .filter((s) => s.date === formData.selectedDate)
+    .map((s) => s.time);
 
   const nakshatras = [
     'Ashwini', 'Bharani', 'Krittika', 'Rohini', 'Mrigashira', 'Ardra', 'Punarvasu', 'Pushya',
@@ -54,12 +86,68 @@ export function BookingFlow() {
     'Dhanishta', 'Shatabhisha', 'Purva Bhadrapada', 'Uttara Bhadrapada', 'Revati'
   ];
 
+  const formatDateString = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
   const handleContinue = () => {
     if (step < 3) {
       setStep(step + 1);
     } else {
-      // Generate booking ID
-      const bookingId = `DS${Date.now()}`;
+      // Find the matched slot in localStorage and update bookings
+      const updatedSlots = allSlots.map((slot) => {
+        if (
+          matchesPoojaName(slot.name, poojaData.title) &&
+          slot.date === formData.selectedDate &&
+          slot.time === formData.selectedTime
+        ) {
+          const newBookings = slot.bookings + 1;
+          const isFull = newBookings >= slot.maxBookings;
+          return {
+            ...slot,
+            bookings: newBookings,
+            availability: isFull ? 'Full' : 'Open',
+          };
+        }
+        return slot;
+      });
+
+      localStorage.setItem('doshanivarana_slots', JSON.stringify(updatedSlots));
+
+      // Generate booking ID and write new booking to localStorage
+      const bookingId = `BK-${Date.now().toString().slice(-6)}`;
+      
+      const newBooking = {
+        id: bookingId,
+        devoteeName: formData.devoteeNames,
+        gotra: formData.gothram,
+        nakshatra: formData.nakshatra || 'Shravana',
+        mobile: '+91 98765 43210',
+        email: 'devotee@email.com',
+        poojaName: poojaData.title,
+        temple: poojaData.temple,
+        dateTime: `${formatDateString(formData.selectedDate)}, ${formData.selectedTime}`,
+        paymentStatus: 'Confirmed',
+        amount: poojaData.price,
+        paymentMethod: 'UPI',
+        orderId: `RZP-2026-${Date.now().toString().slice(-5)}`,
+        pujari: 'Not Assigned',
+        delivery: 'Yes',
+        deliveryAddress: '42 MG Road, Bangalore, Karnataka 560001',
+        deliveryStatus: 'Booked',
+        streamStatus: 'Not Started',
+        recordingStatus: 'Not Available',
+        feedback: null,
+        tab: 'upcoming'
+      };
+
+      // Fetch bookings list and append new booking
+      const bookingsData = localStorage.getItem('doshanivarana_bookings');
+      const bookings = bookingsData ? JSON.parse(bookingsData) : [];
+      bookings.unshift(newBooking);
+      localStorage.setItem('doshanivarana_bookings', JSON.stringify(bookings));
+
       navigate(`/booking-confirmation/${bookingId}`);
     }
   };
@@ -67,9 +155,9 @@ export function BookingFlow() {
   const canContinue = () => {
     switch (step) {
       case 1:
-        return formData.selectedDate && formData.selectedTime;
+        return formData.selectedDate !== '' && formData.selectedTime !== '';
       case 2:
-        return formData.devoteeNames && formData.gothram;
+        return formData.devoteeNames.trim() !== '' && formData.gothram.trim() !== '';
       case 3:
         return true;
       default:
@@ -138,29 +226,36 @@ export function BookingFlow() {
               <label className="block text-sm font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
                 Select Date
               </label>
-              <div className="grid grid-cols-2 gap-3">
-                {availableDates.map((dateOption) => (
-                  <button
-                    key={dateOption.date}
-                    onClick={() => setFormData({ ...formData, selectedDate: dateOption.date })}
-                    className={`p-4 rounded-xl border-2 transition-all text-left ${
-                      formData.selectedDate === dateOption.date
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <Calendar className="w-4 h-4 text-primary" />
-                      <span className="font-semibold text-sm" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                        {dateOption.label}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                      {dateOption.day}
-                    </p>
-                  </button>
-                ))}
-              </div>
+              {availableDates.length === 0 ? (
+                <div className="p-6 border border-dashed border-border rounded-xl text-center text-sm text-muted-foreground italic">
+                  Currently no active slots are available for booking this pooja. Please check back later.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {availableDates.map((dateOption) => (
+                    <button
+                      key={dateOption.date}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, selectedDate: dateOption.date, selectedTime: '' })}
+                      className={`p-4 rounded-xl border-2 transition-all text-left ${
+                        formData.selectedDate === dateOption.date
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Calendar className="w-4 h-4 text-primary" />
+                        <span className="font-semibold text-sm" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+                          {dateOption.label}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+                        {dateOption.day}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Time Selection */}
@@ -173,6 +268,7 @@ export function BookingFlow() {
                   {availableTimes.map((time) => (
                     <button
                       key={time}
+                      type="button"
                       onClick={() => setFormData({ ...formData, selectedTime: time })}
                       className={`p-3 rounded-xl border-2 transition-all ${
                         formData.selectedTime === time
@@ -270,7 +366,7 @@ export function BookingFlow() {
                   Pooja Details
                 </h3>
               </div>
-              <ReviewItem label="Date & Time" value={`${availableDates.find(d => d.date === formData.selectedDate)?.label}, ${formData.selectedTime}`} />
+              <ReviewItem label="Date & Time" value={`${formData.selectedDate ? formatDateString(formData.selectedDate) : ''}, ${formData.selectedTime}`} />
               <ReviewItem label="Devotee(s)" value={formData.devoteeNames} />
               <ReviewItem label="Gothram" value={formData.gothram} />
               {formData.nakshatra && <ReviewItem label="Nakshatra" value={formData.nakshatra} />}
@@ -285,7 +381,7 @@ export function BookingFlow() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>Pooja Amount</span>
-                  <span style={{ fontFamily: "'Noto Sans', sans-serif" }}>₹1,200</span>
+                  <span style={{ fontFamily: "'Noto Sans', sans-serif" }}>{poojaData.price}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>Prasad Delivery</span>
@@ -298,7 +394,7 @@ export function BookingFlow() {
                 <div className="border-t border-border pt-2 mt-2">
                   <div className="flex justify-between font-semibold text-lg">
                     <span style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Total Amount</span>
-                    <span className="text-primary" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>₹1,200</span>
+                    <span className="text-primary" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>{poojaData.price}</span>
                   </div>
                 </div>
               </div>

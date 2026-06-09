@@ -3,34 +3,53 @@ import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { Link } from 'react-router';
 import { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { POOJAS } from '../lib/poojas';
 
 export function Bookings() {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
 
-  const bookings = [
-    {
-      id: 'DS2026031801',
-      title: 'Satyanarayana Pooja',
-      temple: 'Tirumala Temple',
-      date: 'Tomorrow, 6:30 AM',
-      status: 'upcoming',
-      currentStage: 2,
-      imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
-    },
-    {
-      id: 'DS2026031502',
-      title: 'Rudrabhishekam',
-      temple: 'Rameshwaram Temple',
-      date: 'March 15, 2026',
-      status: 'completed',
-      currentStage: 9,
-      hasRecording: true,
-      imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
-    },
-  ];
+  // Fetch bookings dynamically from localStorage
+  const bookingsData = localStorage.getItem('doshanivarana_bookings');
+  const allBookings: any[] = bookingsData ? JSON.parse(bookingsData) : [];
 
-  const filteredBookings = bookings.filter(booking => 
+  const getPoojaImage = (poojaName: string) => {
+    const found = POOJAS.find(
+      (p) =>
+        p.title.toLowerCase().includes(poojaName.toLowerCase()) ||
+        poojaName.toLowerCase().includes(p.title.toLowerCase())
+    );
+    return found ? found.imageUrl : 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080';
+  };
+
+  const getBookingStage = (b: any) => {
+    let stage = 1; // Seva Offered
+    if (b.paymentStatus === 'Confirmed') stage = 2; // Confirmed
+    if (b.pujari !== 'Not Assigned') stage = 3; // Scheduled
+    if (b.streamStatus === 'In Progress') stage = 4; // Pooja Live
+    if (b.streamStatus === 'Ended') stage = 5; // Completed
+    if (b.recordingStatus === 'Available') stage = 6; // Recording Ready
+    if (b.deliveryStatus === 'Packed') stage = 7; // Prasad Packed
+    if (b.deliveryStatus === 'Dispatched') stage = 8; // Dispatched
+    if (b.deliveryStatus === 'Delivered') stage = 9; // Delivered
+    return stage;
+  };
+
+  const mappedBookings = allBookings.map((b: any) => {
+    const status = b.tab || (b.streamStatus === 'Ended' ? 'completed' : 'upcoming');
+    return {
+      id: b.id,
+      title: b.poojaName,
+      temple: b.temple,
+      date: b.dateTime,
+      status: status,
+      currentStage: getBookingStage(b),
+      hasRecording: b.recordingStatus === 'Available',
+      imageUrl: getPoojaImage(b.poojaName),
+    };
+  });
+
+  const filteredBookings = mappedBookings.filter((booking) =>
     activeTab === 'active' ? booking.status === 'upcoming' : booking.status === 'completed'
   );
 
@@ -196,8 +215,6 @@ function BookingCard({
                 >
                   {isCompleted ? (
                     <CheckCircle2 className="w-4 h-4" />
-                  ) : isCurrent ? (
-                    <Circle className="w-4 h-4" />
                   ) : (
                     <Circle className="w-4 h-4" />
                   )}
@@ -228,7 +245,7 @@ function BookingCard({
         
         {/* Recording Button for Completed Bookings */}
         {hasRecording && (
-          <Link to={`/live/${id.replace('DS', '')}`}>
+          <Link to={`/live/${id.replace('DS', '').replace('BK-', '')}`}>
             <button className="w-full mt-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-[#E05C10] transition-colors font-medium text-sm flex items-center justify-center gap-2">
               <Video className="w-4 h-4" />
               Watch Recording
