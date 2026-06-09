@@ -1,29 +1,156 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, CheckCircle2, Package, PlayCircle, Truck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
+import { poojaCatalog, getTempleKey } from '../../src/old_app/constants/catalog';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function PoojaJourneyScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { id, poojaId } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  
+  const displayId = id ? id.toString() : 'DS2026031801';
+  let currentPoojaId = '1';
+  if (poojaId) {
+    currentPoojaId = poojaId.toString();
+  } else if (id) {
+    const cleanId = id.toString();
+    if (parseInt(cleanId) > 0 && parseInt(cleanId) <= 20) {
+      currentPoojaId = cleanId;
+    } else {
+      if (cleanId.includes('2026031502')) {
+        currentPoojaId = '1';
+      } else if (cleanId.includes('2026032203')) {
+        currentPoojaId = '10';
+      } else if (cleanId.includes('2026031801')) {
+        currentPoojaId = '16';
+      }
+    }
+  }
 
-  // Mock devotee details for this booking
-  const devoteeInfo = {
-    name: t('profile.val.raghavan'),
-    gothram: t('profile.val.bharadwaja'),
-    nakshatra: t('profile.val.shravana'),
-    poojaName: t('poojaDb.1.title'),
-    date: `15 ${t('calendar.april')} 2026`,
-    temple: t('templeDb.rameshwaram.name'),
+  const [booking, setBooking] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchBooking = async () => {
+      try {
+        const data = await AsyncStorage.getItem('doshanivarana_bookings');
+        if (data) {
+          const list = JSON.parse(data);
+          const found = list.find((b: any) => b.id === displayId);
+          if (found) {
+            setBooking(found);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchBooking();
+  }, [displayId]);
+
+  const pooja = poojaCatalog.find(p => p.id.toString() === (booking?.poojaId?.toString() || currentPoojaId)) || poojaCatalog[0];
+  const templeKey = getTempleKey(pooja.temple);
+
+  const translateNakshatraLocal = (val: string, lang: string): string => {
+    const nakshatraMap: Record<string, Record<string, string>> = {
+      'Ashwini': { en: 'Ashwini', te: 'అశ్విని', hi: 'अश्विनी', gu: 'અશ્વિની' },
+      'Bharani': { en: 'Bharani', te: 'భరణి', hi: 'भरणी', gu: 'భరણી' },
+      'Krittika': { en: 'Krittika', te: 'కృత్తిక', hi: 'कृत्तिका', gu: 'કૃતિકા' },
+      'Rohini': { en: 'Rohini', te: 'రోహిణి', hi: 'रोहिणी', gu: 'రోహిణి' },
+      'Mrigashira': { en: 'Mrigashira', te: 'మృగశిర', hi: 'मृगशिरा', gu: 'మૃગશીર્ષ' },
+      'Ardra': { en: 'Ardra', te: 'ఆరుద్ర', hi: 'आर्द्रा', gu: 'આદ્રા' },
+      'Punarvasu': { en: 'Punarvasu', te: 'పునర్వసు', hi: 'पुनर्वसु', gu: 'పుનર્વసు' },
+      'Pushya': { en: 'Pushya', te: 'పుష్యమి', hi: 'पुष्य', gu: 'पुष्य' },
+      'Ashlesha': { en: 'Ashlesha', te: 'ఆశ్లేష', hi: 'आश्लेषा', gu: 'ఆశ్లేષા' },
+      'Magha': { en: 'Magha', te: 'మఖ', hi: 'मघा', gu: 'మઘా' },
+      'Purva Phalguni': { en: 'Purva Phalguni', te: 'పూర్వ ఫల్గుణి', hi: 'पूर्वाफाल्गुनी', gu: 'પૂર્વા ఫાલ્ગુની' },
+      'Uttara Phalguni': { en: 'Uttara Phalguni', te: 'ఉత్తర ఫల్గుణి', hi: 'उत्तराफाल्गुनी', gu: 'ఉત્તરા ఫાલ્ગુની' },
+      'Hasta': { en: 'Hasta', te: 'హస్త', hi: 'हस्त', gu: 'హస్త' },
+      'Chitra': { en: 'Chitra', te: 'చిత్త', hi: 'చిత్రా', gu: 'ચિત્રા' },
+      'Swati': { en: 'Swati', te: 'స్వాతి', hi: 'स्वाती', gu: 'સ્વાતિ' },
+      'Vishakha': { en: 'Vishakha', te: 'విశాఖ', hi: 'विशाखा', gu: 'વિશાખા' },
+      'Anuradha': { en: 'Anuradha', te: 'అనూరాధ', hi: 'अनुराधा', gu: 'અનુરાધા' },
+      'Jyeshtha': { en: 'Jyeshtha', te: 'జ్యేష్ఠ', hi: 'ज्येष्ठा', gu: 'જ્યેષ્ઠા' },
+      'Moola': { en: 'Moola', te: 'మూల', hi: 'मूल', gu: 'મૂળ' },
+      'Purva Ashadha': { en: 'Purva Ashadha', te: 'పూర్వాషాఢ', hi: 'पूर्वाषाढ़ा', gu: 'પૂર્વાષાઢા' },
+      'Uttara Ashadha': { en: 'Uttara Ashadha', te: 'ఉత్తరాషాఢ', hi: 'उत्तराषाढ़ा', gu: 'ఉત્તરાષાઢા' },
+      'Shravana': { en: 'Shravana', te: 'శ్రవణం', hi: 'श्रवण', gu: 'શ્રવણ' },
+      'Dhanishta': { en: 'Dhanishta', te: 'ధనిష్ఠ', hi: 'धनिष्ठा', gu: 'ધનિષ્ઠા' },
+      'Shatabhisha': { en: 'Shatabhisha', te: 'శतభిషం', hi: 'शतभिषा', gu: 'શતભિષા' },
+      'Purva Bhadrapada': { en: 'Purva Bhadrapada', te: 'పూర్వాభాద్ర', hi: 'पूर्वाभाद्रपद', gu: 'પૂર્વાભાદ્રપદ' },
+      'Uttara Bhadrapada': { en: 'Uttara Bhadrapada', te: 'ఉత్తరాభాద్ర', hi: 'उत्तराभाद्रपद', gu: 'ઉત્તરાભાદ્રપદ' },
+      'Revati': { en: 'Revati', te: 'రేవతి', hi: 'रेवती', gu: 'રેવતી' }
+    };
+    if (nakshatraMap[val]) return nakshatraMap[val][lang] || val;
+    for (const key of Object.keys(nakshatraMap)) {
+      const trans = nakshatraMap[key];
+      for (const l of Object.keys(trans)) {
+        if (trans[l].toLowerCase() === val.toLowerCase()) return trans[lang] || val;
+      }
+    }
+    return val;
   };
 
-  const currentStage = 4; // Mock active stage: "Pooja Completed" is active, first 4 are completed
+  const translateGothramLocal = (val: string, lang: string): string => {
+    const gothramMap: Record<string, Record<string, string>> = {
+      'Bharadwaja': { en: 'Bharadwaja', te: 'భరద్వాజ', hi: 'भारद्वाज', gu: 'ભરદ્વાજ' },
+      'Kashyapa': { en: 'Kashyapa', te: 'కశ్యప', hi: 'कश्यप', gu: 'કશ્યપ' },
+      'Vashishta': { en: 'Vashishta', te: 'వశిష్ట', hi: 'वशिष्ठ', gu: 'વસિષ્ઠ' },
+      'Vishwamitra': { en: 'Vishwamitra', te: 'విశ్వామిత్ర', hi: 'विश्वामित्र', gu: 'વિશ્વામિત્ર' },
+      'Gautama': { en: 'Gautama', te: 'గౌతమ', hi: 'गौतम', gu: 'ગૌતમ' },
+      'Jamadagni': { en: 'Jamadagni', te: 'జమదగ్ని', hi: 'जमदग्नि', gu: 'જમదગ્નિ' },
+      'Atri': { en: 'Atri', te: 'అత్రి', hi: 'अत्रि', gu: 'అત્રિ' },
+      'Angirasa': { en: 'Angirasa', te: 'అంగీరస', hi: 'अंगरस', gu: 'અંગિરસ' }
+    };
+    if (gothramMap[val]) return gothramMap[val][lang] || val;
+    for (const key of Object.keys(gothramMap)) {
+      const trans = gothramMap[key];
+      for (const l of Object.keys(trans)) {
+        if (trans[l].toLowerCase() === val.toLowerCase()) return trans[lang] || val;
+      }
+    }
+    return val;
+  };
+
+  const getDisplayDate = () => {
+    if (booking?.dateKey && booking.dateKey.startsWith('booking.date')) {
+      return t(booking.dateKey);
+    }
+    const dateVal = booking?.dateVal || '2026-04-15';
+    const timeVal = booking?.timeVal || '9:00 AM';
+    
+    const monthMap: Record<string, Record<string, string>> = {
+      '03': { en: 'March', te: 'మార్చి', hi: 'मार्च', gu: 'માર્ચ' },
+      '04': { en: 'April', te: 'ఏప్రిల్', hi: 'अप्रैल', gu: 'એપ્રિલ' }
+    };
+    
+    const parts = dateVal.split('-');
+    if (parts.length === 3) {
+      const year = parts[0];
+      const month = parts[1];
+      const day = parseInt(parts[2]).toString();
+      const monthName = monthMap[month]?.[language] || 'April';
+      return `${day} ${monthName} ${year}${timeVal ? ' — ' + timeVal : ''}`;
+    }
+    return `${dateVal}${timeVal ? ' — ' + timeVal : ''}`;
+  };
+
+  const devoteeInfo = {
+    name: booking?.devoteeNames || t('profile.val.raghavan'),
+    gothram: translateGothramLocal(booking?.gothram || 'Bharadwaja', language),
+    nakshatra: translateNakshatraLocal(booking?.nakshatra || 'Shravana', language),
+    poojaName: t('poojaDb.' + pooja.id + '.title'),
+    date: getDisplayDate(),
+    temple: t('templeDb.' + templeKey + '.name'),
+  };
+
+  const currentStage = booking?.currentStage ?? 4;
 
   const stages = [
     {
@@ -118,7 +245,7 @@ export default function PoojaJourneyScreen() {
               {t('journey.title')}
             </Text>
             <Text className="text-xs text-muted-foreground" style={{ fontFamily: 'System' }}>
-              {t('bookingConfirmation.bookingId')}: {id || 'DS2026031801'}
+              {t('bookingConfirmation.bookingId')}: {displayId}
             </Text>
           </View>
         </View>
@@ -206,7 +333,7 @@ export default function PoojaJourneyScreen() {
                     <Pressable
                       onPress={() => {
                         if (stage.ctaKey === 'bookings.watchRecording') {
-                          router.push(`/live/${id ? id.toString().replace('DS', '') : '1'}` as any);
+                          router.push(`/live/${displayId.replace('DS', '')}?poojaId=${pooja.id}` as any);
                         }
                       }}
                       className="mt-2.5 px-4 py-2 bg-primary/10 border border-primary/30 rounded-lg self-start active:bg-primary/20"
@@ -224,7 +351,7 @@ export default function PoojaJourneyScreen() {
       {/* Sticky Bottom Bar with Action buttons */}
       <View className="absolute bottom-0 left-0 right-0 bg-background border-t border-border/40 p-4 flex-row gap-3">
         <Pressable 
-          onPress={() => router.push(`/live/${id ? id.toString().replace('DS', '') : '1'}` as any)}
+          onPress={() => router.push(`/live/${displayId.replace('DS', '')}?poojaId=${pooja.id}` as any)}
           className="flex-1 py-3.5 rounded-xl bg-primary items-center justify-center active:bg-[#E05C10]"
         >
           <Text className="text-[#1A0A00] font-semibold text-sm">{t('journey.watchBroadcast')}</Text>

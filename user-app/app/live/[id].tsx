@@ -1,27 +1,70 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Volume2, VolumeX, Maximize2, Eye } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
+import { poojaCatalog, getTempleKey } from '../../src/old_app/constants/catalog';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LiveStreamScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { id, poojaId } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { t } = useLanguage();
 
+  let currentPoojaId = '1';
+  if (poojaId) {
+    currentPoojaId = poojaId.toString();
+  } else if (id) {
+    const cleanId = id.toString();
+    if (parseInt(cleanId) > 0 && parseInt(cleanId) <= 20) {
+      currentPoojaId = cleanId;
+    } else {
+      if (cleanId.includes('2026031502')) {
+        currentPoojaId = '1';
+      } else if (cleanId.includes('2026032203')) {
+        currentPoojaId = '10';
+      } else if (cleanId.includes('2026031801')) {
+        currentPoojaId = '16';
+      }
+    }
+  }
+
+  const [booking, setBooking] = useState<any>(null);
+  const displayId = id ? `DS${id.toString()}` : 'DS2026031801';
+
+  useEffect(() => {
+    const fetchBooking = async () => {
+      try {
+        const data = await AsyncStorage.getItem('doshanivarana_bookings');
+        if (data) {
+          const list = JSON.parse(data);
+          const found = list.find((b: any) => b.id === displayId || b.id.replace('DS', '') === id?.toString());
+          if (found) {
+            setBooking(found);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchBooking();
+  }, [id, displayId]);
+
+  const pooja = poojaCatalog.find(p => p.id.toString() === (booking?.poojaId?.toString() || currentPoojaId)) || poojaCatalog[0];
+  const templeKey = getTempleKey(pooja.temple);
+
   const [isMuted, setIsMuted] = useState(false);
 
-  // Mock details for the live broadcast
   const streamInfo = {
-    title: t('poojaDb.1.title'),
-    temple: t('templeDb.rameshwaram.name'),
-    devoteeName: 'Priya Sharma & Family',
+    title: t('poojaDb.' + pooja.id + '.title'),
+    temple: t('templeDb.' + templeKey + '.name'),
+    devoteeName: booking?.devoteeNames ? `${booking.devoteeNames} & Family` : 'Priya Sharma & Family',
     viewerCount: 312,
-    videoUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
+    videoUrl: pooja.imageUrl,
   };
 
   return (
@@ -59,7 +102,7 @@ export default function LiveStreamScreen() {
 
           {/* Live Badge */}
           <View className="flex-row items-center gap-1.5 px-3 py-1 rounded-full bg-red-600">
-            <View className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+            <View className="w-1.5 h-1.5 rounded-full bg-white" />
             <Text className="text-[10px] font-bold text-white tracking-wider" style={{ fontFamily: 'System' }}>
               {t('home.live').toUpperCase()}
             </Text>

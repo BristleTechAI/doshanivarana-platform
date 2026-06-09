@@ -1,12 +1,62 @@
+import { useState, useEffect } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Link, useLocalSearchParams } from 'expo-router';
 import { Bell, Share2 } from 'lucide-react-native';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
+import { poojaCatalog, getTempleKey } from '../../src/old_app/constants/catalog';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function BookingConfirmation() {
-  const { bookingId } = useLocalSearchParams();
-  const { t } = useLanguage();
-  const displayId = bookingId || 'BKG-20260415-00001';
+  const { bookingId, poojaId } = useLocalSearchParams();
+  const { t, language } = useLanguage();
+  const displayId = bookingId ? bookingId.toString() : 'DS2026031801';
+  const currentPoojaId = poojaId ? poojaId.toString() : '1';
+  
+  const [booking, setBooking] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchBooking = async () => {
+      try {
+        const data = await AsyncStorage.getItem('doshanivarana_bookings');
+        if (data) {
+          const list = JSON.parse(data);
+          const found = list.find((b: any) => b.id === displayId);
+          if (found) {
+            setBooking(found);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchBooking();
+  }, [displayId]);
+
+  const pooja = poojaCatalog.find(p => p.id.toString() === (booking?.poojaId?.toString() || currentPoojaId)) || poojaCatalog[0];
+  const templeKey = getTempleKey(pooja.temple);
+
+  const getDisplayDate = () => {
+    if (booking?.dateKey && booking.dateKey.startsWith('booking.date')) {
+      return t(booking.dateKey);
+    }
+    const dateVal = booking?.dateVal || '2026-04-15';
+    const timeVal = booking?.timeVal || '9:00 AM';
+    
+    const monthMap: Record<string, Record<string, string>> = {
+      '03': { en: 'March', te: 'మార్చి', hi: 'मार्च', gu: 'માર્ચ' },
+      '04': { en: 'April', te: 'ఏప్రిల్', hi: 'अप्रैल', gu: 'એપ્રિલ' }
+    };
+    
+    const parts = dateVal.split('-');
+    if (parts.length === 3) {
+      const year = parts[0];
+      const month = parts[1];
+      const day = parseInt(parts[2]).toString();
+      const monthName = monthMap[month]?.[language] || 'April';
+      return `${day} ${monthName} ${year} — ${timeVal}`;
+    }
+    return `${dateVal} — ${timeVal}`;
+  };
 
   return (
     <View className="flex-1 bg-[#1A0A00] px-6 py-12 flex-col items-center justify-center">
@@ -62,13 +112,13 @@ export default function BookingConfirmation() {
           className="text-xl font-bold mb-2 text-[#F5F5F0]"
           style={{ fontFamily: 'System' }}
         >
-          {t('poojaDb.1.title')}
+          {t('poojaDb.' + pooja.id + '.title')}
         </Text>
         <Text className="text-xs mb-1 text-[#78716C]" style={{ fontFamily: 'System' }}>
-          {t('templeDb.rameshwaram.name')}, {t('templeDb.rameshwaram.location')}
+          {t('templeDb.' + templeKey + '.name')}, {t('templeDb.' + templeKey + '.location')}
         </Text>
         <Text className="text-xs mb-4 text-[#78716C]" style={{ fontFamily: 'System' }}>
-          15 {t('calendar.april')} 2026 — 9:00 AM
+          {getDisplayDate()}
         </Text>
 
         {/* Divider */}

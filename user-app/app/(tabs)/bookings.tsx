@@ -1,17 +1,20 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, Image, Modal, ActivityIndicator } from 'react-native';
-import { Circle, CheckCircle2, Clock, Package, PlayCircle, Video, CreditCard, AlertCircle, Check } from 'lucide-react-native';
-import { Link } from 'expo-router';
+import { CheckCircle2, Clock, Package, PlayCircle, Video, CreditCard, AlertCircle, Check } from 'lucide-react-native';
+import { Link, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
 import { getTranslatedTemple } from './poojas';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface BookingItem {
   id: string;
   poojaId: number;
   templeKey: string;
   dateKey: string;
+  dateVal?: string;
+  timeVal?: string;
   status: string;
   currentStage: number;
   imageUrl: string;
@@ -22,69 +25,94 @@ interface BookingItem {
   balanceDue?: boolean;
 }
 
+const defaultBookings: BookingItem[] = [
+  {
+    id: 'DS2026031801',
+    poojaId: 16,
+    templeKey: 'tirumala',
+    dateKey: 'booking.date1',
+    status: 'upcoming',
+    currentStage: 2,
+    imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
+  },
+  {
+    id: 'DS2026032203',
+    poojaId: 10,
+    templeKey: 'varanasi',
+    dateKey: 'booking.date2',
+    status: 'upcoming',
+    currentStage: 1,
+    imageUrl: 'https://images.unsplash.com/photo-1609137144814-7e77a28e75cf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaXJlJTIwYWx0YXIlMjBob21hbXxlbnwxfHx8fDE3NzM4MjU0NTR8MA&ixlib=rb-4.1.0&q=80&w=1080',
+    totalAmount: 2500,
+    paidAmount: 1000,
+    remainingBalance: 1500,
+    balanceDue: true,
+  },
+  {
+    id: 'DS2026031502',
+    poojaId: 1,
+    templeKey: 'rameshwaram',
+    dateKey: 'booking.date3',
+    status: 'completed',
+    currentStage: 9,
+    hasRecording: true,
+    imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
+  },
+];
+
 export default function Bookings() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
   const { theme } = useTheme();
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
-
-  const [bookingsList, setBookingsList] = useState<BookingItem[]>([
-    {
-      id: 'DS2026031801',
-      poojaId: 16,
-      templeKey: 'tirumala',
-      dateKey: 'booking.date1',
-      status: 'upcoming',
-      currentStage: 2,
-      imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
-    },
-    {
-      id: 'DS2026032203',
-      poojaId: 10,
-      templeKey: 'varanasi',
-      dateKey: 'booking.date2',
-      status: 'upcoming',
-      currentStage: 1,
-      imageUrl: 'https://images.unsplash.com/photo-1609137144814-7e77a28e75cf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaXJlJTIwYWx0YXIlMjBob21hbXxlbnwxfHx8fDE3NzM4MjU0NTR8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      totalAmount: 2500,
-      paidAmount: 1000,
-      remainingBalance: 1500,
-      balanceDue: true,
-    },
-    {
-      id: 'DS2026031502',
-      poojaId: 1,
-      templeKey: 'rameshwaram',
-      dateKey: 'booking.date3',
-      status: 'completed',
-      currentStage: 9,
-      hasRecording: true,
-      imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
-    },
-  ]);
+  const [bookingsList, setBookingsList] = useState<BookingItem[]>([]);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingBooking, setPayingBooking] = useState<BookingItem | null>(null);
   const [paymentStep, setPaymentStep] = useState<'details' | 'processing' | 'success'>('details');
 
-  const processPayment = () => {
+  const loadBookings = async () => {
+    try {
+      const data = await AsyncStorage.getItem('doshanivarana_bookings');
+      if (data) {
+        setBookingsList(JSON.parse(data));
+      } else {
+        await AsyncStorage.setItem('doshanivarana_bookings', JSON.stringify(defaultBookings));
+        setBookingsList(defaultBookings);
+      }
+    } catch (err) {
+      console.error('Failed to load bookings:', err);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadBookings();
+    }, [])
+  );
+
+  const processPayment = async () => {
     if (!payingBooking) return;
     setPaymentStep('processing');
-    setTimeout(() => {
-      setBookingsList(prevBookings =>
-        prevBookings.map(b =>
-          b.id === payingBooking.id
-            ? {
-                ...b,
-                paidAmount: b.totalAmount,
-                remainingBalance: 0,
-                balanceDue: false,
-              }
-            : b
-        )
+    try {
+      const updatedList = bookingsList.map(b =>
+        b.id === payingBooking.id
+          ? {
+              ...b,
+              paidAmount: b.totalAmount,
+              remainingBalance: 0,
+              balanceDue: false,
+            }
+          : b
       );
-      setPaymentStep('success');
-    }, 1500);
+      await AsyncStorage.setItem('doshanivarana_bookings', JSON.stringify(updatedList));
+      setBookingsList(updatedList);
+      setTimeout(() => {
+        setPaymentStep('success');
+      }, 1500);
+    } catch (err) {
+      console.error('Failed to process payment:', err);
+    }
   };
 
   const filteredBookings = bookingsList.filter(booking => 
@@ -147,13 +175,13 @@ export default function Bookings() {
                 <Package size={32} color="#78716C" />
               </View>
               <Text className="font-semibold text-lg text-foreground mb-1" style={{ fontFamily: 'System' }}>
-              {activeTab === 'active' ? t('bookings.noActive') : t('bookings.noCompleted')}
-            </Text>
-            <Text className="text-sm text-muted-foreground text-center" style={{ fontFamily: 'System' }}>
-              {activeTab === 'active' 
-                ? t('bookings.noActiveDesc') 
-                : t('bookings.noCompletedDesc')}
-            </Text>
+                {activeTab === 'active' ? t('bookings.noActive') : t('bookings.noCompleted')}
+              </Text>
+              <Text className="text-sm text-muted-foreground text-center" style={{ fontFamily: 'System' }}>
+                {activeTab === 'active' 
+                  ? t('bookings.noActiveDesc') 
+                  : t('bookings.noCompletedDesc')}
+              </Text>
             </View>
           ) : (
             filteredBookings.map((booking) => (
@@ -278,6 +306,8 @@ function BookingCard({
   poojaId,
   templeKey,
   dateKey,
+  dateVal,
+  timeVal,
   status,
   currentStage,
   imageUrl,
@@ -292,6 +322,8 @@ function BookingCard({
   poojaId: number;
   templeKey: string;
   dateKey: string;
+  dateVal?: string;
+  timeVal?: string;
   status: string;
   currentStage: number;
   imageUrl: string;
@@ -303,7 +335,7 @@ function BookingCard({
   onPayBalance?: (id: string) => void;
 }) {
   const { theme } = useTheme();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const stages = [
     { labelKey: 'journey.sevaOffered', icon: CheckCircle2 },
     { labelKey: 'journey.confirmed', icon: CheckCircle2 },
@@ -315,6 +347,29 @@ function BookingCard({
     { labelKey: 'journey.prasadDispatched', icon: Package },
     { labelKey: 'journey.prasadDelivered', icon: CheckCircle2 },
   ];
+
+  const getDisplayDate = () => {
+    if (dateKey && dateKey.startsWith('booking.date')) {
+      return t(dateKey);
+    }
+    if (dateVal) {
+      const monthMap: Record<string, Record<string, string>> = {
+        '03': { en: 'March', te: 'మార్చి', hi: 'मार्च', gu: 'માર્ચ' },
+        '04': { en: 'April', te: 'ఏప్రిల్', hi: 'अप्रैल', gu: 'એપ્રિલ' }
+      };
+      
+      const parts = dateVal.split('-');
+      if (parts.length === 3) {
+        const year = parts[0];
+        const month = parts[1];
+        const day = parseInt(parts[2]).toString();
+        const monthName = monthMap[month]?.[language] || 'March';
+        return `${day} ${monthName} ${year}${timeVal ? ' — ' + timeVal : ''}`;
+      }
+      return dateVal;
+    }
+    return '';
+  };
 
   return (
     <View className="bg-card border border-border rounded-2xl overflow-hidden mb-4">
@@ -360,7 +415,7 @@ function BookingCard({
             </Text>
           </View>
           <Text className="text-xs text-muted-foreground mt-2" style={{ fontFamily: 'System' }}>
-            {t(dateKey)}
+            {getDisplayDate()}
           </Text>
         </View>
       </View>

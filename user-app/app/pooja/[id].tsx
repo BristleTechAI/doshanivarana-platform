@@ -5,6 +5,38 @@ import { ArrowLeft, Share2, MapPin, Clock, Play } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
+import {
+  poojaCatalog,
+  getTempleKey,
+  getTranslatedDeity,
+  getTranslatedTemple,
+  getCategorySteps,
+  getCategoryBlessings,
+  getCategoryRashis,
+} from '../../src/old_app/constants/catalog';
+
+const rashiTranslations: Record<string, Record<string, string>> = {
+  en: {
+    Mesha: 'Mesha', Vrishabha: 'Vrishabha', Mithuna: 'Mithuna', Karka: 'Karka',
+    Simha: 'Simha', Kanya: 'Kanya', Tula: 'Tula', Vrishchika: 'Vrishchika',
+    Dhanu: 'Dhanu', Makara: 'Makara', Kumbha: 'Kumbha', Meena: 'Meena'
+  },
+  te: {
+    Mesha: 'మేషం', Vrishabha: 'వృషభం', Mithuna: 'మిథునం', Karka: 'కర్కాటకం',
+    Simha: 'సింహం', Kanya: 'కన్య', Tula: 'తులా', Vrishchika: 'వృశ్చికం',
+    Dhanu: 'ధనుస్సు', Makara: 'మకరం', Kumbha: 'కుంభం', Meena: 'మీనం'
+  },
+  hi: {
+    Mesha: 'मेष', Vrishabha: 'वृषभ', Mithuna: 'मिथुन', Karka: 'कर्क',
+    Simha: 'सिंह', Kanya: 'कन्या', Tula: 'तुला', Vrishchika: 'वृश्चिक',
+    Dhanu: 'धनु', Makara: 'मकर', Kumbha: 'कंभ', Meena: 'मीन'
+  },
+  gu: {
+    Mesha: 'મેષ', Vrishabha: 'વૃષભ', Mithuna: 'મિથુન', Karka: 'કર્ક',
+    Simha: 'સિંહ', Kanya: 'કન્યા', Tula: 'તુલા', Vrishchika: 'વૃશ્ચિક',
+    Dhanu: 'ધનુ', Makara: 'મકર', Kumbha: 'કુંભ', Meena: 'મીન'
+  }
+};
 
 export default function PoojaDetail() {
   const insets = useSafeAreaInsets();
@@ -14,13 +46,16 @@ export default function PoojaDetail() {
   const { id } = useLocalSearchParams();
   const { t } = useLanguage();
 
+  const poojaId = id ? id.toString() : '1';
+  const pooja = poojaCatalog.find(p => p.id.toString() === poojaId) || poojaCatalog[0];
+
   return (
     <View className="flex-1 bg-background pb-24">
       <ScrollView className="flex-1" stickyHeaderIndices={[1]}>
         {/* Hero Image */}
         <View className="relative h-52">
           <Image
-            source={{ uri: "https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080" }}
+            source={{ uri: pooja.imageUrl }}
             className="w-full h-full"
             resizeMode="cover"
           />
@@ -68,21 +103,21 @@ export default function PoojaDetail() {
 
         {/* Tab Content */}
         <View className="px-6 py-6">
-          {activeTab === 'overview' && <OverviewTab id={id ? id.toString() : '1'} />}
-          {activeTab === 'where' && <WhereTab />}
-          {activeTab === 'how' && <HowTab />}
-          {activeTab === 'why' && <WhyTab id={id ? id.toString() : '1'} />}
+          {activeTab === 'overview' && <OverviewTab poojaId={pooja.id.toString()} pooja={pooja} />}
+          {activeTab === 'where' && <WhereTab pooja={pooja} />}
+          {activeTab === 'how' && <HowTab pooja={pooja} />}
+          {activeTab === 'why' && <WhyTab poojaId={pooja.id.toString()} pooja={pooja} />}
         </View>
       </ScrollView>
 
       {/* Sticky CTA */}
       <View className="absolute bottom-0 left-0 right-0 bg-background border-t border-border p-4">
         <Pressable
-          onPress={() => router.push(`/booking/${id || '1'}` as any)}
+          onPress={() => router.push(`/booking/${pooja.id}` as any)}
           className="w-full py-4 rounded-xl bg-primary items-center justify-center active:bg-[#E05C10]"
         >
           <Text className="text-[#1A0A00] font-semibold text-base" style={{ fontFamily: 'System' }}>
-            {t('poojaDetail.offerPooja')} — ₹1,100
+            {t('poojaDetail.offerPooja')} — {pooja.price}
           </Text>
         </Pressable>
       </View>
@@ -90,51 +125,53 @@ export default function PoojaDetail() {
   );
 }
 
-function OverviewTab({ id }: { id: string }) {
+function OverviewTab({ poojaId, pooja }: { poojaId: string; pooja: any }) {
   const { theme } = useTheme();
   const { t } = useLanguage();
+  const tKey = getTempleKey(pooja.temple);
+
   return (
-    <View className="space-y-6">
+    <View>
       {/* Title */}
-      <View>
+      <View className="mb-4">
         <Text className="text-3xl font-bold mb-2 text-foreground" style={{ fontFamily: 'System' }}>
-          {t('poojaDb.' + id + '.title')}
+          {t('poojaDb.' + poojaId + '.title')}
         </Text>
-        <Text className="text-sm text-muted-foreground mb-4" style={{ fontFamily: 'System' }}>
-          {t('poojaDb.' + id + '.purpose')}
+        <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>
+          {t('poojaDb.' + poojaId + '.purpose')}
         </Text>
       </View>
 
       {/* Pujari Card */}
-      <View className="bg-card border border-border rounded-xl p-4 flex-row items-center gap-4">
+      <View className="bg-card border border-border rounded-xl p-4 flex-row items-center gap-4 mb-4">
         <View className="w-12 h-12 rounded-full bg-primary/10 items-center justify-center">
           <Text className="text-2xl">🙏</Text>
         </View>
         <View className="flex-1">
           <Text className="font-semibold text-foreground" style={{ fontFamily: 'System' }}>
-            Pandit Ramesh Sharma
+            {t('poojaDetail.pujariName')}
           </Text>
           <Text className="text-xs text-muted-foreground" style={{ fontFamily: 'System' }}>
-            22 years experience • Telugu, Sanskrit
+            {t('poojaDetail.pujariInfo')}
           </Text>
         </View>
       </View>
 
       {/* Temple Card */}
-      <View className="bg-card border border-border rounded-xl p-4 flex-row items-center gap-3">
+      <View className="bg-card border border-border rounded-xl p-4 flex-row items-center gap-3 mb-4">
         <MapPin size={20} color="#F97316" />
-        <View>
+        <View className="flex-1">
           <Text className="font-medium text-sm text-foreground" style={{ fontFamily: 'System' }}>
-            {t('templeDb.rameshwaram.name')}
+            {t('templeDb.' + tKey + '.name')}
           </Text>
           <Text className="text-xs text-muted-foreground" style={{ fontFamily: 'System' }}>
-            {t('templeDb.rameshwaram.location')}
+            {t('templeDb.' + tKey + '.location')}
           </Text>
         </View>
       </View>
 
       {/* Live Streaming Badge */}
-      <View className="self-start flex-row items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/30">
+      <View className="self-start flex-row items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 mb-4">
         <Play size={16} color="#F97316" />
         <Text className="text-sm font-medium text-primary" style={{ fontFamily: 'System' }}>
           {t('poojaDetail.liveStreamAvailable')}
@@ -142,9 +179,9 @@ function OverviewTab({ id }: { id: string }) {
       </View>
 
       {/* Video Thumbnail */}
-      <View className="aspect-video bg-card border border-border rounded-xl overflow-hidden relative">
+      <View className="aspect-video bg-card border border-border rounded-xl overflow-hidden relative mb-6">
         <Image
-          source={{ uri: "https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080" }}
+          source={{ uri: pooja.imageUrl }}
           className="w-full h-full absolute"
           resizeMode="cover"
         />
@@ -155,33 +192,65 @@ function OverviewTab({ id }: { id: string }) {
         </View>
       </View>
 
+      {/* About Pooja Section */}
+      <View className="mt-4 pt-4 border-t border-border mb-6">
+        <Text className="text-lg font-bold text-foreground mb-2" style={{ fontFamily: 'System' }}>
+          {t('poojaDetail.overview')}
+        </Text>
+        <Text className="text-sm leading-relaxed text-muted-foreground" style={{ fontFamily: 'System' }}>
+          {t('poojaDb.' + poojaId + '.purpose')}
+        </Text>
+      </View>
+
+      {/* Requirements Section */}
+      <View className="p-4 rounded-xl bg-card border border-border mb-4">
+        <Text className="text-base font-semibold text-foreground mb-2" style={{ fontFamily: 'System' }}>
+          {t('poojaDetail.requirementsTitle')}
+        </Text>
+        <Text className="text-sm leading-relaxed text-muted-foreground" style={{ fontFamily: 'System' }}>
+          {t('poojaDetail.requirementsDesc')}
+        </Text>
+      </View>
+
+      {/* Important Notes Section */}
+      <View className="p-4 rounded-xl bg-card border border-border mb-6">
+        <Text className="text-base font-semibold text-primary mb-2" style={{ fontFamily: 'System' }}>
+          {t('poojaDetail.notesTitle')}
+        </Text>
+        <Text className="text-sm leading-relaxed text-muted-foreground" style={{ fontFamily: 'System' }}>
+          {t('poojaDetail.notesDesc')}
+        </Text>
+      </View>
+
       {/* Price */}
-      <View className="pt-4 border-t border-border mt-2">
+      <View className="pt-4 border-t border-border">
         <Text className="text-sm text-muted-foreground mb-1" style={{ fontFamily: 'System' }}>
           {t('poojaDetail.sevaAmount')}
         </Text>
         <Text className="text-3xl font-bold text-primary" style={{ fontFamily: 'System' }}>
-          ₹1,100
+          {pooja.price}
         </Text>
       </View>
     </View>
   );
 }
 
-function WhereTab() {
+function WhereTab({ pooja }: { pooja: any }) {
   const { t } = useLanguage();
+  const tKey = getTempleKey(pooja.temple);
+
   return (
-    <View className="space-y-6">
+    <View>
       <Text className="text-xl font-semibold text-foreground mb-4" style={{ fontFamily: 'System' }}>
         {t('poojaDetail.whereTitle')}
       </Text>
 
-      <View>
+      <View className="mb-4">
         <Text className="text-2xl font-bold mb-2 text-foreground" style={{ fontFamily: 'System' }}>
-          {t('templeDb.rameshwaram.name')}
+          {t('templeDb.' + tKey + '.name')}
         </Text>
         <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>
-          {t('templeDb.rameshwaram.location')}
+          {t('templeDb.' + tKey + '.location')}
         </Text>
       </View>
 
@@ -190,18 +259,18 @@ function WhereTab() {
         <MapPin size={48} color="#78716C" />
       </View>
 
-      <View>
+      <View className="mb-6">
         <Text className="text-sm leading-relaxed text-muted-foreground" style={{ fontFamily: 'System' }}>
-          {t('templeDb.rameshwaram.description')}
+          {t('templeDb.' + tKey + '.description')}
         </Text>
       </View>
 
       {/* Temple Photos */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row pb-2 mt-4">
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row pb-2">
         {[1, 2, 3].map((i) => (
           <Image
             key={i}
-            source={{ uri: "https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080" }}
+            source={{ uri: pooja.imageUrl }}
             className="w-48 h-32 rounded-xl mr-3"
             resizeMode="cover"
           />
@@ -211,58 +280,62 @@ function WhereTab() {
   );
 }
 
-function HowTab() {
-  const { t } = useLanguage();
-  const steps = [
-    { name: 'Ganapathi Vandanam', desc: 'Invoking Lord Ganesha to remove obstacles.' },
-    { name: 'Punyahavachanam', desc: 'Purification of the space and devotee.' },
-    { name: 'Shivalinga Abhishekam', desc: 'Sacred bath with water, milk, curd, honey and ghee.' },
-    { name: 'Bilvaarchana', desc: 'Offering of 108 bilva leaves chanting each name of Shiva.' },
-    { name: 'Mangalarati', desc: 'Concluding aarti with camphor and conch.' },
-  ];
+function HowTab({ pooja }: { pooja: any }) {
+  const { t, language } = useLanguage();
+  const steps = getCategorySteps(pooja.category);
+  const formattedDuration = pooja.duration.replace(' mins', ' ' + t('poojas.min')).replace(' min', ' ' + t('poojas.min'));
+
+  const getLanguageText = () => {
+    switch (language) {
+      case 'te': return 'సంస్కృతం + తెలుగు';
+      case 'hi': return 'संस्कृत + हिंदी';
+      case 'gu': return 'સંસ્કૃત + ગુજરાતી';
+      default: return 'Sanskrit + English';
+    }
+  };
 
   return (
-    <View className="space-y-6">
+    <View>
       <Text className="text-xl font-semibold text-foreground mb-4" style={{ fontFamily: 'System' }}>
         {t('poojaDetail.howTitle')}
       </Text>
 
       {/* Duration & Language */}
-      <View className="flex-row gap-3">
-        <View className="px-4 py-2 rounded-lg bg-primary/10 flex-row items-center gap-2">
+      <View className="flex-row gap-3 mb-6 mt-1">
+        <View className="px-4 py-2 rounded-full bg-[#2A1305] border border-[#52290B] flex-row items-center gap-2">
           <Clock size={16} color="#F97316" />
-          <Text className="text-sm font-medium text-primary" style={{ fontFamily: 'System' }}>
-            45 {t('poojas.min')}
+          <Text className="text-xs font-semibold text-[#F97316]" style={{ fontFamily: 'System' }}>
+            {formattedDuration}
           </Text>
         </View>
-        <View className="px-4 py-2 rounded-lg bg-card border border-border flex-row items-center gap-2">
-          <Text className="text-sm font-medium text-foreground" style={{ fontFamily: 'System' }}>
-            Sanskrit
+        <View className="px-4 py-2 rounded-full bg-[#250F26] border border-[#501F52] flex-row items-center gap-2">
+          <Text className="text-xs font-semibold text-[#D47FF2]" style={{ fontFamily: 'System' }}>
+            {getLanguageText()}
           </Text>
         </View>
       </View>
 
-      {/* Steps */}
-      <View className="space-y-4">
+      {/* Steps / Procedure */}
+      <View className="mb-4">
         {steps.map((step, index) => (
-          <View key={index} className="flex-row gap-4 mb-4">
-            <View className="w-8 h-8 rounded-full bg-primary/10 items-center justify-center">
-              <Text className="text-primary font-semibold">{index + 1}</Text>
+          <View key={index} className="flex-row items-start gap-4 mb-6">
+            <View className="w-9 h-9 rounded-full bg-[#2A1305] border border-[#4E260A] items-center justify-center mt-0.5">
+              <Text className="text-[#F97316] font-semibold text-sm">{index + 1}</Text>
             </View>
             <View className="flex-1">
-              <Text className="font-semibold text-foreground mb-1" style={{ fontFamily: 'System' }}>
-                {step.name}
+              <Text className="font-bold text-[#F5F5F0] text-[15px] mb-1" style={{ fontFamily: 'System' }}>
+                {t(step.nameKey)}
               </Text>
-              <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>
-                {step.desc}
+              <Text className="text-sm text-[#78716C] leading-relaxed" style={{ fontFamily: 'System' }}>
+                {t(step.descKey)}
               </Text>
             </View>
           </View>
         ))}
       </View>
 
-      {/* What to do during stream */}
-      <View className="bg-card border border-border rounded-xl p-4 mt-2">
+      {/* Instructions: What to do during stream */}
+      <View className="bg-card border border-border rounded-xl p-4 mb-6 mt-2">
         <Text className="font-semibold text-foreground mb-2" style={{ fontFamily: 'System' }}>
           {t('journey.watchBroadcast')}
         </Text>
@@ -270,56 +343,84 @@ function HowTab() {
           {t('live.guidance')}
         </Text>
       </View>
+
+      {/* FAQ Section */}
+      <View className="bg-card border border-border rounded-xl p-4">
+        <Text className="font-semibold text-foreground mb-3" style={{ fontFamily: 'System' }}>
+          {t('poojaDetail.faqTitle')}
+        </Text>
+        <View className="space-y-2">
+          <Text className="text-sm font-semibold text-foreground" style={{ fontFamily: 'System' }}>
+            Q: {t('poojaDetail.faqQ1')}
+          </Text>
+          <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>
+            A: {t('poojaDetail.faqA1')}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
 
-function WhyTab({ id }: { id: string }) {
-  const { t } = useLanguage();
+function WhyTab({ poojaId, pooja }: { poojaId: string; pooja: any }) {
+  const { t, language } = useLanguage();
+  const blessingKeys = getCategoryBlessings(pooja.category);
+  const rashis = getCategoryRashis(pooja.category);
+
+  const colors = [
+    { bg: 'bg-green-500/10', text: 'text-green-500' },
+    { bg: 'bg-primary/10', text: 'text-primary' },
+    { bg: 'bg-blue-500/10', text: 'text-blue-500' },
+  ];
+
   return (
-    <View className="space-y-6">
+    <View>
       <Text className="text-xl font-semibold text-foreground mb-4" style={{ fontFamily: 'System' }}>
         {t('poojaDetail.whyTitle')}
       </Text>
 
-      <Text className="text-sm leading-relaxed text-muted-foreground" style={{ fontFamily: 'System' }}>
-        {t('poojaDb.' + id + '.purpose')}
+      <Text className="text-sm leading-relaxed text-muted-foreground mb-6" style={{ fontFamily: 'System' }}>
+        {t('poojaDb.' + poojaId + '.purpose')}
       </Text>
 
-      {/* Blessings */}
-      <View className="mt-4">
+      {/* Blessings / Benefits */}
+      <View className="mb-6">
         <Text className="font-medium text-foreground mb-3" style={{ fontFamily: 'System' }}>
           {t('poojaDetail.blessings')}
         </Text>
         <View className="flex-row flex-wrap gap-2">
-          <View className="px-4 py-2 rounded-full bg-green-500/10 mb-2 mr-2">
-            <Text className="text-green-500 text-sm font-medium">Health and longevity</Text>
-          </View>
-          <View className="px-4 py-2 rounded-full bg-primary/10 mb-2 mr-2">
-            <Text className="text-primary text-sm font-medium">Removal of obstacles</Text>
-          </View>
-          <View className="px-4 py-2 rounded-full bg-blue-500/10 mb-2">
-            <Text className="text-blue-500 text-sm font-medium">Peace of mind</Text>
-          </View>
+          {blessingKeys.map((key, index) => {
+            const color = colors[index % colors.length];
+            return (
+              <View key={key} className={`px-4 py-2 rounded-full mb-2 mr-2 ${color.bg}`}>
+                <Text className={`text-sm font-medium ${color.text}`}>
+                  {t('poojaDetail.' + key)}
+                </Text>
+              </View>
+            );
+          })}
         </View>
       </View>
 
       {/* Suitable for Rashi */}
-      <View className="mt-4">
-        <Text className="text-sm font-medium text-muted-foreground mb-2" style={{ fontFamily: 'System' }}>
+      <View>
+        <Text className="text-sm font-medium text-muted-foreground mb-3" style={{ fontFamily: 'System' }}>
           {t('poojaDetail.suitableForRashi')}
         </Text>
-        <View className="flex-row gap-2">
-          {['Makara ✓', 'Kumbha ✓', 'Simha ✓'].map((rashi) => (
-            <View
-              key={rashi}
-              className="px-3 py-1.5 rounded-full bg-card border border-border mr-2"
-            >
-              <Text className="text-xs font-medium text-foreground" style={{ fontFamily: 'System' }}>
-                {rashi}
-              </Text>
-            </View>
-          ))}
+        <View className="flex-row flex-wrap gap-2">
+          {rashis.map((rashi) => {
+            const translatedRashi = rashiTranslations[language]?.[rashi] || rashi;
+            return (
+              <View
+                key={rashi}
+                className="px-3 py-1.5 rounded-full bg-card border border-border mb-2 mr-2"
+              >
+                <Text className="text-xs font-medium text-foreground" style={{ fontFamily: 'System' }}>
+                  {translatedRashi} ✓
+                </Text>
+              </View>
+            );
+          })}
         </View>
       </View>
     </View>
