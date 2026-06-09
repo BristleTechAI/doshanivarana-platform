@@ -18,6 +18,29 @@ export function Recordings() {
   const handlePublish = (rec: Recording) => {
     const updated: Recording = { ...rec, status: 'Published' };
     db.updateRecording(updated);
+
+    // Sync status to devotees' bookings
+    const bookings = db.getBookings();
+    const updatedBookings = bookings.map(b => {
+      const matchesPooja = b.poojaName.toLowerCase() === rec.poojaName.toLowerCase();
+      // Ensure the slotDate matches the booking's dateTime format (e.g. "09 Jun 2026")
+      const matchesDate = b.dateTime.toLowerCase().includes(rec.slotDate.toLowerCase());
+      if (matchesPooja && matchesDate) {
+        return {
+          ...b,
+          recordingStatus: 'Available' as const,
+          streamStatus: 'Ended' as const
+        };
+      }
+      return b;
+    });
+    db.saveBookings(updatedBookings);
+
+    // Dispatch custom event to notify other windows if running in the same browser
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+    }
+
     setRecordings(prev => prev.map(r => r.id === rec.id ? updated : r));
     setNotification(`Recording published! Download links sent to ${rec.bookingsCount} devotees for ${rec.poojaName} — ${rec.slotDate}.`);
     setPreviewingRec(null);

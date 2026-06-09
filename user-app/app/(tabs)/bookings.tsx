@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Image, Modal, ActivityIndicator } from 'react-native';
 import { Circle, CheckCircle2, Clock, Package, PlayCircle, Video, CreditCard, AlertCircle, Check } from 'lucide-react-native';
 import { Link } from 'expo-router';
@@ -6,6 +6,40 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
 import { getTranslatedTemple } from './poojas';
+import { safeStorage } from '../../src/old_app/lib/storage';
+
+const getPoojaDetails = (poojaName: string) => {
+  const nameLower = poojaName.toLowerCase();
+  if (nameLower.includes('rudra')) {
+    return { id: 1, key: 'rameshwaram', imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNDQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080' };
+  }
+  if (nameLower.includes('ganapathi') || nameLower.includes('ganesha')) {
+    return { id: 6, key: 'siddhiVinayak', imageUrl: 'https://images.unsplash.com/photo-1609137144814-7e77a28e75cf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaXJlJTIwYWx0YXIlMjBob21hbXxlbnwxfHx8fDE3NzM4MjU0NTR8MA&ixlib=rb-4.1.0&q=80&w=1080' };
+  }
+  if (nameLower.includes('lakshmi')) {
+    return { id: 8, key: 'madurai', imageUrl: 'https://images.unsplash.com/photo-1598089842456-ac3c6ef91f43?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyBGRlaXR5JTIwc2hyaW5lJTIwY2xvc2V1cHxlbnwxfHx8fDE3NzM4MjU0NTN8MA&ixlib=rb-4.1.0&q=80&w=1080' };
+  }
+  if (nameLower.includes('navagraha')) {
+    return { id: 7, key: 'siddhiVinayak', imageUrl: 'https://images.unsplash.com/photo-1772787429537-77ba39d3f855?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZW1wbGUlMjBmbG93ZXIlMjBvZmZlcmluZ3MlMjBpbmNlbnNlfGVufDF8fHx8MTc3MzgyNDQ1Nnww&ixlib=rb-4.1.0&q=80&w=1080' };
+  }
+  if (nameLower.includes('satyanarayana')) {
+    return { id: 16, key: 'tirumala', imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080' };
+  }
+  return { id: 16, key: 'tirumala', imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080' };
+};
+
+const getBookingStage = (b: any) => {
+  let stage = 1; // Seva Offered
+  if (b.paymentStatus === 'Confirmed') stage = 2; // Confirmed
+  if (b.pujari !== 'Not Assigned') stage = 3; // Scheduled
+  if (b.streamStatus === 'In Progress') stage = 4; // Pooja Live
+  if (b.streamStatus === 'Ended') stage = 5; // Completed
+  if (b.recordingStatus === 'Available') stage = 6; // Recording Ready
+  if (b.deliveryStatus === 'Packed') stage = 7; // Prasad Packed
+  if (b.deliveryStatus === 'Dispatched') stage = 8; // Dispatched
+  if (b.deliveryStatus === 'Delivered') stage = 9; // Delivered
+  return stage;
+};
 
 interface BookingItem {
   id: string;
@@ -27,41 +61,100 @@ export default function Bookings() {
   const { t } = useLanguage();
   const { theme } = useTheme();
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
+  const [currentUserMobile, setCurrentUserMobile] = useState<string | null>(null);
+  const [bookingsList, setBookingsList] = useState<BookingItem[]>([]);
 
-  const [bookingsList, setBookingsList] = useState<BookingItem[]>([
-    {
-      id: 'DS2026031801',
-      poojaId: 16,
-      templeKey: 'tirumala',
-      dateKey: 'booking.date1',
-      status: 'upcoming',
-      currentStage: 2,
-      imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
-    },
-    {
-      id: 'DS2026032203',
-      poojaId: 10,
-      templeKey: 'varanasi',
-      dateKey: 'booking.date2',
-      status: 'upcoming',
-      currentStage: 1,
-      imageUrl: 'https://images.unsplash.com/photo-1609137144814-7e77a28e75cf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaXJlJTIwYWx0YXIlMjBob21hbXxlbnwxfHx8fDE3NzM4MjU0NTR8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      totalAmount: 2500,
-      paidAmount: 1000,
-      remainingBalance: 1500,
-      balanceDue: true,
-    },
-    {
-      id: 'DS2026031502',
-      poojaId: 1,
-      templeKey: 'rameshwaram',
-      dateKey: 'booking.date3',
-      status: 'completed',
-      currentStage: 9,
-      hasRecording: true,
-      imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
-    },
-  ]);
+  useEffect(() => {
+    const fetchBookings = () => {
+      const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
+      const mobile = userSession ? JSON.parse(userSession).mobile : '+91 98765 43216'; // default to Suresh Raina for demo
+      setCurrentUserMobile(mobile);
+
+      let bookingsData = safeStorage.getItem('doshanivarana_bookings');
+      if (!bookingsData) {
+        // Seed initial bookings for native fallback/demo
+        const initialBookings = [
+          {
+            id: 'BK-1007',
+            devoteeName: 'Suresh Raina',
+            mobile: '+91 98765 43216',
+            poojaName: 'Rudra Abhishekam',
+            temple: 'Sri Venkateswara Temple',
+            dateTime: '05 Jun 2026, 10:00 AM',
+            paymentStatus: 'Confirmed',
+            amount: '₹1,500',
+            pujari: 'Pt. Sharma Ji',
+            deliveryStatus: 'Delivered',
+            streamStatus: 'Ended',
+            recordingStatus: 'Available'
+          },
+          {
+            id: 'BK-0990',
+            devoteeName: 'Suresh Raina',
+            mobile: '+91 98765 43216',
+            poojaName: 'Rudra Abhishekam',
+            temple: 'Sri Venkateswara Temple',
+            dateTime: '05 Jun 2026, 10:00 AM',
+            paymentStatus: 'Confirmed',
+            amount: '₹1,500',
+            pujari: 'Pt. Sharma Ji',
+            deliveryStatus: 'Delivered',
+            streamStatus: 'Ended',
+            recordingStatus: 'Available'
+          }
+        ];
+        safeStorage.setItem('doshanivarana_bookings', JSON.stringify(initialBookings));
+        bookingsData = JSON.stringify(initialBookings);
+      }
+      
+      const allBookings = bookingsData ? JSON.parse(bookingsData) : [];
+
+      // Filter bookings belonging to this mobile number using normalized 10-digit matching
+      const cleanMobile = mobile.replace(/[^0-9]/g, '').slice(-10);
+      const userBookings = allBookings.filter((b: any) => 
+        b.mobile && b.mobile.replace(/[^0-9]/g, '').slice(-10) === cleanMobile
+      );
+
+      // Map to the BookingItem format
+      const mapped = userBookings.map((b: any) => {
+        const details = getPoojaDetails(b.poojaName);
+        const status = b.tab || (b.streamStatus === 'Ended' ? 'completed' : 'upcoming');
+        const amountNum = parseInt(b.amount.replace(/[^0-9]/g, '')) || 0;
+        return {
+          id: b.id,
+          poojaId: details.id,
+          templeKey: details.key,
+          dateKey: b.dateTime, // Treated as direct display string by t() translation fallback
+          status: status,
+          currentStage: getBookingStage(b),
+          imageUrl: details.imageUrl,
+          hasRecording: b.recordingStatus === 'Available',
+          totalAmount: amountNum,
+          paidAmount: amountNum, // default fully paid
+          remainingBalance: 0,
+          balanceDue: false,
+        };
+      });
+
+      setBookingsList(mapped);
+    };
+
+    fetchBookings();
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('storage', fetchBookings);
+      window.addEventListener('focus', fetchBookings);
+      window.addEventListener('doshanivarana_bookings_updated', fetchBookings);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('storage', fetchBookings);
+        window.removeEventListener('focus', fetchBookings);
+        window.removeEventListener('doshanivarana_bookings_updated', fetchBookings);
+      }
+    };
+  }, []);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingBooking, setPayingBooking] = useState<BookingItem | null>(null);

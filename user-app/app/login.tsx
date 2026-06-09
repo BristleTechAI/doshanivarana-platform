@@ -3,6 +3,7 @@ import { View, Text, Pressable, TextInput, KeyboardAvoidingView, Platform, Scrol
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Phone, Lock } from 'lucide-react-native';
 import { useLanguage } from '../src/old_app/context/LanguageContext';
+import { safeStorage } from '../src/old_app/lib/storage';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -41,6 +42,11 @@ export default function LoginScreen() {
     // Simulate API call
     setTimeout(() => {
       setLoading(false);
+      // Save logged in user session
+      safeStorage.setItem('doshanivarana_logged_in_user', JSON.stringify({ mobile: `+91 ${mobileNumber}` }));
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+        window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+      }
       // Go to setup screen (Deity Selection)
       router.replace('/setup');
     }, 1000);

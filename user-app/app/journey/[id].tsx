@@ -5,6 +5,7 @@ import { ArrowLeft, CheckCircle2, Package, PlayCircle, Truck } from 'lucide-reac
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
+import { safeStorage } from '../../src/old_app/lib/storage';
 
 export default function PoojaJourneyScreen() {
   const router = useRouter();
@@ -13,48 +14,73 @@ export default function PoojaJourneyScreen() {
   const { theme } = useTheme();
   const { t } = useLanguage();
 
-  // Mock devotee details for this booking
-  const devoteeInfo = {
-    name: 'Raghavan Iyer',
-    gothram: 'Bharadwaja',
-    nakshatra: 'Shravana',
-    poojaName: t('poojaDb.1.title'),
-    date: '15 April 2026',
-    temple: t('templeDb.rameshwaram.name'),
+  // Load database dynamically
+  const bookingsData = safeStorage.getItem('doshanivarana_bookings');
+  const bookings = bookingsData ? JSON.parse(bookingsData) : [];
+
+  // Match ID
+  const cleanedId = id ? id.toString() : '';
+  const booking = bookings.find((b: any) => 
+    b.id === cleanedId || 
+    b.id === `BK-${cleanedId}` || 
+    b.id.replace('BK-', '') === cleanedId ||
+    b.id.replace('DS', '') === cleanedId
+  );
+
+  const getBookingStage = (b: any) => {
+    let stage = 1; // Seva Offered
+    if (b.paymentStatus === 'Confirmed') stage = 2; // Confirmed
+    if (b.pujari !== 'Not Assigned') stage = 3; // Scheduled
+    if (b.streamStatus === 'In Progress') stage = 4; // Pooja Live
+    if (b.streamStatus === 'Ended') stage = 5; // Completed
+    if (b.recordingStatus === 'Available') stage = 6; // Recording Ready
+    if (b.deliveryStatus === 'Packed') stage = 7; // Prasad Packed
+    if (b.deliveryStatus === 'Dispatched') stage = 8; // Dispatched
+    if (b.deliveryStatus === 'Delivered') stage = 9; // Delivered
+    return stage;
   };
 
-  const currentStage = 4; // Mock active stage: "Pooja Completed" is active, first 4 are completed
+  const currentStage = booking ? getBookingStage(booking) : 4;
+
+  const devoteeInfo = {
+    name: booking ? booking.devoteeName : 'Raghavan Iyer',
+    gothram: booking ? booking.gotra : 'Bharadwaja',
+    nakshatra: booking ? booking.nakshatra : 'Shravana',
+    poojaName: booking ? booking.poojaName : t('poojaDb.1.title'),
+    date: booking ? booking.dateTime : '15 April 2026',
+    temple: booking ? booking.temple : t('templeDb.rameshwaram.name'),
+  };
 
   const stages = [
     {
       id: 1,
       nameKey: 'journey.sevaOffered',
       descKey: 'journey.sevaOfferedDesc',
-      timestamp: 'March 10, 2026 — 3:45 PM',
+      timestamp: booking ? 'Received successfully' : 'March 10, 2026 — 3:45 PM',
     },
     {
       id: 2,
       nameKey: 'journey.pujariAssigned',
       descKey: 'journey.pujariAssignedDesc',
-      timestamp: 'March 10, 2026 — 4:12 PM',
+      timestamp: booking && booking.pujari !== 'Not Assigned' ? `Assigned: ${booking.pujari}` : undefined,
     },
     {
       id: 3,
       nameKey: 'journey.poojaScheduled',
       descKey: 'journey.poojaScheduledDesc',
-      timestamp: 'March 11, 2026 — 10:00 AM',
+      timestamp: booking ? booking.dateTime : 'April 15, 2026 — 9:00 AM',
     },
     {
       id: 4,
       nameKey: 'journey.goingLive',
       descKey: 'journey.goingLiveDesc',
-      timestamp: 'April 15, 2026 — 9:00 AM',
+      timestamp: booking && booking.streamStatus === 'In Progress' ? 'Pooja is LIVE' : undefined,
     },
     {
       id: 5,
       nameKey: 'journey.poojaCompleted',
       descKey: 'journey.poojaCompletedDesc',
-      timestamp: 'April 15, 2026 — 11:00 AM',
+      timestamp: booking && booking.streamStatus === 'Ended' ? 'Concluded' : undefined,
     },
     {
       id: 6,
@@ -193,7 +219,9 @@ export default function PoojaJourneyScreen() {
                     )}
                   </View>
                   <Text className="text-xs text-muted-foreground leading-relaxed mb-2" style={{ fontFamily: 'System' }}>
-                    {t(stage.descKey)}
+                    {stage.id === 2 && booking && booking.pujari !== 'Not Assigned'
+                      ? t(stage.descKey).replace('Pandit Ramesh Sharma', booking.pujari)
+                      : t(stage.descKey)}
                   </Text>
                   {stage.timestamp && (
                     <Text className="text-[10px] text-muted-foreground/60" style={{ fontFamily: 'System' }}>

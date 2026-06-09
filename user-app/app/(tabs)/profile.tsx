@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, Switch } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { ChevronRight, User, Star, Calendar, Settings, Bell, HelpCircle, LogOut, Sparkles, Edit2, X, MapPin, Phone, Mail, Languages, Check } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
+import { safeStorage } from '../../src/old_app/lib/storage';
 
 const deitiesList = [
   { id: 'ganesha', name: 'Ganesha', emoji: '🐘' },
@@ -43,16 +44,107 @@ export default function Profile() {
   const [selectedDeities, setSelectedDeities] = useState<string[]>(['shiva', 'lakshmi']);
   const [tempSelectedDeities, setTempSelectedDeities] = useState<string[]>(['shiva', 'lakshmi']);
   
-  const [profile, setProfile] = useState<UserProfile>({
-    name: 'Raghavan Iyer',
-    email: 'raghavan.iyer@example.com',
-    phone: '+91 98765 43210',
-    location: 'Bangalore, Karnataka',
-    nakshatra: 'Shravana',
-    rashi: 'Makara (Capricorn)',
-    dateOfBirth: 'Jan 15, 1990',
-    gothram: 'Bharadwaja',
+  const [profile, setProfile] = useState<UserProfile>(() => {
+    const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
+    const mobile = userSession ? JSON.parse(userSession).mobile : '+91 98765 43216';
+    
+    const bookingsData = safeStorage.getItem('doshanivarana_bookings');
+    const bookings = bookingsData ? JSON.parse(bookingsData) : [];
+    
+    const cleanMobile = mobile.replace(/[^0-9]/g, '').slice(-10);
+    const userBooking = bookings.find((b: any) => b.mobile && b.mobile.replace(/[^0-9]/g, '').slice(-10) === cleanMobile);
+    
+    if (userBooking) {
+      return {
+        name: userBooking.devoteeName,
+        email: userBooking.email || 'devotee@doshanivarana.in',
+        phone: userBooking.mobile,
+        location: userBooking.deliveryAddress && userBooking.deliveryAddress !== 'N/A' ? userBooking.deliveryAddress : 'Bangalore, Karnataka',
+        nakshatra: userBooking.nakshatra || 'Shravana',
+        rashi: 'Makara (Capricorn)',
+        dateOfBirth: 'Jan 15, 1990',
+        gothram: userBooking.gotra || 'Bharadwaja',
+      };
+    }
+    
+    return {
+      name: mobile.includes('9876543216') || mobile.includes('98765 43216') ? 'Suresh Raina' : 'Raghavan Iyer',
+      email: 'suresh.raina@example.com',
+      phone: mobile,
+      location: 'Delhi, India',
+      nakshatra: 'Swati',
+      rashi: 'Thula (Libra)',
+      dateOfBirth: 'Nov 27, 1986',
+      gothram: 'Bharadwaja',
+    };
   });
+
+  const [stats, setStats] = useState({
+    totalPoojas: 12,
+    upcoming: 3,
+    devotionScore: 5.0,
+  });
+
+  useEffect(() => {
+    const fetchProfile = () => {
+      const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
+      const mobile = userSession ? JSON.parse(userSession).mobile : '+91 98765 43216'; // default Suresh Raina for demo
+      
+      const bookingsData = safeStorage.getItem('doshanivarana_bookings');
+      const bookings = bookingsData ? JSON.parse(bookingsData) : [];
+      
+      const cleanMobile = mobile.replace(/[^0-9]/g, '').slice(-10);
+      const userBooking = bookings.find((b: any) => b.mobile && b.mobile.replace(/[^0-9]/g, '').slice(-10) === cleanMobile);
+      const userBookings = bookings.filter((b: any) => b.mobile && b.mobile.replace(/[^0-9]/g, '').slice(-10) === cleanMobile);
+      
+      const upcomingCount = userBookings.filter((b: any) => b.streamStatus !== 'Ended' && b.tab !== 'completed').length;
+      setStats({
+        totalPoojas: userBookings.length,
+        upcoming: upcomingCount,
+        devotionScore: userBookings.length > 0 ? 5.0 : 0.0,
+      });
+
+      if (userBooking) {
+        setProfile({
+          name: userBooking.devoteeName,
+          email: userBooking.email || 'devotee@doshanivarana.in',
+          phone: userBooking.mobile,
+          location: userBooking.deliveryAddress && userBooking.deliveryAddress !== 'N/A' ? userBooking.deliveryAddress : 'Bangalore, Karnataka',
+          nakshatra: userBooking.nakshatra || 'Shravana',
+          rashi: 'Makara (Capricorn)',
+          dateOfBirth: 'Jan 15, 1990',
+          gothram: userBooking.gotra || 'Bharadwaja',
+        });
+      } else {
+        setProfile({
+          name: mobile.includes('9876543216') || mobile.includes('98765 43216') ? 'Suresh Raina' : 'Raghavan Iyer',
+          email: 'suresh.raina@example.com',
+          phone: mobile,
+          location: 'Delhi, India',
+          nakshatra: 'Swati',
+          rashi: 'Thula (Libra)',
+          dateOfBirth: 'Nov 27, 1986',
+          gothram: 'Bharadwaja',
+        });
+      }
+    };
+
+    fetchProfile();
+    
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('storage', fetchProfile);
+      window.addEventListener('focus', fetchProfile);
+      window.addEventListener('doshanivarana_bookings_updated', fetchProfile);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('storage', fetchProfile);
+        window.removeEventListener('focus', fetchProfile);
+        window.removeEventListener('doshanivarana_bookings_updated', fetchProfile);
+      }
+    };
+  }, []);
 
   const [notifications, setNotifications] = useState({
     poojaReminders: true,
@@ -61,14 +153,12 @@ export default function Profile() {
     festivalAlerts: true,
   });
 
-  const stats = {
-    totalPoojas: 12,
-    upcoming: 3,
-    devotionScore: 5.0,
-  };
-
   const handleSignOut = () => {
     // Clear state or simple navigate back to welcome/login
+    safeStorage.removeItem('doshanivarana_logged_in_user');
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+      window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+    }
     router.replace('/welcome');
   };
 
