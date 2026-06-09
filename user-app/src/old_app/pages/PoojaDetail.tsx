@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Share2, MapPin, Clock, Play } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
@@ -9,11 +9,42 @@ export function PoojaDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
 
+  const [allSlots, setAllSlots] = useState<any[]>(() => {
+    const slotsData = localStorage.getItem('doshanivarana_slots');
+    return slotsData ? JSON.parse(slotsData) : [];
+  });
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'doshanivarana_slots') {
+        const data = localStorage.getItem('doshanivarana_slots');
+        setAllSlots(data ? JSON.parse(data) : []);
+      }
+    };
+    
+    // Listen for storage events (from other tabs/windows)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Custom event listener for same-window updates if needed
+    const handleCustomUpdate = () => {
+      const data = localStorage.getItem('doshanivarana_slots');
+      setAllSlots(data ? JSON.parse(data) : []);
+    };
+    window.addEventListener('doshanivarana_slots_updated', handleCustomUpdate);
+    
+    // Also re-fetch on focus to ensure we have the latest
+    window.addEventListener('focus', handleCustomUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('doshanivarana_slots_updated', handleCustomUpdate);
+      window.removeEventListener('focus', handleCustomUpdate);
+    };
+  }, []);
+
   const pooja = POOJAS.find((p) => p.id.toString() === id) || POOJAS[0];
 
-  // Load slots and filter active slots for this pooja
-  const slotsData = localStorage.getItem('doshanivarana_slots');
-  const allSlots = slotsData ? JSON.parse(slotsData) : [];
+
 
   const matchesPoojaName = (slotName: string, poojaTitle: string): boolean => {
     const s = slotName.toLowerCase();

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router';
 import { Bell, Share2 } from 'lucide-react';
 
@@ -5,8 +6,35 @@ export function BookingConfirmation() {
   const { id } = useParams();
 
   // Load bookings from localStorage
-  const bookingsData = localStorage.getItem('doshanivarana_bookings');
-  const bookings = bookingsData ? JSON.parse(bookingsData) : [];
+  const [bookings, setBookings] = useState<any[]>(() => {
+    const bookingsData = localStorage.getItem('doshanivarana_bookings');
+    return bookingsData ? JSON.parse(bookingsData) : [];
+  });
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'doshanivarana_bookings') {
+        const data = localStorage.getItem('doshanivarana_bookings');
+        setBookings(data ? JSON.parse(data) : []);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    const handleCustomUpdate = () => {
+      const data = localStorage.getItem('doshanivarana_bookings');
+      setBookings(data ? JSON.parse(data) : []);
+    };
+    window.addEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
+    window.addEventListener('focus', handleCustomUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
+      window.removeEventListener('focus', handleCustomUpdate);
+    };
+  }, []);
+
   const booking = bookings.find((b: any) => b.id === id);
 
   // Fallback defaults

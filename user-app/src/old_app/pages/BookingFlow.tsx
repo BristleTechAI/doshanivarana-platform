@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Calendar, Clock, User, Star, ChevronRight, X } from 'lucide-react';
 import { POOJAS } from '../lib/poojas';
@@ -41,8 +41,34 @@ export function BookingFlow() {
   };
 
   // Load and filter slots dynamically from localStorage
-  const slotsData = localStorage.getItem('doshanivarana_slots');
-  const allSlots: any[] = slotsData ? JSON.parse(slotsData) : [];
+  const [allSlots, setAllSlots] = useState<any[]>(() => {
+    const slotsData = localStorage.getItem('doshanivarana_slots');
+    return slotsData ? JSON.parse(slotsData) : [];
+  });
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'doshanivarana_slots') {
+        const data = localStorage.getItem('doshanivarana_slots');
+        setAllSlots(data ? JSON.parse(data) : []);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    const handleCustomUpdate = () => {
+      const data = localStorage.getItem('doshanivarana_slots');
+      setAllSlots(data ? JSON.parse(data) : []);
+    };
+    window.addEventListener('doshanivarana_slots_updated', handleCustomUpdate);
+    window.addEventListener('focus', handleCustomUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('doshanivarana_slots_updated', handleCustomUpdate);
+      window.removeEventListener('focus', handleCustomUpdate);
+    };
+  }, []);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -114,6 +140,7 @@ export function BookingFlow() {
       });
 
       localStorage.setItem('doshanivarana_slots', JSON.stringify(updatedSlots));
+      window.dispatchEvent(new Event('doshanivarana_slots_updated'));
 
       // Generate booking ID and write new booking to localStorage
       const bookingId = `BK-${Date.now().toString().slice(-6)}`;
@@ -147,6 +174,7 @@ export function BookingFlow() {
       const bookings = bookingsData ? JSON.parse(bookingsData) : [];
       bookings.unshift(newBooking);
       localStorage.setItem('doshanivarana_bookings', JSON.stringify(bookings));
+      window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
 
       navigate(`/booking-confirmation/${bookingId}`);
     }

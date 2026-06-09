@@ -1,7 +1,7 @@
 import { Circle, CheckCircle2, Clock, Package, PlayCircle, Video } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { Link } from 'react-router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { POOJAS } from '../lib/poojas';
 
@@ -10,8 +10,34 @@ export function Bookings() {
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
 
   // Fetch bookings dynamically from localStorage
-  const bookingsData = localStorage.getItem('doshanivarana_bookings');
-  const allBookings: any[] = bookingsData ? JSON.parse(bookingsData) : [];
+  const [allBookings, setAllBookings] = useState<any[]>(() => {
+    const bookingsData = localStorage.getItem('doshanivarana_bookings');
+    return bookingsData ? JSON.parse(bookingsData) : [];
+  });
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'doshanivarana_bookings') {
+        const data = localStorage.getItem('doshanivarana_bookings');
+        setAllBookings(data ? JSON.parse(data) : []);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    const handleCustomUpdate = () => {
+      const data = localStorage.getItem('doshanivarana_bookings');
+      setAllBookings(data ? JSON.parse(data) : []);
+    };
+    window.addEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
+    window.addEventListener('focus', handleCustomUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
+      window.removeEventListener('focus', handleCustomUpdate);
+    };
+  }, []);
 
   const getPoojaImage = (poojaName: string) => {
     const found = POOJAS.find(

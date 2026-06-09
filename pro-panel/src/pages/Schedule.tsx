@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { db, type PoojaSlot } from '../lib/db';
 
@@ -12,7 +12,19 @@ export function Schedule() {
 
   const [slots, setSlots] = useState<PoojaSlot[]>(() => db.getSlots());
 
-  const pastSlotsCount = 4;
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'doshanivarana_slots') {
+        setSlots(db.getSlots());
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const pastSlots = slots.filter(s => s.date < todayStr);
+  const pastSlotsCount = pastSlots.length;
 
   const handleToggleStatus = (id: string) => {
     setSlots(prev => prev.map(s => {
@@ -150,7 +162,9 @@ export function Schedule() {
         <div className="flex gap-3 h-[42px]">
           <button 
             className="border-2 border-primary text-primary font-sans text-button px-6 rounded-full hover:bg-primary/5 transition-colors font-bold cursor-pointer"
-            onClick={() => {}}
+            onClick={() => {
+              setSlots(db.getSlots());
+            }}
           >
             Apply Filters
           </button>
@@ -161,6 +175,7 @@ export function Schedule() {
               setSelectedStatus('All Status');
               setFromDate('');
               setToDate('');
+              setSlots(db.getSlots());
             }}
           >
             Reset
@@ -292,7 +307,7 @@ export function Schedule() {
         
         {/* Pagination */}
         <div className="border-t border-outline-variant/30 p-4 flex items-center justify-between bg-surface-container-low font-sans">
-          <p className="text-on-surface-variant text-sm">Showing <span className="font-semibold text-on-surface">1–6</span> of <span className="font-semibold text-on-surface">18</span> slots</p>
+          <p className="text-on-surface-variant text-sm">Showing <span className="font-semibold text-on-surface">1–{filteredSlots.length}</span> of <span className="font-semibold text-on-surface">{filteredSlots.length}</span> slots</p>
           <div className="flex items-center gap-2">
             <button className="text-on-surface-variant hover:text-primary px-3 py-1 rounded transition-colors disabled:opacity-50" disabled={true}>Previous</button>
             <div className="flex items-center gap-1">
@@ -320,8 +335,36 @@ export function Schedule() {
         </button>
 
         {isPastExpanded && (
-          <div className="p-6 bg-white border-t border-outline-variant/30">
+          <div className="p-6 bg-white border-t border-outline-variant/30 space-y-4">
             <p className="text-on-surface-variant text-sm italic">Past completed pooja slots are archived here and kept in read-only status.</p>
+            {pastSlots.length === 0 ? (
+              <p className="text-sm text-on-surface-variant italic">No archived past slots.</p>
+            ) : (
+              <div className="overflow-x-auto border border-outline-variant/30 rounded-lg">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-surface-container-low border-b border-outline-variant/30 font-sans text-label-md text-on-surface-variant uppercase tracking-wider font-semibold">
+                      <th className="p-4">Pooja Name</th>
+                      <th className="p-4">Date</th>
+                      <th className="p-4">Time</th>
+                      <th className="p-4">Bookings</th>
+                      <th className="p-4">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/20 font-sans text-body-sm">
+                    {pastSlots.map(slot => (
+                      <tr key={slot.id} className="bg-[#fcfcfc] opacity-75">
+                        <td className="p-4 font-semibold text-on-surface">{slot.name}</td>
+                        <td className="p-4 text-on-surface-variant">{formatDateString(slot.date)}</td>
+                        <td className="p-4 text-on-surface-variant">{slot.time}</td>
+                        <td className="p-4 text-on-surface-variant">{slot.bookings} / {slot.maxBookings}</td>
+                        <td className="p-4 text-on-surface-variant">Archived</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
