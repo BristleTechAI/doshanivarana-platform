@@ -15,11 +15,11 @@ export default function PoojaJourneyScreen() {
 
   // Mock devotee details for this booking
   const devoteeInfo = {
-    name: 'Raghavan Iyer',
-    gothram: 'Bharadwaja',
-    nakshatra: 'Shravana',
+    name: t('profile.val.raghavan'),
+    gothram: t('profile.val.bharadwaja'),
+    nakshatra: t('profile.val.shravana'),
     poojaName: t('poojaDb.1.title'),
-    date: '15 April 2026',
+    date: `15 ${t('calendar.april')} 2026`,
     temple: t('templeDb.rameshwaram.name'),
   };
 

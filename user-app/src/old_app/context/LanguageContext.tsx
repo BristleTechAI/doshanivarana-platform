@@ -340,6 +340,15 @@ const translations: Record<Language, any> = {
       noDeities: 'No deities selected yet',
       selectIshtaDevatas: 'Select Ishta Devatas',
       savePreferences: 'Save Preferences',
+      val: {
+        priya: 'Priya',
+        raghavan: 'Raghavan Iyer',
+        bangalore: 'Bangalore, Karnataka',
+        shravana: 'Shravana',
+        makara: 'Makara (Capricorn)',
+        dob: 'Jan 15, 1990',
+        bharadwaja: 'Bharadwaja'
+      }
     },
     notifications: {
       title: 'Notification Settings',
@@ -736,6 +745,15 @@ const translations: Record<Language, any> = {
       noDeities: 'ఇంకా ఏ దేవతలను ఎంచుకోలేదు',
       selectIshtaDevatas: 'ఇష్ట దేవతలను ఎంచుకోండి',
       savePreferences: 'ప్రాధాన్యతలను భద్రపరచండి',
+      val: {
+        priya: 'ప్రియ',
+        raghavan: 'రాఘవన్ అయ్యర్',
+        bangalore: 'బెంగళూరు, కర్ణాటక',
+        shravana: 'శ్రవణ',
+        makara: 'మకరం (మకర రాశి)',
+        dob: 'జనవరి 15, 1990',
+        bharadwaja: 'భరద్వాజ'
+      }
     },
     notifications: {
       title: 'నోటిఫికేషన్ సెట్టింగ్‌లు',
@@ -1132,6 +1150,15 @@ const translations: Record<Language, any> = {
       noDeities: 'अभी तक कोई देवता नहीं चुना गया',
       selectIshtaDevatas: 'इष्ट देवता चुनें',
       savePreferences: 'प्राथमिकताएं सहेजें',
+      val: {
+        priya: 'प्रिया',
+        raghavan: 'राघवन अय्यर',
+        bangalore: 'बेंगलुरु, कर्नाटक',
+        shravana: 'श्रवण',
+        makara: 'मकर राशि (मकर)',
+        dob: '15 जनवरी 1990',
+        bharadwaja: 'भारद्वाज'
+      }
     },
     notifications: {
       title: 'सूचना सेटिंग्स',
@@ -1528,6 +1555,15 @@ const translations: Record<Language, any> = {
       noDeities: 'હજી સુધી કોઈ દેવતાઓ પસંદ કર્યા નથી',
       selectIshtaDevatas: 'ઇષ્ટ દેવતાઓ પસંદ કરો',
       savePreferences: 'પસંદગીઓ સાચવો',
+      val: {
+        priya: 'પ્રિયા',
+        raghavan: 'રાઘવન અય્યર',
+        bangalore: 'બેંગલુરુ, કર્ણાટક',
+        shravana: 'શ્રવણ',
+        makara: 'મકર (મકર રાશિ)',
+        dob: '15 જાન્યુઆરી 1990',
+        bharadwaja: 'ભારદ્વાજ'
+      }
     },
     notifications: {
       title: 'સૂચના સેટિંગ્સ',

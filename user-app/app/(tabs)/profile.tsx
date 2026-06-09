@@ -16,6 +16,75 @@ const deitiesList = [
   { id: 'murugan', name: 'Murugan', emoji: '🦚' },
 ];
 
+const termTranslations: Record<string, Record<string, string>> = {
+  // Nakshatras
+  ashwini: { en: 'Ashwini', te: 'అశ్విని', hi: 'अश्विनी', gu: 'અશ્વિની' },
+  bharani: { en: 'Bharani', te: 'భరణి', hi: 'भरणी', gu: 'ભરણી' },
+  krittika: { en: 'Krittika', te: 'కృత్తిక', hi: 'कृत्तिका', gu: 'કૃતિકા' },
+  rohini: { en: 'Rohini', te: 'రోహిణి', hi: 'रोहिणी', gu: 'રોહિણી' },
+  mrigashira: { en: 'Mrigashira', te: 'మృగశిర', hi: 'मृगशिरा', gu: 'મૃગશીર્ષ' },
+  ardra: { en: 'Ardra', te: 'ఆర్ద్ర', hi: 'आर्द्रा', gu: 'આદ્રા' },
+  punarvasu: { en: 'Punarvasu', te: 'పునర్వసు', hi: 'पुनर्वसु', gu: 'પુનર્વસુ' },
+  pushya: { en: 'Pushya', te: 'పుష్యమి', hi: 'पुष्य', gu: 'પુષ્ય' },
+  ashlesha: { en: 'Ashlesha', te: 'ఆశ్లేష', hi: 'श्लेषा', gu: 'આશ્લેષા' },
+  magha: { en: 'Magha', te: 'మఖ', hi: 'मघा', gu: 'મઘા' },
+  'purva phalguni': { en: 'Purva Phalguni', te: 'పూర్వ ఫల్గుణి', hi: 'पूर्वाफाल्गुनी', gu: 'પૂર્વા ફાલ્ગુની' },
+  'uttara phalguni': { en: 'Uttara Phalguni', te: 'ఉత్తర ఫల్గుణి', hi: 'उत्तराफाल्गुनी', gu: 'ઉત્તરા ફાલ્ગુની' },
+  hasta: { en: 'Hasta', te: 'హస్త', hi: 'हस्त', gu: 'હસ્ત' },
+  chitra: { en: 'Chitra', te: 'చిత్ర', hi: 'चित્રા', gu: 'ચિત્રા' },
+  swati: { en: 'Swati', te: 'స్వాతి', hi: 'स्वाति', gu: 'સ્વાતિ' },
+  vishakha: { en: 'Vishakha', te: 'విశాఖ', hi: 'विशाखा', gu: 'વિశాखा' },
+  anuradha: { en: 'Anuradha', te: 'అనూరాధ', hi: 'अनुराधा', gu: 'અનુરાધા' },
+  jyeshtha: { en: 'Jyeshtha', te: 'జ్యేష్ఠ', hi: 'ज्येष्ठा', gu: 'જ્યેષ્ઠા' },
+  mula: { en: 'Mula', te: 'మూల', hi: 'मूल', gu: 'મૂળ' },
+  'purva ashadha': { en: 'Purva Ashadha', te: 'పూర్వాషాఢ', hi: 'पूर्वाषाढ़ा', gu: 'પૂર્વાષાઢા' },
+  'uttara ashadha': { en: 'Uttara Ashadha', te: 'ఉత్తరాషాఢ', hi: 'उत्तराषाढ़ा', gu: 'ઉત્તરાષાઢા' },
+  shravana: { en: 'Shravana', te: 'శ్రవణ', hi: 'श्रवण', gu: 'શ્રવણ' },
+  dhanishta: { en: 'Dhanishta', te: 'ధనిష్ఠ', hi: 'धनिष्ठा', gu: 'ધનિષ્ઠા' },
+  shatabhisha: { en: 'Shatabhisha', te: 'శతభిషం', hi: 'शतभिषा', gu: 'શતભિષા' },
+  'purva bhadrapada': { en: 'Purva Bhadrapada', te: 'పూర్వాభాద్ర', hi: 'पूर्वाभाद्रपद', gu: 'પૂર્વાભાદ્રપદ' },
+  'uttara bhadrapada': { en: 'Uttara Bhadrapada', te: 'ఉత్తరాభాద్ర', hi: 'उत्तराभाद्रपद', gu: 'ઉત્તરાભાદ્રપદ' },
+  revati: { en: 'Revati', te: 'రేవతి', hi: 'रेवती', gu: 'રેવતી' },
+  mohini: { en: 'Mohini', te: 'మోహిని', hi: 'मोहिनी', gu: 'મોહિની' },
+
+  // Rashis
+  'mesha (aries)': { en: 'Mesha (Aries)', te: 'మేషం (Mesha)', hi: 'मेष (Aries)', gu: 'મેષ (Aries)' },
+  'vrishabha (taurus)': { en: 'Vrishabha (Taurus)', te: 'వృషభం (Vrishabha)', hi: 'वृषभ (Taurus)', gu: 'વૃષભ (Taurus)' },
+  'mithuna (gemini)': { en: 'Mithuna (Gemini)', te: 'మిథునం (Mithuna)', hi: 'मिथुन (Gemini)', gu: 'મિથુન (Gemini)' },
+  'karka (cancer)': { en: 'Karka (Cancer)', te: 'కర్కాటకం (Karka)', hi: 'कर्क (Cancer)', gu: 'કર્ક (Cancer)' },
+  'karkatakam': { en: 'Karkatakam', te: 'కర్కాటకం', hi: 'कर्कट', gu: 'કર્કટ' },
+  'simha (leo)': { en: 'Simha (Leo)', te: 'సింహం (Simha)', hi: 'सिंह (Leo)', gu: 'સિંહ (Leo)' },
+  'kanya (virgo)': { en: 'Kanya (Virgo)', te: 'కన్యా (Kanya)', hi: 'कन्या (Virgo)', gu: 'કન્યા (Virgo)' },
+  'tula (libra)': { en: 'Tula (Libra)', te: 'తులా (Tula)', hi: 'तुला (Libra)', gu: 'તુલા (Libra)' },
+  'vrishchika (scorpio)': { en: 'Vrishchika (Scorpio)', te: 'వృశ్చికం (Vrishchika)', hi: 'वृश्चिक (Scorpio)', gu: 'વૃશ્ચિક (Scorpio)' },
+  'dhanu (sagittarius)': { en: 'Dhanu (Sagittarius)', te: 'ధనుస్సు (Dhanu)', hi: 'धनु (Sagittarius)', gu: 'ધનુ (Sagittarius)' },
+  'makara (capricorn)': { en: 'Makara (Capricorn)', te: 'మకరం (మకర రాశి)', hi: 'मकर राशि (मकर)', gu: 'મકર (મકર રાશિ)' },
+  'kumbha (aquarius)': { en: 'Kumbha (Aquarius)', te: 'కుంభం (Kumbha)', hi: 'कुंभ (Aquarius)', gu: 'કુંભ (Aquarius)' },
+  'meena (pisces)': { en: 'Meena (Pisces)', te: 'మీనం (Meena)', hi: 'मीन (Pisces)', gu: 'મીન (Pisces)' },
+
+  // Gothrams
+  bharadwaja: { en: 'Bharadwaja', te: 'భరద్వాజ', hi: 'भारद्वाज', gu: 'ભારદ્વાજ' },
+  kashyapa: { en: 'Kashyapa', te: 'కశ్యప', hi: 'कश्यप', gu: 'కશ્યપ' },
+  vashishta: { en: 'Vashishta', te: 'వశిష్ట', hi: 'वशिष्ठ', gu: 'વસિષ્ઠ' },
+  gautama: { en: 'Gautama', te: 'గౌతమ', hi: 'गौतम', gu: 'ગૌતમ' },
+  vishwamitra: { en: 'Vishwamitra', te: 'విశ్వామిత్ర', hi: 'विश्वामित्र', gu: 'વિશ્વામિત્ર' },
+  jamadagni: { en: 'Jamadagni', te: 'జమదగ్ని', hi: 'जमदग्नि', gu: 'જમદગ્નિ' },
+  atri: { en: 'Atri', te: 'అత్రి', hi: 'अत्रि', gu: 'અત્રિ' },
+  agastya: { en: 'Agastya', te: 'అగస్త్య', hi: 'अगस्त्य', gu: 'અગસ્ત્ય' },
+  angirasa: { en: 'Angirasa', te: 'ఆంగీరస', hi: 'अंगिरस', gu: 'અંગિરસ' },
+  haritasa: { en: 'Haritasa', te: 'హరితస', hi: 'हारितस', gu: 'હારિતસ' },
+  srivatsa: { en: 'Srivatsa', te: 'శ్రీవత్స', hi: 'श्रीवत्स', gu: 'શ્રીવત્સ' },
+  kaushika: { en: 'Kaushika', te: 'కౌశిక', hi: 'कौशिक', gu: 'કૌશિક' },
+  shandilya: { en: 'Shandilya', te: 'శాండిల్య', hi: 'શાંડિલ્ય', gu: 'શાંડિલ્ય' },
+  midhunukula: { en: 'Midhunukula', te: 'మిథునకులా', hi: 'मिथुनुकुला', gu: 'મિથુનુકુલા' },
+
+  // Names / Default Text
+  'raghavan iyer': { en: 'Raghavan Iyer', te: 'రాఘవన్ అయ్యర్', hi: 'राघवन अय्यर', gu: 'રાઘવન અય્યર' },
+  'bangalore, karnataka': { en: 'Bangalore, Karnataka', te: 'బెంగళూరు, కర్ణాటక', hi: 'बेंगलुरु, कर्नाटक', gu: 'બેંગલુરુ, કર્ણાટક' },
+  'jan 15, 1990': { en: 'Jan 15, 1990', te: 'జనవరి 15, 1990', hi: '15 जनवरी 1990', gu: '15 જાન્યુઆરી 1990' },
+  '15 january 1990': { en: 'Jan 15, 1990', te: 'జనవరి 15, 1990', hi: '15 जनवरी 1990', gu: '15 જાન્યુઆરી 1990' }
+};
+
 interface UserProfile {
   name: string;
   email: string;
@@ -53,6 +122,15 @@ export default function Profile() {
     dateOfBirth: 'Jan 15, 1990',
     gothram: 'Bharadwaja',
   });
+
+  const getProfileValue = (key: keyof UserProfile, val: string) => {
+    if (!val) return '';
+    const cleanVal = val.trim().toLowerCase();
+    if (termTranslations[cleanVal]) {
+      return termTranslations[cleanVal][language] || val;
+    }
+    return val;
+  };
 
   const [notifications, setNotifications] = useState({
     poojaReminders: true,
@@ -94,7 +172,7 @@ export default function Profile() {
             </View>
             <View className="flex-1">
               <Text className="text-2xl font-bold text-foreground mb-1" style={{ fontFamily: 'System' }}>
-                {profile.name}
+                {getProfileValue('name', profile.name)}
               </Text>
               <Text className="text-sm text-muted-foreground mb-1" style={{ fontFamily: 'System' }}>
                 {profile.email}
@@ -102,7 +180,7 @@ export default function Profile() {
               <View className="flex-row items-center gap-1">
                 <MapPin size={12} color="#78716C" />
                 <Text className="text-xs text-muted-foreground" style={{ fontFamily: 'System' }}>
-                  {profile.location}
+                  {getProfileValue('location', profile.location)}
                 </Text>
               </View>
             </View>
@@ -135,22 +213,22 @@ export default function Profile() {
               <ProfileItem
                 icon={<Star size={20} color="#78716C" />}
                 label={t('profile.nakshatra')}
-                value={profile.nakshatra}
+                value={getProfileValue('nakshatra', profile.nakshatra)}
               />
               <ProfileItem
                 icon={<Star size={20} color="#78716C" />}
                 label={t('profile.rashi')}
-                value={profile.rashi}
+                value={getProfileValue('rashi', profile.rashi)}
               />
               <ProfileItem
                 icon={<Calendar size={20} color="#78716C" />}
                 label={t('profile.dateOfBirth')}
-                value={profile.dateOfBirth}
+                value={getProfileValue('dateOfBirth', profile.dateOfBirth)}
               />
               <ProfileItem
                 icon={<User size={20} color="#78716C" />}
                 label={t('profile.gothram')}
-                value={profile.gothram}
+                value={getProfileValue('gothram', profile.gothram)}
               />
             </View>
           </View>
@@ -202,7 +280,7 @@ export default function Profile() {
                   </View>
                   <View className="flex-1">
                     <Text className="font-semibold text-foreground mb-1" style={{ fontFamily: 'System' }}>
-                      {t('profile.recommendationsTitle')} ({profile.nakshatra})
+                      {t('profile.recommendationsTitle')} ({getProfileValue('nakshatra', profile.nakshatra)})
                     </Text>
                     <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>
                       {t('profile.recommendationsDesc')}
@@ -277,7 +355,7 @@ export default function Profile() {
               <View>
                 <Text className="text-sm font-medium mb-2 text-foreground">{t('profile.fullName')}</Text>
                 <TextInput
-                  value={profile.name}
+                  value={getProfileValue('name', profile.name)}
                   onChangeText={(text) => setProfile({ ...profile, name: text })}
                   className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground"
                 />
@@ -294,7 +372,7 @@ export default function Profile() {
               <View className="mt-3">
                 <Text className="text-sm font-medium mb-2 text-foreground">{t('profile.location')}</Text>
                 <TextInput
-                  value={profile.location}
+                  value={getProfileValue('location', profile.location)}
                   onChangeText={(text) => setProfile({ ...profile, location: text })}
                   className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground"
                 />
@@ -324,7 +402,7 @@ export default function Profile() {
               <View>
                 <Text className="text-sm font-medium mb-2 text-foreground">{t('profile.nakshatra')}</Text>
                 <TextInput
-                  value={profile.nakshatra}
+                  value={getProfileValue('nakshatra', profile.nakshatra)}
                   onChangeText={(text) => setProfile({ ...profile, nakshatra: text })}
                   className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground"
                 />
@@ -332,7 +410,7 @@ export default function Profile() {
               <View className="mt-3">
                 <Text className="text-sm font-medium mb-2 text-foreground">{t('profile.gothram')}</Text>
                 <TextInput
-                  value={profile.gothram}
+                  value={getProfileValue('gothram', profile.gothram)}
                   onChangeText={(text) => setProfile({ ...profile, gothram: text })}
                   className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground"
                 />
@@ -340,7 +418,7 @@ export default function Profile() {
               <View className="mt-3">
                 <Text className="text-sm font-medium mb-2 text-foreground">{t('profile.dateOfBirth')}</Text>
                 <TextInput
-                  value={profile.dateOfBirth}
+                  value={getProfileValue('dateOfBirth', profile.dateOfBirth)}
                   onChangeText={(text) => setProfile({ ...profile, dateOfBirth: text })}
                   className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground"
                 />

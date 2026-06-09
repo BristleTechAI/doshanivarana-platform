@@ -191,7 +191,7 @@ export default function Home() {
         {/* Greeting */}
         <View className="mb-8">
           <Text className="text-2xl font-bold mb-1 text-foreground" style={{ fontFamily: 'System' }}>
-            {t('home.greeting')}, Priya 🙏
+            {t('home.greeting')}, {t('profile.val.priya')} 🙏
           </Text>
           <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>
             {t('home.subtitle')}
