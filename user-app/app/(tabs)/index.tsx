@@ -203,23 +203,23 @@ export default function Home() {
           <Pressable className="rounded-2xl p-5 border-l-4 border-primary mb-8 relative overflow-hidden" style={{ backgroundColor: '#2D0A2E' }}>
             <View className="absolute top-3 right-3">
               <View className="px-3 py-1 rounded-full bg-red-600">
-                <Text className="text-white text-[10px] font-bold">UPCOMING</Text>
+                <Text className="text-white text-[10px] font-bold">{t('home.upcoming')}</Text>
               </View>
             </View>
             
             <Text className="text-base font-semibold mb-1 text-[#F5F5F0]" style={{ fontFamily: 'System' }}>
-              Next Live Pooja
+              {t('home.nextLivePooja')}
             </Text>
             <Text className="text-xl font-bold mb-3 text-[#F5F5F0]" style={{ fontFamily: 'System' }}>
-              Rudrabhishek at Sri Kalahasti
+              {t('home.nextLivePoojaName')}
             </Text>
             
             <Text className="text-3xl font-bold text-primary mb-4" style={{ fontFamily: 'System' }}>
-              02h  34m  18s
+              02:34:18
             </Text>
             
             <View className="px-5 py-2 rounded-lg bg-primary items-center self-start">
-              <Text className="text-primary-foreground font-medium text-sm">Book Your Spot — ₹1,100</Text>
+              <Text className="text-primary-foreground font-medium text-sm">{t('home.offerSevaAmount')}</Text>
             </View>
           </Pressable>
         </Link>
@@ -238,25 +238,25 @@ export default function Home() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-6 px-6">
             <PoojaCard
               id="1"
-              title="Lakshmi Pooja"
-              temple="Madurai Temple"
+              title={t('home.lakshmiPooja')}
+              temple={t('home.maduraiTemple')}
               price="₹800"
               imageUrl="https://images.unsplash.com/photo-1598089842456-ac3c6ef91f43?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMGRlaXR5JTIwc2hyaW5lJTIwY2xvc2V1cHxlbnwxfHx8fDE3NzM4MjU0NTN8MA&ixlib=rb-4.1.0&q=80&w=1080"
-              badge="For You"
+              badge={t('home.forYou')}
             />
             <PoojaCard
               id="2"
-              title="Abhishekam"
-              temple="Rameshwaram Temple"
+              title={t('categories.abhishekam')}
+              temple={t('home.rameshwaramTemple')}
               price="₹1,200"
               imageUrl="https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080"
-              badge="Live"
+              badge={t('home.live')}
               isLive
             />
             <PoojaCard
               id="3"
-              title="Satyanarayana Pooja"
-              temple="Tirumala Temple"
+              title={t('home.satyanarayanaPooja')}
+              temple={t('home.tirumalaTemple')}
               price="₹900"
               imageUrl="https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080"
             />
@@ -267,7 +267,7 @@ export default function Home() {
         <View className="mb-8">
           <View className="flex-row items-center justify-between mb-4">
             <Text className="text-lg font-bold text-foreground" style={{ fontFamily: 'System' }}>
-              Temples
+              {t('home.temples')}
             </Text>
             <Link href="/(tabs)/temples" asChild>
               <Pressable>
@@ -278,22 +278,22 @@ export default function Home() {
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-6 px-6">
             <TempleCard 
-              name="Tirumala" 
-              deity="Lord Venkateswara"
-              city="Tirupati"
+              name={t('home.tirumala')} 
+              deity={t('home.lordVenkateswara')}
+              city={t('home.tirupati')}
               imageUrl="https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080" 
             />
             <TempleCard 
-              name="Rameshwaram" 
-              deity="Lord Shiva"
-              city="Tamil Nadu"
+              name={t('home.rameshwaram')} 
+              deity={t('home.lordShiva')}
+              city={t('home.tamilNadu')}
               imageUrl="https://images.unsplash.com/photo-1772787429537-77ba39d3f855?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZW1wbGUlMjBmbG93ZXIlMjBvZmZlcmluZ3MlMjBpbmNlbnNlfGVufDF8fHx8MTc3MzgyNTQ1Nnww&ixlib=rb-4.1.0&q=80&w=1080" 
             />
             <TempleCard 
-              name="Madurai" 
-              deity="Goddess Meenakshi"
-              city="Tamil Nadu"
-              imageUrl="https://images.unsplash.com/photo-1598089842456-ac3c6ef91f43?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMGRlaXR5JTIwc2hyaW5lJTIwY2xvc2V1cHxlbnwxfHx8fDE3NzM4MjU0NTN8MA&ixlib=rb-4.1.0&q=80&w=1080" 
+              name={t('home.madurai')} 
+              deity={t('home.goddessMeenakshi')}
+              city={t('home.tamilNadu')}
+              imageUrl="https://images.unsplash.com/photo-1598089842456-ac3c6ef91f43?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMGRlaXR5JTIwc2hyaW5lJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080" 
             />
           </ScrollView>
         </View>
@@ -302,7 +302,7 @@ export default function Home() {
         <View className="mb-8">
           <View className="flex-row items-center justify-between mb-4">
             <Text className="text-lg font-bold text-foreground" style={{ fontFamily: 'System' }}>
-              Pooja Categories
+              {t('home.categories')}
             </Text>
             <Link href="/(tabs)/poojas" asChild>
               <Pressable>
@@ -313,26 +313,26 @@ export default function Home() {
           
           <View className="flex-row flex-wrap justify-between">
             <CategoryCard
-              title="Abhishekam"
-              count="12 Poojas"
+              title={t('categories.abhishekam')}
+              count={t('home.poojasCount').replace('{count}', '12')}
               icon="🪔"
               color="#F97316"
             />
             <CategoryCard
-              title="Homam"
-              count="8 Poojas"
+              title={t('categories.homam')}
+              count={t('home.poojasCount').replace('{count}', '8')}
               icon="🔥"
               color="#EF4444"
             />
             <CategoryCard
-              title="Archana"
-              count="15 Poojas"
+              title={t('categories.archana')}
+              count={t('home.poojasCount').replace('{count}', '15')}
               icon="🌺"
               color="#EC4899"
             />
             <CategoryCard
-              title="Special Poojas"
-              count="10 Poojas"
+              title={t('categories.specialPoojas')}
+              count={t('home.poojasCount').replace('{count}', '10')}
               icon="✨"
               color="#8B5CF6"
             />
@@ -344,20 +344,20 @@ export default function Home() {
           <Link href="/calendar" asChild>
             <Pressable className="mb-4">
               <Text className="text-lg font-bold text-foreground" style={{ fontFamily: 'System' }}>
-                Upcoming Festivals
+                {t('calendar.upcomingFestivals')}
               </Text>
             </Pressable>
           </Link>
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-6 px-6">
             {[
-              { date: 18, day: 'Wed', name: 'Today', isToday: true },
-              { date: 19, day: 'Thu', name: '' },
-              { date: 20, day: 'Fri', name: 'Ekadashi', isFestival: true },
-              { date: 21, day: 'Sat', name: '' },
-              { date: 22, day: 'Sun', name: 'Purnima', isFestival: true },
-              { date: 23, day: 'Mon', name: '' },
-              { date: 24, day: 'Tue', name: '' },
+              { date: 18, day: t('home.wed'), name: t('home.today'), isToday: true },
+              { date: 19, day: t('home.thu'), name: '' },
+              { date: 20, day: t('home.fri'), name: t('home.ekadashi'), isFestival: true },
+              { date: 21, day: t('home.sat'), name: '' },
+              { date: 22, day: t('home.sun'), name: t('home.purnima'), isFestival: true },
+              { date: 23, day: t('home.mon'), name: '' },
+              { date: 24, day: t('home.tue'), name: '' },
             ].map((day, i) => (
               <View
                 key={i}
