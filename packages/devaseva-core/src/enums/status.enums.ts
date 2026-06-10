@@ -1,0 +1,51 @@
+export enum BookingStatus {
+  CREATED = 'CREATED',
+  CONFIRMED = 'CONFIRMED',
+  SCHEDULED = 'SCHEDULED',
+  LIVE = 'LIVE',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum PaymentStatus {
+  PENDING = 'PENDING',
+  SUCCESS = 'SUCCESS',
+  FAILED = 'FAILED',
+  REFUNDED = 'REFUNDED'
+}
+
+export enum DeliveryStatus {
+  PACKED = 'PACKED',
+  SHIPPED = 'SHIPPED',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  RETURNED = 'RETURNED'
+}
+
+export enum RefundStatus {
+  REQUESTED = 'REQUESTED',
+  REVIEWING = 'REVIEWING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  PROCESSED = 'PROCESSED'
+}
+
+export enum StreamStatus {
+  SCHEDULED = 'SCHEDULED',
+  STARTING = 'STARTING',
+  LIVE = 'LIVE',
+  ENDED = 'ENDED',
+  RECORDING_AVAILABLE = 'RECORDING_AVAILABLE'
+}
+
+export enum SlotStatus {
+  AVAILABLE = 'AVAILABLE',
+  FULL = 'FULL',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum EventStatus {
+  PENDING = 'PENDING',
+  PROCESSED = 'PROCESSED',
+  FAILED = 'FAILED'
+}

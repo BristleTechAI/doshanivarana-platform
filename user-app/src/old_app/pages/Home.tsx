@@ -7,46 +7,6 @@ import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 export function Home() {
   const { t } = useLanguage();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      type: 'live',
-      title: 'Live Pooja Starting Soon',
-      message: 'Rudrabhishek at Sri Kalahasti starts in 2 hours',
-      time: '2h ago',
-      read: false
-    },
-    {
-      id: 2,
-      type: 'confirmation',
-      title: 'Pooja Confirmed',
-      message: 'Your Lakshmi Pooja has been scheduled for tomorrow',
-      time: '1 day ago',
-      read: false
-    },
-    {
-      id: 3,
-      type: 'festival',
-      title: 'Upcoming Festival',
-      message: 'Ekadashi is tomorrow - Book Vishnu poojas',
-      time: '2 days ago',
-      read: true
-    }
-  ]);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const markAsRead = (id: number) => {
-    setNotifications(notifications.map(n => 
-      n.id === id ? { ...n, read: true } : n
-    ));
-  };
-
-  const clearNotification = (id: number) => {
-    setNotifications(notifications.filter(n => n.id !== id));
-  };
-
   return (
     <div className="min-h-full">
       {/* Header */}
@@ -66,90 +26,15 @@ export function Home() {
             <div className="flex items-center gap-2">
               <LanguageSwitcher />
               <div className="relative">
-                <button 
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="relative hover:bg-muted/30 p-2 rounded-full transition-colors"
+                <Link 
+                  to="/notifications"
+                  className="relative hover:bg-muted/30 p-2 rounded-full transition-colors inline-block"
                 >
                   <Bell className="w-6 h-6 text-foreground" />
-                  {unreadCount > 0 && (
-                    <div className="absolute top-1 right-1 w-4 h-4 bg-red-600 rounded-full flex items-center justify-center">
-                      <span className="text-[10px] text-white font-bold">{unreadCount}</span>
-                    </div>
-                  )}
-                </button>
-
-                {/* Notifications Dropdown */}
-                {showNotifications && (
-                  <div className="absolute right-0 mt-2 w-80 bg-card border border-border rounded-2xl shadow-xl overflow-hidden z-50">
-                    <div className="p-4 border-b border-border flex items-center justify-between">
-                      <h3 className="font-semibold" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-                        {t('home.notifications')}
-                      </h3>
-                      <button 
-                        onClick={() => setShowNotifications(false)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto">
-                      {notifications.length === 0 ? (
-                        <div className="p-8 text-center text-muted-foreground">
-                          <Bell className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                          <p className="text-sm">{t('home.noNotifications')}</p>
-                        </div>
-                      ) : (
-                        notifications.map(notification => (
-                          <div
-                            key={notification.id}
-                            onClick={() => markAsRead(notification.id)}
-                            className={`p-4 border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors cursor-pointer ${
-                              !notification.read ? 'bg-primary/5' : ''
-                            }`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
-                                !notification.read ? 'bg-primary' : 'bg-transparent'
-                              }`} />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-start justify-between gap-2 mb-1">
-                                  <h4 className="font-medium text-sm" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                                    {notification.title}
-                                  </h4>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      clearNotification(notification.id);
-                                    }}
-                                    className="text-muted-foreground hover:text-foreground flex-shrink-0"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                </div>
-                                <p className="text-sm text-muted-foreground mb-1" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                                  {notification.message}
-                                </p>
-                                <p className="text-xs text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                                  {notification.time}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                    {notifications.length > 0 && (
-                      <div className="p-3 border-t border-border">
-                        <button 
-                          onClick={() => setNotifications([])}
-                          className="w-full py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors font-medium"
-                        >
-                          {t('common.clearAll')}
-                        </button>
-                      </div>
-                    )}
+                  <div className="absolute top-1 right-1 w-4 h-4 bg-red-600 rounded-full flex items-center justify-center">
+                    <span className="text-[10px] text-white font-bold">2</span>
                   </div>
-                )}
+                </Link>
               </div>
             </div>
           </div>

@@ -1,0 +1,7 @@
+export const BUSINESS_RULES = {
+  MIN_RESCHEDULE_HOURS_BEFORE_POOJA: 24, // Cannot reschedule if pooja is within 24 hours
+  STANDARD_DELIVERY_SLA_DAYS: 7,
+  REFUND_PROCESSING_SLA_DAYS: 3,
+  MAX_RATING_VALUE: 5,
+  MIN_RATING_VALUE: 1
+};

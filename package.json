@@ -1,0 +1,15 @@
+{
+  "name": "devaseva-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "user-app",
+    "pro-panel",
+    "admin-panel"
+  ],
+  "scripts": {
+    "build:core": "npm run build --workspace=@devaseva/core",
+    "build:all": "npm run build --workspaces --if-present"
+  }
+}

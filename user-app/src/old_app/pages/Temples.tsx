@@ -189,36 +189,13 @@ function TempleCard({
               {poojas} {t('temples.availablePoojas')}
             </span>
           </div>
-          <button 
-            onClick={onToggleExpand}
-            className="px-5 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-[#E05C10] transition-colors font-medium text-sm"
+          <Link 
+            to={`/temple/${id}`}
+            className="px-5 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-[#E05C10] transition-colors font-medium text-sm text-center"
           >
-            {isExpanded ? t('temples.hide') : t('temples.explore')}
-          </button>
+            {t('temples.explore')}
+          </Link>
         </div>
-
-        {/* Expanded Poojas List */}
-        {isExpanded && (
-          <div className="pt-4 border-t border-border">
-            <h4 className="text-sm font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-              {t('temples.availablePoojas')}
-            </h4>
-            <div className="space-y-2">
-              {availablePoojas.map((pooja) => (
-                <Link key={pooja.id} to={`/pooja/${pooja.id}`}>
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors group">
-                    <span className="text-sm font-medium group-hover:text-primary transition-colors" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                      {pooja.name}
-                    </span>
-                    <span className="text-sm font-semibold text-primary" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                      {pooja.price}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

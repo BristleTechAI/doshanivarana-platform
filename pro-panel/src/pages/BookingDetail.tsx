@@ -8,6 +8,29 @@ export function BookingDetail() {
   const [booking, setBooking] = useState<Booking | null>(initialBooking);
   const [selectedPujari, setSelectedPujari] = useState(initialBooking?.pujari || 'Not Assigned');
   const [notification, setNotification] = useState<string | null>(null);
+  
+  // Mock reschedule request from User App
+  const [rescheduleRequest, setRescheduleRequest] = useState<{date: string, reason: string} | null>({
+    date: '12 May 2026',
+    reason: 'Family emergency, need to push back.'
+  });
+
+  const handleApproveReschedule = () => {
+    if (booking && rescheduleRequest) {
+      const updated: Booking = { ...booking, dateTime: `${rescheduleRequest.date} - 09:00 AM` };
+      db.updateBooking(updated);
+      setBooking(updated);
+      setRescheduleRequest(null);
+      setNotification('Reschedule request approved!');
+      setTimeout(() => setNotification(null), 3000);
+    }
+  };
+
+  const handleRejectReschedule = () => {
+    setRescheduleRequest(null);
+    setNotification('Reschedule request rejected.');
+    setTimeout(() => setNotification(null), 3000);
+  };
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -185,6 +208,40 @@ export function BookingDetail() {
         {/* RIGHT COLUMN (40%) */}
         <div className="lg:col-span-5 flex flex-col gap-6 font-sans">
           
+          {/* Reschedule Request Approval Card (P1 Feature) */}
+          {rescheduleRequest && (
+            <div className="bg-yellow-50 rounded-xl soft-shadow p-6 border border-yellow-200 border-t-4 border-t-yellow-500">
+              <div className="flex items-center gap-2 mb-4 text-yellow-800">
+                <span className="material-symbols-outlined">event_repeat</span>
+                <h3 className="font-display text-headline-sm font-bold">Reschedule Request</h3>
+              </div>
+              <p className="text-body-sm text-yellow-900 mb-2 font-medium">The devotee has requested to change the pooja date.</p>
+              
+              <div className="bg-white/60 p-4 rounded-lg border border-yellow-200 mb-4">
+                <p className="text-label-md text-yellow-800 font-bold uppercase tracking-wide mb-1">Requested Date</p>
+                <p className="text-body-lg text-yellow-900 font-bold mb-3">{rescheduleRequest.date}</p>
+                
+                <p className="text-label-md text-yellow-800 font-bold uppercase tracking-wide mb-1">Reason</p>
+                <p className="text-body-sm text-yellow-900 font-medium italic">"{rescheduleRequest.reason}"</p>
+              </div>
+
+              <div className="flex gap-3 mt-4">
+                <button 
+                  onClick={handleRejectReschedule}
+                  className="flex-1 bg-white text-red-600 border border-red-200 font-button text-button py-2.5 rounded-full hover:bg-red-50 transition-colors cursor-pointer font-bold shadow-sm"
+                >
+                  Reject
+                </button>
+                <button 
+                  onClick={handleApproveReschedule}
+                  className="flex-1 bg-yellow-500 text-white font-button text-button py-2.5 rounded-full hover:bg-yellow-600 transition-colors cursor-pointer font-bold shadow-sm"
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Pujari Assignment Card */}
           <div className="bg-surface-container-lowest rounded-xl soft-shadow p-6 border border-[#F0E6D2] border-t-4 border-t-primary">
             <div className="flex justify-between items-center mb-4">

@@ -1,5 +1,5 @@
 import { ArrowLeft, CheckCircle2, Circle, Clock, Play, Package, Truck } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { useNavigate, Link } from 'react-router';
 
 export function PoojaJourney() {
   const navigate = useNavigate();
@@ -161,13 +161,24 @@ export function PoojaJourney() {
                       </p>
                     )}
                     {stage.cta && (
-                      <button
-                        disabled
-                        className="mt-3 px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground cursor-not-allowed"
-                        style={{ fontFamily: "'Noto Sans', sans-serif" }}
-                      >
-                        {stage.cta}
-                      </button>
+                      stage.cta === 'Track Delivery' ? (
+                        <Link to={`/delivery/BKG-20260415-00001`}>
+                          <button
+                            className="mt-3 px-4 py-2 rounded-lg border border-primary text-primary text-sm font-bold bg-primary/5 hover:bg-primary/10 transition-colors"
+                            style={{ fontFamily: "'Noto Sans', sans-serif" }}
+                          >
+                            {stage.cta}
+                          </button>
+                        </Link>
+                      ) : (
+                        <button
+                          disabled
+                          className="mt-3 px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground cursor-not-allowed"
+                          style={{ fontFamily: "'Noto Sans', sans-serif" }}
+                        >
+                          {stage.cta}
+                        </button>
+                      )
                     )}
                   </div>
                 </div>
@@ -187,13 +198,14 @@ export function PoojaJourney() {
           >
             Watch Recording
           </button>
-          <button
-            disabled
-            className="w-full py-3 rounded-xl border-2 border-border text-muted-foreground font-medium cursor-not-allowed"
-            style={{ fontFamily: "'Anek Devanagari', sans-serif" }}
-          >
-            Track Prasad
-          </button>
+          <Link to={`/delivery/BKG-20260415-00001`}>
+            <button
+              className="w-full mt-3 py-3 rounded-xl border-2 border-primary text-primary font-bold hover:bg-primary/5 transition-colors"
+              style={{ fontFamily: "'Anek Devanagari', sans-serif" }}
+            >
+              Track Prasad
+            </button>
+          </Link>
         </div>
       </div>
     </div>

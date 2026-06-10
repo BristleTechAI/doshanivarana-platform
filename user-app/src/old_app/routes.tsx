@@ -14,6 +14,9 @@ import { BookingConfirmation } from "./pages/BookingConfirmation";
 import { PoojaJourney } from "./pages/PoojaJourney";
 import { LiveStream } from "./pages/LiveStream";
 import { HinduCalendar } from "./pages/HinduCalendar";
+import { Notifications } from "./pages/Notifications";
+import { TempleDetail } from "./pages/TempleDetail";
+import { DeliveryTracker } from "./pages/DeliveryTracker";
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 
@@ -69,9 +72,12 @@ export const router = createBrowserRouter([
       { path: "booking-confirmation/:id", Component: BookingConfirmation },
       { path: "journey/:id", Component: PoojaJourney },
       { path: "live/:id", Component: LiveStream },
+      { path: "delivery/:id", Component: DeliveryTracker },
       { path: "temples", Component: Temples },
+      { path: "temple/:id", Component: TempleDetail },
       { path: "calendar", Component: HinduCalendar },
       { path: "profile", Component: Profile },
+      { path: "notifications", Component: Notifications },
       { path: "*", element: <div className="min-h-screen flex items-center justify-center bg-background text-foreground"><div className="text-center"><h1 className="text-2xl font-bold mb-2">Page Not Found</h1><p className="text-muted-foreground mb-4">The page you're looking for doesn't exist.</p><a href="/" className="text-primary hover:underline">Go back home</a></div></div> },
     ],
   },

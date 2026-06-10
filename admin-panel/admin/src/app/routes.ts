@@ -14,11 +14,17 @@ import { Settings } from "./components/pages/Settings";
 import { Schedule } from "./components/pages/Schedule";
 import { Analytics } from "./components/pages/Analytics";
 import { Reports } from "./components/pages/Reports";
-import {
-  LiveStreamsPage, RecordingsPage, DeliveriesPage, QueriesPage,
-  TempleRequestsPage, PROManagersPage, PoojasPage, CategoriesPage,
-  LanguagesPage, RefundsPage, RevenuePage
-} from "./components/pages/StubPages";
+import { LiveStreamsPage } from "./components/pages/LiveStreams";
+import { RecordingsPage } from "./components/pages/Recordings";
+import { DeliveriesPage } from "./components/pages/Deliveries";
+import { QueriesPage } from "./components/pages/Queries";
+import { TempleRequestsPage } from "./components/pages/TempleRequests";
+import { PROManagersPage } from "./components/pages/ProManagers";
+import { PoojasPage } from "./components/pages/Poojas";
+import { CategoriesPage } from "./components/pages/Categories";
+import { LanguagesPage } from "./components/pages/Languages";
+import { RefundsPage } from "./components/pages/Refunds";
+import { RevenuePage } from "./components/pages/Revenue";
 
 export const router = createBrowserRouter([
   {

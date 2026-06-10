@@ -1,37 +1,51 @@
-import { Circle, CheckCircle2, Clock, Package, PlayCircle, Video } from 'lucide-react';
+import { Circle, CheckCircle2, Clock, Package, PlayCircle, Video, X, Star } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { Link } from 'react-router';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { POOJAS } from '../lib/poojas';
 
 export function Bookings() {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
 
-  // Fetch bookings dynamically from localStorage
-  const [allBookings, setAllBookings] = useState<any[]>(() => {
-    const bookingsData = localStorage.getItem('doshanivarana_bookings');
-    return bookingsData ? JSON.parse(bookingsData) : [];
-  });
+  // Modal States
+  const [cancelModal, setCancelModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
+  const [rescheduleModal, setRescheduleModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
+  const [refundModal, setRefundModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
+  const [feedbackModal, setFeedbackModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
 
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'doshanivarana_bookings') {
-        const data = localStorage.getItem('doshanivarana_bookings');
-        setAllBookings(data ? JSON.parse(data) : []);
-      }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    const handleCustomUpdate = () => {
-      const data = localStorage.getItem('doshanivarana_bookings');
-      setAllBookings(data ? JSON.parse(data) : []);
-    };
-    window.addEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
-    window.addEventListener('focus', handleCustomUpdate);
+  const [bookings, setBookings] = useState([
+    {
+      id: 'DS2026031801',
+      title: 'Satyanarayana Pooja',
+      temple: 'Tirumala Temple',
+      date: 'Tomorrow, 6:30 AM',
+      status: 'upcoming',
+      currentStage: 2,
+      imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
+    },
+    {
+      id: 'DS2026031502',
+      title: 'Rudrabhishekam',
+      temple: 'Rameshwaram Temple',
+      date: 'March 15, 2026',
+      status: 'completed',
+      currentStage: 9,
+      hasRecording: true,
+      imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
+    },
+    {
+      id: 'DS2026031003',
+      title: 'Navagraha Homam',
+      temple: 'Varanasi Temple',
+      date: 'March 10, 2026',
+      status: 'cancelled',
+      currentStage: 0,
+      imageUrl: 'https://images.unsplash.com/photo-1772787429537-77ba39d3f855?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZW1wbGUlMjBmbG93ZXIlMjBvZmZlcmluZ3MlMjBpbmNlbnNlfGVufDF8fHx8MTc3MzgyNTQ1Nnww&ixlib=rb-4.1.0&q=80&w=1080',
+    }
+  ]);
 
+<<<<<<< HEAD
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
@@ -77,7 +91,32 @@ export function Bookings() {
 
   const filteredBookings = mappedBookings.filter((booking) =>
     activeTab === 'active' ? booking.status === 'upcoming' : booking.status === 'completed'
+=======
+  const filteredBookings = bookings.filter(booking => 
+    activeTab === 'active' ? booking.status === 'upcoming' : ['completed', 'cancelled'].includes(booking.status)
+>>>>>>> 1fb880da40406bfa87bf3877806242baa16f362a
   );
+
+  const handleCancelBooking = (id: string) => {
+    setBookings(bookings.map(b => b.id === id ? { ...b, status: 'cancelled' } : b));
+    setCancelModal({isOpen: false, bookingId: null});
+  };
+
+  const handleRefundRequest = () => {
+    // Mock refund submission
+    setRefundModal({isOpen: false, bookingId: null});
+    alert("Refund request submitted successfully.");
+  };
+
+  const handleFeedbackSubmit = () => {
+    setFeedbackModal({isOpen: false, bookingId: null});
+    alert("Thank you for your feedback!");
+  };
+
+  const handleRescheduleSubmit = () => {
+    setRescheduleModal({isOpen: false, bookingId: null});
+    alert("Reschedule request submitted to PRO.");
+  };
 
   return (
     <div className="min-h-full">
@@ -114,12 +153,12 @@ export function Bookings() {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t('common.completed')}
+            Past & Completed
           </button>
         </div>
 
         {/* Bookings */}
-        <div className="space-y-4">
+        <div className="space-y-4 pb-24">
           {filteredBookings.length === 0 ? (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-muted/30 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -136,11 +175,109 @@ export function Bookings() {
             </div>
           ) : (
             filteredBookings.map((booking) => (
-              <BookingCard key={booking.id} {...booking} />
+              <BookingCard 
+                key={booking.id} 
+                {...booking} 
+                onCancel={() => setCancelModal({isOpen: true, bookingId: booking.id})}
+                onReschedule={() => setRescheduleModal({isOpen: true, bookingId: booking.id})}
+                onRefund={() => setRefundModal({isOpen: true, bookingId: booking.id})}
+                onFeedback={() => setFeedbackModal({isOpen: true, bookingId: booking.id})}
+              />
             ))
           )}
         </div>
       </div>
+
+      {/* Cancel Modal */}
+      {cancelModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-sm rounded-2xl p-6 relative">
+            <button onClick={() => setCancelModal({isOpen: false, bookingId: null})} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Cancel Booking</h3>
+            <p className="text-sm text-muted-foreground mb-4">Are you sure you want to cancel this booking? This action cannot be undone.</p>
+            <div className="mb-4">
+              <label className="text-sm font-medium block mb-1">Reason for cancellation</label>
+              <textarea className="w-full border border-border rounded-lg p-3 text-sm bg-background" rows={3} placeholder="Please tell us why..."></textarea>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setCancelModal({isOpen: false, bookingId: null})} className="flex-1 py-2.5 rounded-xl border border-border font-medium text-sm">Keep Booking</button>
+              <button onClick={() => handleCancelBooking(cancelModal.bookingId!)} className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground font-medium text-sm hover:opacity-90">Cancel It</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Modal */}
+      {rescheduleModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-sm rounded-2xl p-6 relative">
+            <button onClick={() => setRescheduleModal({isOpen: false, bookingId: null})} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Reschedule Request</h3>
+            <p className="text-sm text-muted-foreground mb-4">Select a new date. This requires approval from the PRO.</p>
+            <div className="mb-4">
+              <label className="text-sm font-medium block mb-1">Select New Date</label>
+              <input type="date" className="w-full border border-border rounded-lg p-3 text-sm bg-background" />
+            </div>
+            <div className="mb-4">
+              <label className="text-sm font-medium block mb-1">Reason</label>
+              <textarea className="w-full border border-border rounded-lg p-3 text-sm bg-background" rows={2} placeholder="Optional reason..."></textarea>
+            </div>
+            <button onClick={handleRescheduleSubmit} className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90">Submit Request</button>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Modal */}
+      {refundModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-sm rounded-2xl p-6 relative">
+            <button onClick={() => setRefundModal({isOpen: false, bookingId: null})} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Request Refund</h3>
+            <p className="text-sm text-muted-foreground mb-4">Your refund request will be reviewed by our admin team within 24-48 hours.</p>
+            <div className="mb-4">
+              <label className="text-sm font-medium block mb-1">Refund Method</label>
+              <select className="w-full border border-border rounded-lg p-3 text-sm bg-background">
+                <option>Original Payment Method</option>
+                <option>Devaseva Wallet</option>
+              </select>
+            </div>
+            <div className="mb-4">
+              <label className="text-sm font-medium block mb-1">Additional Details</label>
+              <textarea className="w-full border border-border rounded-lg p-3 text-sm bg-background" rows={2} placeholder="Any specific details..."></textarea>
+            </div>
+            <button onClick={handleRefundRequest} className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90">Submit Refund Request</button>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {feedbackModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-card w-full max-w-sm rounded-2xl p-6 relative">
+            <button onClick={() => setFeedbackModal({isOpen: false, bookingId: null})} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Rate Experience</h3>
+            <p className="text-sm text-muted-foreground mb-4">How was your pooja experience?</p>
+            <div className="flex justify-center gap-2 mb-6">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Star key={star} className={`w-8 h-8 ${star <= 4 ? 'text-yellow-500 fill-yellow-500' : 'text-muted'}`} />
+              ))}
+            </div>
+            <div className="mb-4">
+              <label className="text-sm font-medium block mb-1">Write a Review</label>
+              <textarea className="w-full border border-border rounded-lg p-3 text-sm bg-background" rows={3} placeholder="Tell us more..."></textarea>
+            </div>
+            <button onClick={handleFeedbackSubmit} className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90">Submit Feedback</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -154,6 +291,10 @@ function BookingCard({
   currentStage,
   imageUrl,
   hasRecording,
+  onCancel,
+  onReschedule,
+  onRefund,
+  onFeedback
 }: {
   id: string;
   title: string;
@@ -163,6 +304,10 @@ function BookingCard({
   currentStage: number;
   imageUrl: string;
   hasRecording?: boolean;
+  onCancel: () => void;
+  onReschedule: () => void;
+  onRefund: () => void;
+  onFeedback: () => void;
 }) {
   const stages = [
     { label: 'Seva Offered', icon: CheckCircle2 },
@@ -175,6 +320,12 @@ function BookingCard({
     { label: 'Dispatched', icon: Package },
     { label: 'Delivered', icon: CheckCircle2 },
   ];
+
+  const getStatusColor = () => {
+    if (status === 'upcoming') return 'bg-primary/10 text-primary';
+    if (status === 'completed') return 'bg-green-500/10 text-green-500';
+    return 'bg-red-500/10 text-red-500';
+  };
 
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -202,14 +353,8 @@ function BookingCard({
           </div>
         </div>
         <div className="text-right">
-          <div
-            className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
-              status === 'upcoming'
-                ? 'bg-primary/10 text-primary'
-                : 'bg-green-500/10 text-green-500'
-            }`}
-          >
-            {status === 'upcoming' ? 'Upcoming' : 'Completed'}
+          <div className={`inline-flex px-3 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor()}`}>
+            {status}
           </div>
           <p className="text-xs text-muted-foreground mt-2" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
             {date}
@@ -217,68 +362,96 @@ function BookingCard({
         </div>
       </div>
 
-      {/* Journey Timeline */}
-      <div className="p-4">
-        <h4 className="text-sm font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-          Pooja Journey
-        </h4>
-        <div className="space-y-3">
-          {stages.slice(0, 5).map((stage, index) => {
-            const Icon = stage.icon;
-            const isCompleted = index < currentStage;
-            const isCurrent = index === currentStage;
-
-            return (
-              <div key={index} className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    isCompleted
-                      ? 'bg-primary text-primary-foreground'
-                      : isCurrent
-                      ? 'bg-primary/20 text-primary ring-4 ring-primary/20'
-                      : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {isCompleted ? (
-                    <CheckCircle2 className="w-4 h-4" />
-                  ) : (
-                    <Circle className="w-4 h-4" />
-                  )}
-                </div>
-                <div className="flex-1">
-                  <p
-                    className={`text-sm font-medium ${
-                      isCompleted || isCurrent ? 'text-foreground' : 'text-muted-foreground'
-                    }`}
-                    style={{ fontFamily: "'Noto Sans', sans-serif" }}
-                  >
-                    {stage.label}
-                  </p>
-                </div>
-                {isCompleted && (
-                  <div className="text-xs text-muted-foreground">✓</div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        
-        <Link to={`/journey/${id}`}>
-          <button className="w-full mt-4 py-2.5 rounded-xl border-2 border-primary text-primary hover:bg-primary/5 transition-colors font-medium text-sm">
-            View Full Journey
-          </button>
-        </Link>
-        
-        {/* Recording Button for Completed Bookings */}
-        {hasRecording && (
-          <Link to={`/live/${id.replace('DS', '').replace('BK-', '')}`}>
-            <button className="w-full mt-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-[#E05C10] transition-colors font-medium text-sm flex items-center justify-center gap-2">
-              <Video className="w-4 h-4" />
-              Watch Recording
+      {/* Action Buttons Section */}
+      <div className="p-4 bg-muted/10 border-b border-border flex gap-2 overflow-x-auto scrollbar-hide">
+        {status === 'upcoming' && (
+          <>
+            <button onClick={onReschedule} className="px-4 py-2 rounded-lg bg-background border border-border text-sm font-medium whitespace-nowrap hover:bg-muted/30">
+              Request Reschedule
             </button>
-          </Link>
+            <button onClick={onCancel} className="px-4 py-2 rounded-lg bg-red-50 text-red-600 border border-red-100 text-sm font-medium whitespace-nowrap hover:bg-red-100">
+              Cancel Booking
+            </button>
+          </>
+        )}
+        {status === 'completed' && (
+          <button onClick={onFeedback} className="px-4 py-2 rounded-lg bg-background border border-border text-sm font-medium whitespace-nowrap hover:bg-muted/30 flex items-center gap-1">
+            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+            Leave Feedback
+          </button>
+        )}
+        {status === 'cancelled' && (
+          <button onClick={onRefund} className="px-4 py-2 rounded-lg bg-background border border-border text-sm font-medium whitespace-nowrap hover:bg-muted/30 text-primary">
+            Request Refund
+          </button>
         )}
       </div>
+
+      {/* Journey Timeline (Only if not cancelled) */}
+      {status !== 'cancelled' && (
+        <div className="p-4">
+          <h4 className="text-sm font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
+            Pooja Journey
+          </h4>
+          <div className="space-y-3">
+            {stages.slice(0, 5).map((stage, index) => {
+              const Icon = stage.icon;
+              const isCompleted = index < currentStage;
+              const isCurrent = index === currentStage;
+
+              return (
+                <div key={index} className="flex items-center gap-3">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isCompleted
+                        ? 'bg-primary text-primary-foreground'
+                        : isCurrent
+                        ? 'bg-primary/20 text-primary ring-4 ring-primary/20'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <CheckCircle2 className="w-4 h-4" />
+                    ) : isCurrent ? (
+                      <Circle className="w-4 h-4" />
+                    ) : (
+                      <Circle className="w-4 h-4" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p
+                      className={`text-sm font-medium ${
+                        isCompleted || isCurrent ? 'text-foreground' : 'text-muted-foreground'
+                      }`}
+                      style={{ fontFamily: "'Noto Sans', sans-serif" }}
+                    >
+                      {stage.label}
+                    </p>
+                  </div>
+                  {isCompleted && (
+                    <div className="text-xs text-muted-foreground">✓</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          <Link to={`/journey/${id}`}>
+            <button className="w-full mt-4 py-2.5 rounded-xl border-2 border-primary text-primary hover:bg-primary/5 transition-colors font-medium text-sm">
+              View Full Journey
+            </button>
+          </Link>
+          
+          {hasRecording && (
+            <Link to={`/live/${id.replace('DS', '')}`}>
+              <button className="w-full mt-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-[#E05C10] transition-colors font-medium text-sm flex items-center justify-center gap-2">
+                <Video className="w-4 h-4" />
+                Watch Recording
+              </button>
+            </Link>
+          )}
+        </div>
+      )}
     </div>
   );
 }
