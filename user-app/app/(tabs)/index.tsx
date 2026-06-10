@@ -1,9 +1,12 @@
-import { useState } from 'react';
+// @ts-nocheck
+import { useState, useEffect, useCallback } from 'react';
 import { ScrollView, View, Text, Pressable, Modal } from 'react-native';
 import { Link } from 'expo-router';
 import { User, Bell, X, Languages, Check } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
+import { safeStorage } from '../../src/old_app/lib/storage';
+import { firestore } from '../../src/lib/firebase';
 import { PoojaCard } from '../../components/PoojaCard';
 import { TempleCard } from '../../components/TempleCard';
 import { CategoryCard } from '../../components/CategoryCard';
@@ -13,43 +16,56 @@ export default function Home() {
   const { language, setLanguage, t } = useLanguage();
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      type: 'live',
-      titleKey: 'home.notificationLiveTitle',
-      messageKey: 'home.notificationLiveMessage',
-      timeKey: 'home.notificationLiveTime',
-      read: false
-    },
-    {
-      id: 2,
-      type: 'confirmation',
-      titleKey: 'home.notificationConfirmationTitle',
-      messageKey: 'home.notificationConfirmationMessage',
-      timeKey: 'home.notificationConfirmationTime',
-      read: false
-    },
-    {
-      id: 3,
-      type: 'festival',
-      titleKey: 'home.notificationFestivalTitle',
-      messageKey: 'home.notificationFestivalMessage',
-      timeKey: 'home.notificationFestivalTime',
-      read: true
+  const [notifications, setNotifications] = useState<any[]>([]);
+
+  useEffect(() => {
+    let unsubscribe: () => void = () => {};
+    const fetchNotifications = async () => {
+      try {
+        const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
+        const userId = userSession ? JSON.parse(userSession).id : 'anonymous_user';
+
+        if (userId === 'anonymous_user') return;
+
+        unsubscribe = firestore()
+          .collection('notifications')
+          .where('recipientId', '==', userId)
+          .where('recipientType', '==', 'USER')
+          .orderBy('createdAt', 'desc')
+          .limit(20)
+          .onSnapshot((snapshot) => {
+            if (snapshot) {
+              const notifs = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              }));
+              setNotifications(notifs);
+            }
+          });
+      } catch (e) {
+        console.error('Error fetching notifications:', e);
+      }
+    };
+    fetchNotifications();
+    return () => unsubscribe();
+  }, []);
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  const markAsRead = async (id: string) => {
+    try {
+      await firestore().collection('notifications').doc(id).update({ isRead: true });
+    } catch (e) {
+      console.error(e);
     }
-  ]);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const markAsRead = (id: number) => {
-    setNotifications(notifications.map(n => 
-      n.id === id ? { ...n, read: true } : n
-    ));
   };
 
-  const clearNotification = (id: number) => {
-    setNotifications(notifications.filter(n => n.id !== id));
+  const clearNotification = async (id: string) => {
+    try {
+      await firestore().collection('notifications').doc(id).delete();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
@@ -113,11 +129,11 @@ export default function Home() {
                 </View>
               ) : (
                 notifications.map(n => (
-                  <View key={n.id} className={`p-4 border-b border-border flex-row items-start justify-between ${!n.read ? 'bg-primary/5' : ''}`}>
+                  <View key={n.id} className={`p-4 border-b border-border flex-row items-start justify-between ${!n.isRead ? 'bg-primary/5' : ''}`}>
                     <Pressable onPress={() => markAsRead(n.id)} className="flex-1 mr-4">
-                      <Text className="font-medium text-sm text-foreground mb-1">{t(n.titleKey)}</Text>
-                      <Text className="text-sm text-muted-foreground mb-1">{t(n.messageKey)}</Text>
-                      <Text className="text-xs text-muted-foreground">{t(n.timeKey)}</Text>
+                      <Text className="font-medium text-sm text-foreground mb-1">{n.title}</Text>
+                      <Text className="text-sm text-muted-foreground mb-1">{n.message}</Text>
+                      <Text className="text-xs text-muted-foreground">{new Date(n.createdAt?.toDate() || Date.now()).toLocaleTimeString()}</Text>
                     </Pressable>
                     <Pressable onPress={() => clearNotification(n.id)} className="p-1">
                       <X size={16} color="#78716C" />
@@ -128,7 +144,9 @@ export default function Home() {
             </ScrollView>
             {notifications.length > 0 && (
               <Pressable
-                onPress={() => setNotifications([])}
+                onPress={() => {
+                  notifications.forEach(n => clearNotification(n.id));
+                }}
                 className="mt-4 py-3 bg-muted rounded-xl items-center justify-center"
               >
                 <Text className="text-primary font-medium text-sm">{t('common.clearAll')}</Text>

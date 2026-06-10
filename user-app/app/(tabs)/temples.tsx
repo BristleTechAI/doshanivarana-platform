@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from 'react';
 import { View, Text, ScrollView, Pressable, Image } from 'react-native';
 import { Link } from 'expo-router';

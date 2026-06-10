@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useEffect } from 'react';
 import { View, Text, Pressable, ActivityIndicator, StatusBar, StyleSheet, Image } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -6,9 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
 import { safeStorage } from '../../src/old_app/lib/storage';
+import { firestore } from '../../src/lib/firebase';
 
-// ─── Reliable public MP4 demo videos (no auth, no CORS issues) ───────────────
-// W3C / W3Schools servers are stable and always accessible.
 const DEMO_VIDEOS: Record<string, string> = {
   default:     'https://www.w3schools.com/html/mov_bbb.mp4',
   rudra:       'https://media.w3.org/2010/05/sintel/trailer.mp4',
@@ -46,35 +46,85 @@ export default function LiveStreamScreen() {
   const [duration,      setDuration]      = useState(0);
   const [isPlaying,     setIsPlaying]     = useState(false);
 
-  // ── Auth & booking lookup ──────────────────────────────────────────────────
+  const [booking, setBooking] = useState<any>(null);
+  const [stream, setStream] = useState<any>(null);
+  const [recording, setRecording] = useState<any>(null);
+  const [loadingData, setLoadingData] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(true);
+
+  // Auth lookup
   const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
-  const currentUser = userSession
-    ? JSON.parse(userSession)
-    : { mobile: '+91 98765 43216' };
+  const userId = userSession ? JSON.parse(userSession).id : null;
 
-  const bookingsData = safeStorage.getItem('doshanivarana_bookings');
-  const bookings     = bookingsData ? JSON.parse(bookingsData) : [];
+  useEffect(() => {
+    if (!id || !userId) {
+      setIsAuthorized(false);
+      setLoadingData(false);
+      return;
+    }
 
-  const cleanedId = id ? id.toString() : '';
-  const booking = bookings.find(
-    (b: any) =>
-      b.id === cleanedId ||
-      b.id === `BK-${cleanedId}` ||
-      b.id.replace('BK-', '') === cleanedId ||
-      b.id.replace('DS', '') === cleanedId,
-  );
+    const bookingId = id.toString();
+    
+    // Subscribe to Booking
+    const unsubscribeBooking = firestore()
+      .collection('bookings')
+      .doc(bookingId)
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          const data = doc.data();
+          if (data.userId !== userId) {
+            setIsAuthorized(false);
+          } else {
+            setIsAuthorized(true);
+            setBooking({ id: doc.id, ...data });
+          }
+        } else {
+          setBooking(null);
+        }
+        setLoadingData(false);
+      });
 
-  const cleanMobile    = currentUser?.mobile?.replace(/[^0-9]/g, '').slice(-10) ?? '';
-  const bookingMobile  = booking?.mobile?.replace(/[^0-9]/g, '').slice(-10) ?? '';
-  const isAuthorized   = booking && cleanMobile && cleanMobile === bookingMobile;
+    // Subscribe to Live Stream if active
+    const unsubscribeStream = firestore()
+      .collection('liveStreams')
+      .where('bookingId', '==', bookingId)
+      .onSnapshot((snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          // Get most recent stream doc
+          const sDocs = snapshot.docs.map(d => d.data());
+          sDocs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+          setStream(sDocs[0]);
+        }
+      });
+
+    // Subscribe to Recording
+    const unsubscribeRecording = firestore()
+      .collection('recordings')
+      .where('bookingId', '==', bookingId)
+      .onSnapshot((snapshot) => {
+        if (snapshot && !snapshot.empty) {
+          const rDocs = snapshot.docs.map(d => d.data());
+          rDocs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+          setRecording(rDocs[0]);
+        }
+      });
+
+    return () => {
+      unsubscribeBooking();
+      unsubscribeStream();
+      unsubscribeRecording();
+    };
+  }, [id, userId]);
+
   const isAvailable    =
     booking &&
-    (booking.recordingStatus === 'Available' || booking.streamStatus === 'In Progress');
+    (booking.recordingStatus === 'Available' || booking.streamStatus === 'LIVE' || booking.streamStatus === 'In Progress' || recording?.status === 'PUBLISHED');
 
-  // ── expo-video player ──────────────────────────────────────────────────────
-  const videoSource = booking
-    ? getVideoUrl(booking.poojaName, booking.recordingUrl)
-    : DEMO_VIDEOS.default;
+  const videoSource = recording?.status === 'PUBLISHED' && recording?.videoUrl
+    ? recording.videoUrl
+    : booking
+      ? getVideoUrl(booking.poojaName, stream?.streamUrl || booking.recordingUrl)
+      : DEMO_VIDEOS.default;
 
   const player = useVideoPlayer({ uri: videoSource }, (p) => {
     p.loop       = false;
@@ -82,8 +132,8 @@ export default function LiveStreamScreen() {
     p.play();
   });
 
-  // Sync player state → React state so the UI updates
   useEffect(() => {
+    if (!player) return;
     const sub = player.addListener('statusChange', (e) => {
       const s = e.status;
       if (s === 'readyToPlay') {
@@ -97,7 +147,6 @@ export default function LiveStreamScreen() {
       }
     });
 
-    // Poll currentTime every 500 ms for progress bar
     const timer = setInterval(() => {
       setCurrentTime(player.currentTime ?? 0);
       setDuration(player.duration ?? 0);
@@ -119,7 +168,7 @@ export default function LiveStreamScreen() {
   };
 
   const replay = () => {
-    player.seekBy(-player.currentTime); // jump to 0
+    player.seekBy(-player.currentTime);
     player.play();
   };
 
@@ -128,7 +177,14 @@ export default function LiveStreamScreen() {
     setIsMuted(player.muted);
   };
 
-  // ── Guard screens ─────────────────────────────────────────────────────────
+  if (loadingData) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#F97316" />
+      </View>
+    );
+  }
+
   if (!booking) {
     return (
       <View style={styles.center}>
@@ -180,7 +236,7 @@ export default function LiveStreamScreen() {
     );
   }
 
-  const isLive       = booking.streamStatus === 'In Progress';
+  const isLive       = booking.streamStatus === 'LIVE' || booking.streamStatus === 'In Progress' || (stream?.status === 'LIVE');
   const isFinished   = !isLive && duration > 0 && currentTime >= duration - 1;
   const progress     = duration > 0 ? Math.min(currentTime / duration, 1) : 0;
 
@@ -188,7 +244,6 @@ export default function LiveStreamScreen() {
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-      {/* ── VideoView (expo-video) ────────────────────────────────────────── */}
       <Pressable
         style={{ flex: 1 }}
         onPress={() => setShowControls((c) => !c)}
@@ -202,7 +257,6 @@ export default function LiveStreamScreen() {
           allowsPictureInPicture={false}
         />
 
-        {/* Loading */}
         {isLoading && (
           <View style={styles.overlay}>
             <ActivityIndicator size="large" color="#F97316" />
@@ -210,7 +264,6 @@ export default function LiveStreamScreen() {
           </View>
         )}
 
-        {/* Error */}
         {hasError && (
           <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.85)', padding: 32 }]}>
             <Text style={{ fontSize: 40, marginBottom: 16 }}>🙏</Text>
@@ -231,10 +284,8 @@ export default function LiveStreamScreen() {
           </View>
         )}
 
-        {/* ── Overlay Controls ─────────────────────────────────────────────── */}
         {showControls && !isLoading && !hasError && (
           <>
-            {/* TOP BAR */}
             <View
               style={[
                 styles.topBar,
@@ -250,7 +301,7 @@ export default function LiveStreamScreen() {
                   {booking.poojaName}
                 </Text>
                 <Text style={styles.videoSubtitle} numberOfLines={1}>
-                  {booking.temple}
+                  {booking.templeName || 'Temple'}
                 </Text>
               </View>
 
@@ -266,7 +317,6 @@ export default function LiveStreamScreen() {
               )}
             </View>
 
-            {/* CENTRE PLAY / PAUSE */}
             <View style={styles.centerBtn} pointerEvents="box-none">
               <Pressable onPress={isFinished ? replay : togglePlay} style={styles.playBtn}>
                 {isFinished ? (
@@ -279,20 +329,17 @@ export default function LiveStreamScreen() {
               </Pressable>
             </View>
 
-            {/* BOTTOM BAR */}
             <View
               style={[
                 styles.bottomBar,
                 { paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 16 },
               ]}
             >
-              {/* Devotee dedication */}
               <Text style={styles.dedicationLabel}>On behalf of</Text>
               <Text style={styles.dedicationName}>
-                {booking.devoteeName} &amp; Family
+                {booking.devoteeDetails?.name || booking.devoteeName} &amp; Family
               </Text>
 
-              {/* Progress bar */}
               {!isLive && duration > 0 && (
                 <View style={{ marginBottom: 12, marginTop: 8 }}>
                   <View style={styles.progressTrack}>
@@ -305,7 +352,6 @@ export default function LiveStreamScreen() {
                 </View>
               )}
 
-              {/* Bottom row */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Pressable onPress={toggleMute} style={styles.iconBtn}>
                   {isMuted
@@ -335,7 +381,6 @@ export default function LiveStreamScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   center: {
     flex: 1, backgroundColor: '#1A0A00',

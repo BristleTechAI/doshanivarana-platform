@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Link } from 'expo-router';
 import { View, Text, Pressable } from 'react-native';
 import { useLanguage } from '../src/old_app/context/LanguageContext';

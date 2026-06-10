@@ -1,6 +1,8 @@
 import { Bell, Search, ChevronDown, AlertCircle, CheckCircle, Clock, Menu } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "react-router";
+import { collection, query, where, orderBy, limit, onSnapshot, updateDoc, doc } from "firebase/firestore";
+import { db } from "../../lib/firebase";
 
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
@@ -30,13 +32,6 @@ const pageTitles: Record<string, string> = {
   "/settings": "Settings",
 };
 
-const notifications = [
-  { id: 1, type: "success", message: "New temple onboarded: Tirumala Devasthanam", time: "2 min ago" },
-  { id: 2, type: "warning", message: "3 refund requests pending approval", time: "15 min ago" },
-  { id: 3, type: "info", message: "Festival Navratri begins in 3 days", time: "1 hr ago" },
-  { id: 4, type: "success", message: "Live stream completed: Sabarimala Pooja", time: "2 hr ago" },
-];
-
 interface HeaderProps {
   onMenuClick?: () => void;
 }
@@ -44,7 +39,35 @@ interface HeaderProps {
 export function Header({ onMenuClick }: HeaderProps) {
   const location = useLocation();
   const [showNotifs, setShowNotifs] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const title = pageTitles[location.pathname] ?? "Devaseva Admin";
+
+  useEffect(() => {
+    const q = query(
+      collection(db, "notifications"),
+      where("recipientType", "==", "ADMIN"),
+      orderBy("createdAt", "desc"),
+      limit(20)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notifs = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setNotifications(notifs);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  const handleNotificationClick = async (notif: any) => {
+    if (!notif.isRead) {
+      await updateDoc(doc(db, "notifications", notif.id), { isRead: true });
+    }
+  };
 
   return (
     <header
@@ -99,12 +122,14 @@ export function Header({ onMenuClick }: HeaderProps) {
           style={{ backgroundColor: "#FAF6F2", border: "1px solid rgba(199,106,0,0.15)" }}
         >
           <Bell size={16} style={{ color: "#6B7280" }} />
-          <span
-            className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-white flex items-center justify-center"
-            style={{ backgroundColor: "#C76A00", fontSize: "9px", fontWeight: 700 }}
-          >
-            4
-          </span>
+          {unreadCount > 0 && (
+            <span
+              className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-white flex items-center justify-center"
+              style={{ backgroundColor: "#C76A00", fontSize: "9px", fontWeight: 700 }}
+            >
+              {unreadCount}
+            </span>
+          )}
         </button>
         {showNotifs && (
           <div
@@ -117,24 +142,28 @@ export function Header({ onMenuClick }: HeaderProps) {
                 className="text-xs px-2 py-0.5 rounded-full"
                 style={{ backgroundColor: "#FFF0E6", color: "#C76A00", fontWeight: 600 }}
               >
-                4 new
+                {unreadCount} new
               </span>
             </div>
-            <div className="divide-y" style={{ divideColor: "rgba(199,106,0,0.08)" }}>
-              {notifications.map((n) => (
-                <div key={n.id} className="px-4 py-3 flex gap-3 items-start hover:bg-orange-50 cursor-pointer transition-colors">
-                  {n.type === "success" && <CheckCircle size={15} className="mt-0.5 flex-shrink-0" style={{ color: "#22C55E" }} />}
-                  {n.type === "warning" && <AlertCircle size={15} className="mt-0.5 flex-shrink-0" style={{ color: "#F59E0B" }} />}
-                  {n.type === "info" && <Clock size={15} className="mt-0.5 flex-shrink-0" style={{ color: "#C76A00" }} />}
-                  <div>
-                    <p className="text-xs" style={{ color: "#1F1F1F" }}>{n.message}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "#9CA3AF" }}>{n.time}</p>
+            <div className="divide-y max-h-96 overflow-y-auto" style={{ divideColor: "rgba(199,106,0,0.08)" }}>
+              {notifications.length === 0 ? (
+                <div className="p-4 text-center text-xs" style={{ color: "#9CA3AF" }}>No notifications</div>
+              ) : (
+                notifications.map((n) => (
+                  <div 
+                    key={n.id} 
+                    onClick={() => handleNotificationClick(n)}
+                    className={`px-4 py-3 flex gap-3 items-start hover:bg-orange-50 cursor-pointer transition-colors ${!n.isRead ? 'bg-orange-50/50' : ''}`}
+                  >
+                    <Clock size={15} className="mt-0.5 flex-shrink-0" style={{ color: "#C76A00" }} />
+                    <div>
+                      <p className="text-sm" style={{ color: "#1F1F1F", fontWeight: n.isRead ? 400 : 600 }}>{n.title}</p>
+                      <p className="text-xs mt-0.5" style={{ color: "#1F1F1F" }}>{n.message}</p>
+                      <p className="text-[10px] mt-1" style={{ color: "#9CA3AF" }}>{new Date(n.createdAt?.toDate() || Date.now()).toLocaleString()}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="px-4 py-2.5 text-center">
-              <button className="text-xs" style={{ color: "#C76A00", fontWeight: 600 }}>View all notifications</button>
+                ))
+              )}
             </div>
           </div>
         )}

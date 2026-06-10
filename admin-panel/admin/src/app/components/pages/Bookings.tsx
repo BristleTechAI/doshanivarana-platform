@@ -1,21 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Filter, Download, Eye, Edit, RefreshCcw, ChevronDown, Calendar, Building2, Package, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { Modal, ModalFooter } from "../Modal";
-
-const bookings = [
-  { id: "BK-2024-8421", devotee: "Rajesh Kumar", temple: "Tirumala Tirupati", pooja: "Sudarshana Homam", date: "08 Jun 2026", amount: "₹2,400", delivery: "Dispatched", status: "Confirmed", payment: "Paid", lang: "Telugu" },
-  { id: "BK-2024-8420", devotee: "Priya Menon", temple: "Sabarimala Temple", pooja: "Abhishekam", date: "08 Jun 2026", amount: "₹1,800", delivery: "Pending", status: "Confirmed", payment: "Paid", lang: "Malayalam" },
-  { id: "BK-2024-8419", devotee: "Ankit Sharma", temple: "Kashi Vishwanath", pooja: "Rudrabhishek", date: "08 Jun 2026", amount: "₹3,200", delivery: "Not Required", status: "In Progress", payment: "Paid", lang: "Hindi" },
-  { id: "BK-2024-8418", devotee: "Sunita Reddy", temple: "Meenakshi Amman", pooja: "Sahasranama Archana", date: "07 Jun 2026", amount: "₹1,200", delivery: "Delivered", status: "Completed", payment: "Paid", lang: "Tamil" },
-  { id: "BK-2024-8417", devotee: "Mohan Das", temple: "Shirdi Sai Baba", pooja: "Kakad Aarti", date: "07 Jun 2026", amount: "₹800", delivery: "Delivered", status: "Completed", payment: "Paid", lang: "Hindi" },
-  { id: "BK-2024-8416", devotee: "Kavitha Iyer", temple: "Somnath Temple", pooja: "Maha Abhishek", date: "07 Jun 2026", amount: "₹4,500", delivery: "Dispatched", status: "Confirmed", payment: "Paid", lang: "Gujarati" },
-  { id: "BK-2024-8415", devotee: "Ramesh Pillai", temple: "Padmanabhaswamy", pooja: "Navakabhishekam", date: "06 Jun 2026", amount: "₹5,200", delivery: "Pending", status: "Pending", payment: "Pending", lang: "Malayalam" },
-  { id: "BK-2024-8414", devotee: "Deepak Joshi", temple: "Vaishno Devi", pooja: "Vishnu Sahasranamam", date: "06 Jun 2026", amount: "₹1,600", delivery: "Not Required", status: "Cancelled", payment: "Refunded", lang: "Hindi" },
-  { id: "BK-2024-8413", devotee: "Sarla Gupta", temple: "Kedarnath Temple", pooja: "Shiv Puja", date: "06 Jun 2026", amount: "₹2,800", delivery: "Not Required", status: "Completed", payment: "Paid", lang: "Hindi" },
-  { id: "BK-2024-8412", devotee: "Narayanan V.", temple: "Dwarkadhish Temple", pooja: "Krishna Abhishek", date: "05 Jun 2026", amount: "₹1,400", delivery: "Failed", status: "Confirmed", payment: "Paid", lang: "Gujarati" },
-  { id: "BK-2024-8411", devotee: "Meena Krishnan", temple: "Tirumala Tirupati", pooja: "Arjitha Brahmotsavam", date: "05 Jun 2026", amount: "₹6,000", delivery: "Dispatched", status: "Confirmed", payment: "Paid", lang: "Telugu" },
-  { id: "BK-2024-8410", devotee: "Suresh Nair", temple: "Sabarimala Temple", pooja: "Deeparadhana", date: "05 Jun 2026", amount: "₹950", delivery: "Delivered", status: "Completed", payment: "Paid", lang: "Malayalam" },
-];
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "../../../lib/firebase";
 
 const statusConfig: Record<string, { bg: string; color: string; icon: typeof CheckCircle }> = {
   Confirmed: { bg: "#EFF6FF", color: "#2563EB", icon: CheckCircle },
@@ -43,7 +30,45 @@ export function Bookings() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(1);
-  const [selectedBooking, setSelectedBooking] = useState<typeof bookings[0] | null>(null);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [selectedBooking, setSelectedBooking] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        setLoading(true);
+        const q = query(collection(db, "bookings"), where("isDeleted", "==", false));
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => {
+          const d = doc.data();
+          return {
+            id: doc.id,
+            devotee: d.devoteeDetails?.name || "Unknown",
+            temple: d.templeName || "Temple",
+            pooja: d.poojaName || "Pooja",
+            date: d.scheduledDate || "",
+            amount: `₹${d.amountPaid || 0}`,
+            delivery: d.hasPrasadDelivery ? "Pending" : "Not Required",
+            status: d.status === "COMPLETED" ? "Completed" : "Confirmed",
+            payment: d.paymentStatus === "PAID" ? "Paid" : "Pending",
+            lang: "Sanskrit", // Hardcoded for now
+          };
+        });
+
+        // Sort by date descending
+        data.sort((a, b) => b.date.localeCompare(a.date));
+        
+        setBookings(data);
+      } catch (err) {
+        console.error("Failed to fetch bookings:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchBookings();
+  }, []);
 
   const filtered = bookings.filter((b) => {
     const matchSearch =
@@ -60,11 +85,11 @@ export function Bookings() {
       {/* Stats bar */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: "Total Today", value: "1,284", color: "#C76A00", bg: "#FFF0E6" },
-          { label: "Confirmed", value: "948", color: "#2563EB", bg: "#EFF6FF" },
-          { label: "Completed", value: "284", color: "#16A34A", bg: "#F0FDF4" },
-          { label: "Pending", value: "32", color: "#D97706", bg: "#FFFBEB" },
-          { label: "Cancelled", value: "20", color: "#DC2626", bg: "#FFF1F2" },
+          { label: "Total Bookings", value: bookings.length.toString(), color: "#C76A00", bg: "#FFF0E6" },
+          { label: "Confirmed", value: bookings.filter(b => b.status === "Confirmed").length.toString(), color: "#2563EB", bg: "#EFF6FF" },
+          { label: "Completed", value: bookings.filter(b => b.status === "Completed").length.toString(), color: "#16A34A", bg: "#F0FDF4" },
+          { label: "Pending", value: bookings.filter(b => b.status === "Pending").length.toString(), color: "#D97706", bg: "#FFFBEB" },
+          { label: "Cancelled", value: bookings.filter(b => b.status === "Cancelled").length.toString(), color: "#DC2626", bg: "#FFF1F2" },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-4 border" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
             <div className="text-xl" style={{ color: s.color, fontWeight: 700 }}>{s.value}</div>
@@ -148,7 +173,7 @@ export function Bookings() {
                     <span className="text-xs font-mono" style={{ color: "#C76A00", fontWeight: 700 }}>{b.id}</span>
                     <div className="flex items-center gap-2 mt-1">
                       <div className="w-6 h-6 rounded-full flex items-center justify-center text-white flex-shrink-0" style={{ backgroundColor: "#C76A00", fontSize: "9px", fontWeight: 700 }}>
-                        {b.devotee.split(" ").map(w => w[0]).join("").slice(0, 2)}
+                        {b.devotee.split(" ").map((w: string) => w[0]).join("").slice(0, 2)}
                       </div>
                       <span className="text-sm" style={{ color: "#1F1F1F", fontWeight: 600 }}>{b.devotee}</span>
                     </div>
@@ -204,7 +229,7 @@ export function Bookings() {
                           className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs flex-shrink-0"
                           style={{ backgroundColor: "#C76A00", fontWeight: 700 }}
                         >
-                          {b.devotee.split(" ").map(w => w[0]).join("").slice(0, 2)}
+                          {b.devotee.split(" ").map((w: string) => w[0]).join("").slice(0, 2)}
                         </div>
                         <span className="text-xs" style={{ color: "#1F1F1F", fontWeight: 500 }}>{b.devotee}</span>
                       </div>
@@ -282,7 +307,7 @@ export function Bookings() {
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full flex items-center justify-center text-white flex-shrink-0"
                 style={{ backgroundColor: "#C76A00", fontWeight: 700, fontSize: 17 }}>
-                {selectedBooking.devotee.split(" ").map(w => w[0]).join("").slice(0, 2)}
+                {selectedBooking.devotee.split(" ").map((w: string) => w[0]).join("").slice(0, 2)}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-base" style={{ color: "#1F1F1F", fontWeight: 700 }}>{selectedBooking.devotee}</div>

@@ -1,6 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router';
-import { db } from '../lib/db';
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { useAuth } from '../contexts/AuthContext';
+import type { Pooja, Slot } from '@devaseva/core';
+import { SlotStatus } from '@devaseva/core';
 
 interface AddEditSlotProps {
   isEdit: boolean;
@@ -9,37 +13,81 @@ interface AddEditSlotProps {
 export function AddEditSlot({ isEdit }: AddEditSlotProps) {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { templeId } = useAuth();
 
-  const existingSlot = (isEdit && id) ? db.getSlots().find(s => s.id === id) : null;
-  const bookingsCount = existingSlot ? existingSlot.bookings : 0;
-  const initialPooja = existingSlot ? (existingSlot.name === 'Satyanarayana Pooja' ? 'satyanarayana' : existingSlot.name === 'Rudra Abhishekam' ? 'rudrabhishekam' : 'archana') : '';
-  const initialTime = existingSlot ? existingSlot.time : '';
+  const [poojas, setPoojas] = useState<Pooja[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [existingSlot, setExistingSlot] = useState<Slot | null>(null);
 
-  const [pooja, setPooja] = useState(initialPooja);
-  const [date, setDate] = useState(existingSlot?.date || '');
-  const [selectedTime, setSelectedTime] = useState<string>(initialTime);
-  const [maxBookings, setMaxBookings] = useState<number | ''>(existingSlot?.maxBookings || 15);
-  const [status, setStatus] = useState(existingSlot ? existingSlot.status : true);
+  const [pooja, setPooja] = useState('');
+  const [date, setDate] = useState('');
+  const [selectedTime, setSelectedTime] = useState<string>('');
+  const [maxBookings, setMaxBookings] = useState<number | ''>(15);
+  const [status, setStatus] = useState(true);
   const [showToast, setShowToast] = useState(false);
   const [dateError, setDateError] = useState(false);
+  const [occupiedTimes, setOccupiedTimes] = useState<string[]>([]);
 
   const TIME_SLOTS = [
-    '06:00 AM',
-    '07:00 AM',
-    '08:00 AM',
-    '09:00 AM',
-    '10:00 AM',
-    '11:00 AM',
-    '12:00 PM',
-    '01:00 PM',
-    '02:00 PM',
-    '03:00 PM',
-    '04:00 PM',
-    '05:00 PM',
-    '06:00 PM',
-    '07:00 PM',
-    '08:00 PM'
+    '06:00 AM', '07:00 AM', '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM',
+    '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM',
+    '06:00 PM', '07:00 PM', '08:00 PM'
   ];
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!templeId) return;
+      try {
+        // Fetch Poojas
+        const pQuery = query(collection(db, "poojas"), where("templeId", "==", templeId), where("isDeleted", "==", false));
+        const pSnap = await getDocs(pQuery);
+        const pData = pSnap.docs.map(d => ({ id: d.id, ...d.data() } as Pooja));
+        setPoojas(pData);
+
+        if (isEdit && id) {
+          const slotDoc = await getDoc(doc(db, "slots", id));
+          if (slotDoc.exists()) {
+            const slotData = slotDoc.data() as Slot;
+            setExistingSlot(slotData);
+            setPooja(slotData.poojaId || '');
+            setDate(slotData.date || '');
+            setSelectedTime(slotData.startTime || '');
+            setMaxBookings(slotData.capacity || 15);
+            setStatus(slotData.status === SlotStatus.AVAILABLE);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load initial data", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [templeId, isEdit, id]);
+
+  useEffect(() => {
+    // When date or pooja changes, fetch occupied times to prevent double booking
+    const fetchOccupied = async () => {
+      if (!templeId || !date || !pooja) return;
+      try {
+        const sQuery = query(
+          collection(db, "slots"), 
+          where("templeId", "==", templeId), 
+          where("poojaId", "==", pooja),
+          where("date", "==", date),
+          where("isDeleted", "==", false)
+        );
+        const sSnap = await getDocs(sQuery);
+        const times = sSnap.docs
+          .filter(d => !isEdit || d.id !== id) // exclude self when editing
+          .map(d => d.data().startTime as string);
+        setOccupiedTimes(times);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchOccupied();
+  }, [templeId, date, pooja, isEdit, id]);
 
   const handlePoojaChange = (val: string) => {
     setPooja(val);
@@ -58,40 +106,54 @@ export function AddEditSlot({ isEdit }: AddEditSlotProps) {
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pooja || !date || dateError || !selectedTime) return;
+    if (!templeId || !pooja || !date || dateError || !selectedTime || maxBookings === '' || maxBookings <= 0) return;
 
-    const slotName = pooja === 'satyanarayana' ? 'Satyanarayana Pooja' : pooja === 'rudrabhishekam' ? 'Rudra Abhishekam' : 'Special Seva';
-    const slotId = isEdit && id ? id : Date.now().toString();
+    try {
+      const slotStatus = status ? SlotStatus.AVAILABLE : SlotStatus.CANCELLED;
+      const capacity = maxBookings as number;
+      const bookedCount = existingSlot ? existingSlot.capacity - existingSlot.availableSeats : 0;
+      
+      const newSlotData = {
+        templeId,
+        poojaId: pooja,
+        date: date,
+        startTime: selectedTime,
+        endTime: "23:59", // Placeholder, ideally compute from pooja duration
+        capacity: capacity,
+        availableSeats: Math.max(0, capacity - bookedCount),
+        status: slotStatus,
+        updatedAt: serverTimestamp(),
+      };
 
-    const newSlot = {
-      id: slotId,
-      name: slotName,
-      date: date,
-      time: selectedTime,
-      bookings: bookingsCount,
-      maxBookings: maxBookings === '' ? 1 : maxBookings,
-      availability: bookingsCount >= (maxBookings === '' ? 1 : maxBookings) ? 'Full' : 'Open' as 'Open' | 'Full',
-      status: status
-    };
+      if (isEdit && id) {
+        await updateDoc(doc(db, "slots", id), newSlotData);
+      } else {
+        await addDoc(collection(db, "slots"), {
+          ...newSlotData,
+          isDeleted: false,
+          createdAt: serverTimestamp()
+        });
+      }
 
-    db.updateSlot(newSlot);
-
-    setShowToast(true);
-    setTimeout(() => {
-      setShowToast(false);
-      navigate('/schedule');
-    }, 2000);
+      setShowToast(true);
+      setTimeout(() => {
+        setShowToast(false);
+        navigate('/schedule');
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to save slot", err);
+    }
   };
 
-  const selectedPoojaName = pooja === 'satyanarayana' ? 'Satyanarayana Pooja' : pooja === 'rudrabhishekam' ? 'Rudra Abhishekam' : pooja === 'archana' ? 'Special Seva' : '';
-
-  const occupiedTimes = db.getSlots()
-    .filter(s => s.status && s.date === date && s.name === selectedPoojaName && (!isEdit || s.id !== id))
-    .map(s => s.time);
-
+  const selectedPoojaName = poojas.find(p => p.id === pooja)?.name || '';
+  const bookingsCount = existingSlot ? existingSlot.capacity - existingSlot.availableSeats : 0;
   const canSave = pooja && date && !dateError && selectedTime !== '' && maxBookings !== '' && maxBookings > 0;
+
+  if (loading) {
+    return <div className="p-10 text-center text-on-surface-variant">Loading Form...</div>;
+  }
 
   return (
     <div className="max-w-[720px] mx-auto pb-12 font-sans relative">
@@ -105,10 +167,11 @@ export function AddEditSlot({ isEdit }: AddEditSlotProps) {
               Slot {isEdit ? 'updated' : 'created'} successfully!
             </p>
             <p className="font-label-md text-label-md text-on-surface-variant">
-              {pooja === 'satyanarayana' ? 'Satyanarayana Pooja' : pooja === 'rudrabhishekam' ? 'Rudrabhishekam' : 'Special Seva'} — {date} at {selectedTime}
+              {selectedPoojaName} — {date} at {selectedTime}
             </p>
           </div>
           <button 
+            type="button"
             className="ml-auto text-on-surface-variant hover:text-on-surface cursor-pointer"
             onClick={() => setShowToast(false)}
           >
@@ -164,15 +227,15 @@ export function AddEditSlot({ isEdit }: AddEditSlotProps) {
                 required
               >
                 <option value="" disabled>Choose a pooja from your temple</option>
-                <option value="satyanarayana">Satyanarayana Pooja</option>
-                <option value="rudrabhishekam">Rudra Abhishekam</option>
-                <option value="archana">Special Archana</option>
+                {poojas.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
               </select>
               <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none flex items-center justify-center">
                 expand_more
               </span>
             </div>
-            <p className="text-[12px] text-on-surface-variant">Only poojas from Sri Venkateswara Temple are shown</p>
+            <p className="text-[12px] text-on-surface-variant">Only active poojas from your assigned temple are shown</p>
           </div>
 
           {/* Field 2: Slot Date */}
@@ -225,10 +288,10 @@ export function AddEditSlot({ isEdit }: AddEditSlotProps) {
                     <button
                       key={t}
                       type="button"
-                      disabled={isOccupied}
+                      disabled={isOccupied && !isSelected}
                       onClick={() => setSelectedTime(t)}
                       className={`py-2 px-3 rounded-lg border text-xs font-semibold text-center transition-all ${
-                        isOccupied
+                        isOccupied && !isSelected
                           ? 'bg-[#f4f4f4] border-outline-variant/30 text-on-surface-variant/40 cursor-not-allowed flex flex-col items-center justify-center gap-0.5'
                           : isSelected
                             ? 'bg-primary border-primary text-on-primary shadow-sm scale-[0.98]'
@@ -236,7 +299,7 @@ export function AddEditSlot({ isEdit }: AddEditSlotProps) {
                       }`}
                     >
                       <span>{t}</span>
-                      {isOccupied && (
+                      {isOccupied && !isSelected && (
                         <span className="text-[9px] uppercase tracking-wider text-red-500 font-bold flex items-center gap-0.5">
                           <span className="material-symbols-outlined text-[10px]">lock</span> Blocked
                         </span>
@@ -330,14 +393,6 @@ export function AddEditSlot({ isEdit }: AddEditSlotProps) {
             Cancel
           </Link>
           <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-3">
-            {isEdit && (
-              <button 
-                type="button"
-                className="w-full sm:w-auto px-6 py-2.5 rounded-full font-sans text-button text-primary border-2 border-primary hover:bg-primary/5 transition-colors text-center font-bold cursor-pointer"
-              >
-                Duplicate This Slot
-              </button>
-            )}
             <button 
               type="submit"
               disabled={!canSave}

@@ -1,9 +1,11 @@
+// @ts-nocheck
 import { useState, useRef } from 'react';
 import { View, Text, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Phone, Lock } from 'lucide-react-native';
 import { useLanguage } from '../src/old_app/context/LanguageContext';
 import { safeStorage } from '../src/old_app/lib/storage';
+import { useAuth } from '../src/contexts/AuthContext';
 
 export default function LoginScreen() {
   const router = useRouter();

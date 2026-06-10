@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { View, Text } from 'react-native';

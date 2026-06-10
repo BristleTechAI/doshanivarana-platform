@@ -11,5 +11,8 @@
   "scripts": {
     "build:core": "npm run build --workspace=@devaseva/core",
     "build:all": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.19.1"
   }
 }

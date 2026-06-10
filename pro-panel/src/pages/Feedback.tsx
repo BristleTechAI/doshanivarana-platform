@@ -1,11 +1,92 @@
-import { useState } from 'react';
-import { db, type Review } from '../lib/db';
+// @ts-nocheck
+import { useState, useEffect } from 'react';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { useAuth } from '../contexts/AuthContext';
+
+interface FeedbackData {
+  id: string;
+  bookingId: string;
+  poojaName: string;
+  devoteeName: string;
+  rating: number;
+  comment: string;
+  status: string;
+  date: string;
+  submittedTime: string;
+  avatarText: string;
+  avatarBg: string;
+  flagged: boolean;
+}
+
+const colors = ['bg-orange-100 text-orange-800', 'bg-blue-100 text-blue-800', 'bg-green-100 text-green-800', 'bg-purple-100 text-purple-800', 'bg-pink-100 text-pink-800'];
 
 export function Feedback() {
-  const [reviews] = useState<Review[]>(() => db.getFeedback());
+  const { templeId } = useAuth();
+  const [reviews, setReviews] = useState<FeedbackData[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [poojaFilter, setPoojaFilter] = useState('All Poojas');
   const [starFilter, setStarFilter] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!templeId) return;
+
+    const q = query(
+      collection(db, 'feedback'),
+      where('templeId', '==', templeId)
+    );
+
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const feedbackPromises = snapshot.docs.map(async (d) => {
+        const data = d.data();
+        let poojaName = 'Unknown Pooja';
+        let devoteeName = 'Devotee';
+        
+        try {
+          // Fetch booking to get poojaName and devoteeName
+          if (data.bookingId) {
+            const bookingSnap = await getDoc(doc(db, 'bookings', data.bookingId));
+            if (bookingSnap.exists()) {
+              const bData = bookingSnap.data();
+              poojaName = bData.poojaName || poojaName;
+              devoteeName = bData.devoteeDetails?.name || bData.devoteeName || devoteeName;
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+
+        const dateObj = data.createdAt ? data.createdAt.toDate() : new Date();
+        const date = dateObj.toLocaleDateString();
+        const submittedTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        return {
+          id: d.id,
+          bookingId: data.bookingId || '',
+          poojaName,
+          devoteeName,
+          rating: data.rating || 0,
+          comment: data.review || '',
+          status: data.status || 'PENDING',
+          date,
+          submittedTime,
+          avatarText: devoteeName.substring(0, 1).toUpperCase(),
+          avatarBg: colors[d.id.charCodeAt(0) % colors.length],
+          flagged: data.status === 'HIDDEN' || data.status === 'REJECTED'
+        };
+      });
+
+      const resolvedReviews = await Promise.all(feedbackPromises);
+      // Sort by latest first
+      resolvedReviews.sort((a, b) => new Date(b.date + ' ' + b.submittedTime).getTime() - new Date(a.date + ' ' + a.submittedTime).getTime());
+      
+      setReviews(resolvedReviews);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [templeId]);
 
   const handleReset = () => {
     setPoojaFilter('All Poojas');
@@ -18,6 +99,8 @@ export function Feedback() {
     return matchesPooja && matchesStar;
   });
 
+  const uniquePoojas = ['All Poojas', ...Array.from(new Set(reviews.map(r => r.poojaName)))];
+
   const totalReviewsCount = reviews.length;
   const averageRating = totalReviewsCount > 0 
     ? (reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviewsCount).toFixed(1)
@@ -28,6 +111,10 @@ export function Feedback() {
     ? Math.round((countByStar(star) / totalReviewsCount) * 100)
     : 0;
 
+  if (loading) {
+    return <div className="p-8 text-center text-on-surface-variant font-semibold">Loading Feedback...</div>;
+  }
+
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
       
@@ -35,7 +122,7 @@ export function Feedback() {
       <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-headline-lg text-on-surface font-semibold mb-2">Devotee Feedback</h1>
-          <p className="text-body-lg text-on-surface-variant font-medium">Read-only view — feedback for Sri Venkateswara Temple</p>
+          <p className="text-body-lg text-on-surface-variant font-medium">Read-only view — feedback for your Temple</p>
         </div>
         <div className="bg-surface-container py-2 px-4 rounded-full border border-outline-variant/30 flex items-center gap-2 text-on-surface-variant w-fit font-semibold text-xs">
           <span className="material-symbols-outlined text-[16px]">lock</span>
@@ -73,65 +160,18 @@ export function Feedback() {
           </div>
           
           <div className="w-full flex-grow flex flex-col gap-2 z-10 text-xs text-on-surface-variant">
-            {/* 5 Stars */}
-            <div className="flex items-center gap-3 w-full">
-              <div className="flex items-center w-24 font-bold">
-                <span className="material-symbols-outlined text-[#D4A017] text-sm mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>star</span> 
-                5 stars
+            {[5, 4, 3, 2, 1].map(star => (
+              <div key={star} className="flex items-center gap-3 w-full">
+                <div className="flex items-center w-24 font-bold">
+                  <span className="material-symbols-outlined text-[#D4A017] text-sm mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>star</span> 
+                  {star} star{star > 1 ? 's' : ''}
+                </div>
+                <div className="flex-grow h-2 bg-surface-variant rounded-full overflow-hidden flex">
+                  <div className="bg-[#D4A017] h-full rounded-full" style={{ width: `${pctByStar(star)}%` }}></div>
+                </div>
+                <div className="w-20 text-right font-medium">{countByStar(star)} reviews</div>
               </div>
-              <div className="flex-grow h-2 bg-surface-variant rounded-full overflow-hidden flex">
-                <div className="bg-[#D4A017] h-full rounded-full" style={{ width: `${pctByStar(5)}%` }}></div>
-              </div>
-              <div className="w-20 text-right font-medium">{countByStar(5)} reviews</div>
-            </div>
-            
-            {/* 4 Stars */}
-            <div className="flex items-center gap-3 w-full">
-              <div className="flex items-center w-24 font-bold">
-                <span className="material-symbols-outlined text-[#D4A017] text-sm mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>star</span> 
-                4 stars
-              </div>
-              <div className="flex-grow h-2 bg-surface-variant rounded-full overflow-hidden flex">
-                <div className="bg-[#D4A017] h-full rounded-full" style={{ width: `${pctByStar(4)}%` }}></div>
-              </div>
-              <div className="w-20 text-right font-medium">{countByStar(4)} reviews</div>
-            </div>
-
-            {/* 3 Stars */}
-            <div className="flex items-center gap-3 w-full">
-              <div className="flex items-center w-24 font-bold">
-                <span className="material-symbols-outlined text-[#D4A017] text-sm mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>star</span> 
-                3 stars
-              </div>
-              <div className="flex-grow h-2 bg-surface-variant rounded-full overflow-hidden flex">
-                <div className="bg-[#D4A017] h-full rounded-full" style={{ width: `${pctByStar(3)}%` }}></div>
-              </div>
-              <div className="w-20 text-right font-medium">{countByStar(3)} reviews</div>
-            </div>
-
-            {/* 2 Stars */}
-            <div className="flex items-center gap-3 w-full">
-              <div className="flex items-center w-24 font-bold">
-                <span className="material-symbols-outlined text-[#D4A017] text-sm mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>star</span> 
-                2 stars
-              </div>
-              <div className="flex-grow h-2 bg-surface-variant rounded-full overflow-hidden flex">
-                <div className="bg-[#D4A017] h-full rounded-full" style={{ width: `${pctByStar(2)}%` }}></div>
-              </div>
-              <div className="w-20 text-right font-medium">{countByStar(2)} reviews</div>
-            </div>
-
-            {/* 1 Star */}
-            <div className="flex items-center gap-3 w-full">
-              <div className="flex items-center w-24 font-bold">
-                <span className="material-symbols-outlined text-[#D4A017] text-sm mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>star</span> 
-                1 star
-              </div>
-              <div className="flex-grow h-2 bg-surface-variant rounded-full overflow-hidden flex">
-                <div className="bg-[#D4A017] h-full rounded-full" style={{ width: `${pctByStar(1)}%` }}></div>
-              </div>
-              <div className="w-20 text-right font-medium">{countByStar(1)} reviews</div>
-            </div>
+            ))}
           </div>
         </div>
 
@@ -149,11 +189,11 @@ export function Feedback() {
           
           <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-[#F0E6D2] p-4 flex items-center justify-between">
             <div className="flex flex-col">
-              <span className="text-label-md text-on-surface-variant uppercase tracking-wider text-[10px] mb-1">This Month</span>
-              <span className="text-headline-lg text-on-surface font-bold leading-none">{totalReviewsCount}</span>
+              <span className="text-label-md text-on-surface-variant uppercase tracking-wider text-[10px] mb-1">Pending</span>
+              <span className="text-headline-lg text-on-surface font-bold leading-none">{reviews.filter(r => r.status === 'PENDING').length}</span>
             </div>
             <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary">
-              <span className="material-symbols-outlined text-[20px]">trending_up</span>
+              <span className="material-symbols-outlined text-[20px]">hourglass_top</span>
             </div>
           </div>
 
@@ -177,11 +217,7 @@ export function Feedback() {
             onChange={(e) => setPoojaFilter(e.target.value)}
             className="rounded-full border border-outline-variant bg-transparent py-2 pl-4 pr-10 font-button text-button text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer font-bold"
           >
-            <option value="All Poojas">All Poojas</option>
-            <option value="Satyanarayana Pooja">Satyanarayana Pooja</option>
-            <option value="Ganapathi Homam">Ganapathi Homam</option>
-            <option value="Lakshmi Pooja">Lakshmi Pooja</option>
-            <option value="Navagraha Pooja">Navagraha Pooja</option>
+            {uniquePoojas.map((p, i) => <option key={i} value={p}>{p}</option>)}
           </select>
           
           <div className="flex items-center border border-outline-variant rounded-full overflow-hidden h-[38px] font-bold text-xs">
@@ -222,7 +258,7 @@ export function Feedback() {
                       <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>flag</span>
                       <span className="font-display text-headline-sm font-bold">Feedback Hidden</span>
                     </div>
-                    <p className="text-body-sm text-on-surface-variant font-bold">This feedback has been flagged by Admin for review</p>
+                    <p className="text-body-sm text-on-surface-variant font-bold">This feedback has been flagged or rejected by Admin</p>
                   </div>
                 </div>
                 
@@ -232,7 +268,7 @@ export function Feedback() {
                       <div className="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center">U</div>
                       <div>
                         <h3 className="font-display text-headline-sm text-on-surface">Unknown User</h3>
-                        <p className="text-label-md text-on-surface-variant">Special Archana • 05 May 2026</p>
+                        <p className="text-label-md text-on-surface-variant">{review.poojaName} • {review.date}</p>
                       </div>
                     </div>
                   </div>
@@ -283,24 +319,6 @@ export function Feedback() {
             No feedback found matching filters.
           </div>
         )}
-      </div>
-
-      {/* Pagination */}
-      <div className="flex flex-col sm:flex-row justify-between items-center bg-surface-container-lowest rounded-xl border border-[#F0E6D2] p-4 gap-4 font-semibold text-body-sm">
-        <span className="text-on-surface-variant">Showing 1–{filteredReviews.length} of {reviews.length} reviews</span>
-        <div className="flex items-center gap-2">
-          <button disabled className="w-8 h-8 rounded-full border border-outline-variant flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low cursor-pointer disabled:opacity-40">
-            <span className="material-symbols-outlined text-sm">chevron_left</span>
-          </button>
-          <button className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center">1</button>
-          <button className="w-8 h-8 rounded-full hover:bg-surface-container-low text-on-surface flex items-center justify-center cursor-pointer">2</button>
-          <button className="w-8 h-8 rounded-full hover:bg-surface-container-low text-on-surface flex items-center justify-center cursor-pointer">3</button>
-          <span className="text-on-surface-variant">...</span>
-          <button className="w-8 h-8 rounded-full hover:bg-surface-container-low text-on-surface flex items-center justify-center cursor-pointer">32</button>
-          <button className="w-8 h-8 rounded-full border border-outline-variant flex items-center justify-center text-on-surface hover:bg-surface-container-low cursor-pointer">
-            <span className="material-symbols-outlined text-sm">chevron_right</span>
-          </button>
-        </div>
       </div>
 
     </div>

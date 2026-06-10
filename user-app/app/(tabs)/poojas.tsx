@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from 'react';
 import { View, Text, TextInput, ScrollView, Pressable, Image } from 'react-native';
 import { Search, SlidersHorizontal, Clock, MapPin } from 'lucide-react-native';

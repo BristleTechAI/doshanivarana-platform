@@ -1,186 +1,92 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, Pressable, Image, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image, Modal, ActivityIndicator, TextInput } from 'react-native';
 import { CheckCircle2, Clock, Package, PlayCircle, Video, CreditCard, AlertCircle, Check } from 'lucide-react-native';
 import { Link, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
-import { getTranslatedTemple } from './poojas';
 import { safeStorage } from '../../src/old_app/lib/storage';
-
-const getPoojaDetails = (poojaName: string) => {
-  const nameLower = poojaName.toLowerCase();
-  if (nameLower.includes('rudra')) {
-    return { id: 1, key: 'rameshwaram', imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNDQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080' };
-  }
-  if (nameLower.includes('ganapathi') || nameLower.includes('ganesha')) {
-    return { id: 6, key: 'siddhiVinayak', imageUrl: 'https://images.unsplash.com/photo-1609137144814-7e77a28e75cf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaXJlJTIwYWx0YXIlMjBob21hbXxlbnwxfHx8fDE3NzM4MjU0NTR8MA&ixlib=rb-4.1.0&q=80&w=1080' };
-  }
-  if (nameLower.includes('lakshmi')) {
-    return { id: 8, key: 'madurai', imageUrl: 'https://images.unsplash.com/photo-1598089842456-ac3c6ef91f43?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyBGRlaXR5JTIwc2hyaW5lJTIwY2xvc2V1cHxlbnwxfHx8fDE3NzM4MjU0NTN8MA&ixlib=rb-4.1.0&q=80&w=1080' };
-  }
-  if (nameLower.includes('navagraha')) {
-    return { id: 7, key: 'siddhiVinayak', imageUrl: 'https://images.unsplash.com/photo-1772787429537-77ba39d3f855?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZW1wbGUlMjBmbG93ZXIlMjBvZmZlcmluZ3MlMjBpbmNlbnNlfGVufDF8fHx8MTc3MzgyNDQ1Nnww&ixlib=rb-4.1.0&q=80&w=1080' };
-  }
-  if (nameLower.includes('satyanarayana')) {
-    return { id: 16, key: 'tirumala', imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080' };
-  }
-  return { id: 16, key: 'tirumala', imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080' };
-};
+import { firestore } from '../../src/lib/firebase';
+import type { Booking } from '@devaseva/core';
+import { Star, X } from 'lucide-react-native';
 
 const getBookingStage = (b: any) => {
   let stage = 1; // Seva Offered
-  if (b.paymentStatus === 'Confirmed') stage = 2; // Confirmed
-  if (b.pujari !== 'Not Assigned') stage = 3; // Scheduled
-  if (b.streamStatus === 'In Progress') stage = 4; // Pooja Live
-  if (b.streamStatus === 'Ended') stage = 5; // Completed
-  if (b.recordingStatus === 'Available') stage = 6; // Recording Ready
-  if (b.deliveryStatus === 'Packed') stage = 7; // Prasad Packed
-  if (b.deliveryStatus === 'Dispatched') stage = 8; // Dispatched
-  if (b.deliveryStatus === 'Delivered') stage = 9; // Delivered
+  if (b.paymentStatus === 'PAID') stage = 2; // Confirmed
+  if (b.status === 'SCHEDULED' || b.priestId) stage = 3; // Scheduled
+  if (b.status === 'COMPLETED') stage = 5; // Completed
   return stage;
 };
 
 interface BookingItem {
   id: string;
-  poojaId: number;
-  templeKey: string;
-  dateKey: string;
+  poojaId: string;
+  poojaName: string;
+  templeId: string;
+  templeName: string;
   dateVal?: string;
   timeVal?: string;
   status: string;
   currentStage: number;
   imageUrl: string;
-  hasRecording?: boolean;
   totalAmount?: number;
-  paidAmount?: number;
-  remainingBalance?: number;
-  balanceDue?: boolean;
 }
-
-const defaultBookings: BookingItem[] = [
-  {
-    id: 'DS2026031801',
-    poojaId: 16,
-    templeKey: 'tirumala',
-    dateKey: 'booking.date1',
-    status: 'upcoming',
-    currentStage: 2,
-    imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
-  },
-  {
-    id: 'DS2026032203',
-    poojaId: 10,
-    templeKey: 'varanasi',
-    dateKey: 'booking.date2',
-    status: 'upcoming',
-    currentStage: 1,
-    imageUrl: 'https://images.unsplash.com/photo-1609137144814-7e77a28e75cf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaXJlJTIwYWx0YXIlMjBob21hbXxlbnwxfHx8fDE3NzM4MjU0NTR8MA&ixlib=rb-4.1.0&q=80&w=1080',
-    totalAmount: 2500,
-    paidAmount: 1000,
-    remainingBalance: 1500,
-    balanceDue: true,
-  },
-  {
-    id: 'DS2026031502',
-    poojaId: 1,
-    templeKey: 'rameshwaram',
-    dateKey: 'booking.date3',
-    status: 'completed',
-    currentStage: 9,
-    hasRecording: true,
-    imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
-  },
-];
 
 export default function Bookings() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
   const { theme } = useTheme();
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
-  const [currentUserMobile, setCurrentUserMobile] = useState<string | null>(null);
   const [bookingsList, setBookingsList] = useState<BookingItem[]>([]);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [payingBooking, setPayingBooking] = useState<BookingItem | null>(null);
-  const [paymentStep, setPaymentStep] = useState<'details' | 'processing' | 'success'>('details');
+  const [loading, setLoading] = useState(true);
 
-  const fetchBookings = useCallback(() => {
-    const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
-    const mobile = userSession ? JSON.parse(userSession).mobile : '+91 98765 43216'; // default to Suresh Raina for demo
-    setCurrentUserMobile(mobile);
+  // Feedback Modal States
+  const [feedbackModal, setFeedbackModal] = useState<{isOpen: boolean, booking: BookingItem | null}>({isOpen: false, booking: null});
+  const [rating, setRating] = useState(5);
+  const [review, setReview] = useState('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
-    let bookingsData = safeStorage.getItem('doshanivarana_bookings');
-    if (!bookingsData) {
-      const initialBookings = [
-        {
-          id: 'BK-1007',
-          devoteeName: 'Suresh Raina',
-          mobile: '+91 98765 43216',
-          poojaName: 'Rudra Abhishekam',
-          temple: 'Sri Venkateswara Temple',
-          dateTime: '05 Jun 2026, 10:00 AM',
-          paymentStatus: 'Confirmed',
-          amount: '₹1,500',
-          pujari: 'Pt. Sharma Ji',
-          deliveryStatus: 'Delivered',
-          streamStatus: 'Ended',
-          recordingStatus: 'Available'
-        },
-        {
-          id: 'BK-0990',
-          devoteeName: 'Suresh Raina',
-          mobile: '+91 98765 43216',
-          poojaName: 'Satyanarayana Pooja',
-          temple: 'Sri Venkateswara Temple',
-          dateTime: '01 Jun 2026, 08:00 AM',
-          paymentStatus: 'Confirmed',
-          amount: '₹2,000',
-          pujari: 'Pt. Sharma Ji',
-          deliveryStatus: 'Delivered',
-          streamStatus: 'Ended',
-          recordingStatus: 'Available'
-        }
-      ];
-      safeStorage.setItem('doshanivarana_bookings', JSON.stringify(initialBookings));
-      bookingsData = JSON.stringify(initialBookings);
+  const fetchBookings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
+      const userId = userSession ? JSON.parse(userSession).id : 'anonymous_user';
+
+      const snapshot = await firestore()
+        .collection('bookings')
+        .where('userId', '==', userId)
+        .where('isDeleted', '==', false)
+        .get();
+
+      const loadedBookings = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          poojaId: data.poojaId,
+          poojaName: data.poojaName || 'Pooja',
+          templeId: data.templeId,
+          templeName: data.templeName || 'Temple',
+          dateVal: data.scheduledDate,
+          timeVal: data.scheduledTime,
+          status: data.status === 'COMPLETED' ? 'completed' : 'upcoming',
+          currentStage: getBookingStage(data),
+          imageUrl: data.imageUrl || 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
+          totalAmount: data.amountPaid || 0,
+        } as BookingItem;
+      });
+
+      // Sort by date descending
+      loadedBookings.sort((a, b) => {
+        if (!a.dateVal || !b.dateVal) return 0;
+        return b.dateVal.localeCompare(a.dateVal);
+      });
+
+      setBookingsList(loadedBookings);
+    } catch (err) {
+      console.error("Failed to load bookings", err);
+    } finally {
+      setLoading(false);
     }
-    
-    const allBookings = bookingsData ? JSON.parse(bookingsData) : [];
-
-    // Filter bookings belonging to this mobile number using normalized 10-digit matching
-    const cleanMobile = mobile.replace(/[^0-9]/g, '').slice(-10);
-    const userBookings = allBookings.filter((b: any) => 
-      b.mobile && b.mobile.replace(/[^0-9]/g, '').slice(-10) === cleanMobile
-    );
-
-    // Map to the BookingItem format
-    const mapped = userBookings.map((b: any) => {
-      const details = getPoojaDetails(b.poojaName);
-      const status = b.tab || (b.streamStatus === 'Ended' ? 'completed' : 'upcoming');
-      const amountNum = parseInt(b.amount?.replace(/[^0-9]/g, '') || '0') || 0;
-      
-      const totalAmount = b.totalAmount !== undefined ? b.totalAmount : amountNum;
-      const paidAmount = b.paidAmount !== undefined ? b.paidAmount : (b.balanceDue ? Math.floor(amountNum * 0.4) : amountNum);
-      const remainingBalance = b.remainingBalance !== undefined ? b.remainingBalance : (b.balanceDue ? (totalAmount - paidAmount) : 0);
-      const balanceDue = b.balanceDue !== undefined ? b.balanceDue : false;
-
-      return {
-        id: b.id,
-        poojaId: details.id,
-        templeKey: details.key,
-        dateKey: b.dateTime, // Treated as direct display string by t() translation fallback
-        status: status,
-        currentStage: getBookingStage(b),
-        imageUrl: details.imageUrl,
-        hasRecording: b.recordingStatus === 'Available',
-        totalAmount,
-        paidAmount,
-        remainingBalance,
-        balanceDue,
-      };
-    });
-
-    setBookingsList(mapped);
   }, []);
 
   useFocusEffect(
@@ -189,60 +95,57 @@ export default function Bookings() {
     }, [fetchBookings])
   );
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-      window.addEventListener('storage', fetchBookings);
-      window.addEventListener('focus', fetchBookings);
-      window.addEventListener('doshanivarana_bookings_updated', fetchBookings);
-    }
-
-    return () => {
-      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
-        window.removeEventListener('storage', fetchBookings);
-        window.removeEventListener('focus', fetchBookings);
-        window.removeEventListener('doshanivarana_bookings_updated', fetchBookings);
-      }
-    };
-  }, [fetchBookings]);
-
-  const processPayment = async () => {
-    if (!payingBooking) return;
-    setPaymentStep('processing');
-    try {
-      const bookingsData = safeStorage.getItem('doshanivarana_bookings');
-      const allBookings = bookingsData ? JSON.parse(bookingsData) : [];
-      const updatedAllBookings = allBookings.map((b: any) => {
-        if (b.id === payingBooking.id) {
-          return {
-            ...b,
-            paymentStatus: 'Confirmed',
-            totalAmount: payingBooking.totalAmount,
-            paidAmount: payingBooking.totalAmount,
-            remainingBalance: 0,
-            balanceDue: false
-          };
-        }
-        return b;
-      });
-      safeStorage.setItem('doshanivarana_bookings', JSON.stringify(updatedAllBookings));
-
-      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-        window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
-      }
-
-      fetchBookings();
-
-      setTimeout(() => {
-        setPaymentStep('success');
-      }, 1500);
-    } catch (err) {
-      console.error('Failed to process payment:', err);
-    }
-  };
-
   const filteredBookings = bookingsList.filter(booking => 
     activeTab === 'active' ? booking.status === 'upcoming' : booking.status === 'completed'
   );
+
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackModal.booking) return;
+    setSubmittingFeedback(true);
+    try {
+      const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
+      const userId = userSession ? JSON.parse(userSession).id : 'anonymous_user';
+      const b = feedbackModal.booking;
+
+      // 1. Create Feedback doc with bookingId as ID to prevent duplicates
+      await firestore().collection('feedback').doc(b.id).set({
+        bookingId: b.id,
+        userId: userId,
+        templeId: b.templeId,
+        poojaId: b.poojaId,
+        rating: rating,
+        review: review,
+        status: 'PENDING',
+        createdAt: firestore.FieldValue.serverTimestamp()
+      });
+
+      // 2. Generate System Event
+      await firestore().collection('systemEvents').doc().set({
+        eventType: 'feedback.created',
+        entityId: b.id,
+        entityType: 'feedback',
+        payload: {
+          feedbackId: b.id,
+          bookingId: b.id,
+          userId: userId,
+          templeId: b.templeId,
+          rating: rating
+        },
+        status: 'PENDING',
+        createdAt: firestore.FieldValue.serverTimestamp()
+      });
+
+      setFeedbackModal({isOpen: false, booking: null});
+      setRating(5);
+      setReview('');
+      alert("Thank you for your feedback!");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to submit feedback.");
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
 
   return (
     <View className="flex-1 bg-background">
@@ -292,173 +195,106 @@ export default function Bookings() {
           </Pressable>
         </View>
 
-        {/* Bookings */}
-        <View className="space-y-4">
-          {filteredBookings.length === 0 ? (
-            <View className="items-center py-12">
-              <View className="w-16 h-16 bg-muted/30 rounded-full items-center justify-center mb-4">
-                <Package size={32} color="#78716C" />
-              </View>
-              <Text className="font-semibold text-lg text-foreground mb-1" style={{ fontFamily: 'System' }}>
-                {activeTab === 'active' ? t('bookings.noActive') : t('bookings.noCompleted')}
-              </Text>
-              <Text className="text-sm text-muted-foreground text-center" style={{ fontFamily: 'System' }}>
-                {activeTab === 'active' 
-                  ? t('bookings.noActiveDesc') 
-                  : t('bookings.noCompletedDesc')}
-              </Text>
+        {loading ? (
+          <View className="py-12 items-center">
+            <ActivityIndicator size="large" color="#F97316" />
+          </View>
+        ) : filteredBookings.length === 0 ? (
+          <View className="items-center py-12">
+            <View className="w-16 h-16 bg-muted/30 rounded-full items-center justify-center mb-4">
+              <Package size={32} color="#78716C" />
             </View>
-          ) : (
-            filteredBookings.map((booking) => (
-              <BookingCard 
-                key={booking.id} 
-                {...booking} 
-                onPayBalance={(id) => {
-                  const target = bookingsList.find(b => b.id === id);
-                  if (target) {
-                    setPayingBooking(target);
-                    setPaymentStep('details');
-                    setShowPaymentModal(true);
-                  }
-                }}
-              />
-            ))
-          )}
-        </View>
+            <Text className="font-semibold text-lg text-foreground mb-1" style={{ fontFamily: 'System' }}>
+              {activeTab === 'active' ? t('bookings.noActive') : t('bookings.noCompleted')}
+            </Text>
+            <Text className="text-sm text-muted-foreground text-center" style={{ fontFamily: 'System' }}>
+              {activeTab === 'active' 
+                ? t('bookings.noActiveDesc') 
+                : t('bookings.noCompletedDesc')}
+            </Text>
+          </View>
+        ) : (
+          filteredBookings.map((booking) => (
+            <BookingCard 
+              key={booking.id} 
+              {...booking} 
+              onFeedback={() => setFeedbackModal({isOpen: true, booking})}
+            />
+          ))
+        )}
       </ScrollView>
 
-      {/* Payment Modal */}
-      <Modal visible={showPaymentModal} transparent animationType="slide">
-        <View className="flex-1 bg-black/60 justify-end">
-          <Pressable className="absolute inset-0" onPress={() => paymentStep !== 'processing' && setShowPaymentModal(false)} />
-          <View className="bg-card rounded-t-3xl p-6 border-t border-border/40">
-            {paymentStep === 'details' && payingBooking && (
-              <View className="space-y-4">
-                <View className="flex-row items-center justify-between border-b border-border pb-4">
-                  <Text className="font-bold text-lg text-foreground" style={{ fontFamily: 'System' }}>
-                    {t('booking.completePayment')}
-                  </Text>
-                  <Pressable onPress={() => setShowPaymentModal(false)} className="p-1">
-                    <Text className="text-muted-foreground text-sm font-semibold">{t('common.cancel')}</Text>
+      {/* Feedback Modal */}
+      <Modal visible={feedbackModal.isOpen} animationType="slide" transparent>
+        <View className="flex-1 justify-end bg-black/60">
+          <View className="bg-card rounded-t-3xl p-6 h-[70%]">
+            <View className="flex-row items-center justify-between pb-4 border-b border-border mb-4">
+              <Text className="text-xl font-bold text-foreground">Rate Experience</Text>
+              <Pressable onPress={() => setFeedbackModal({isOpen: false, booking: null})} className="p-2">
+                <X size={24} color={theme === 'dark' ? '#F5F5F0' : '#1C1917'} />
+              </Pressable>
+            </View>
+            <ScrollView>
+              <Text className="text-sm text-muted-foreground mb-4">How was your pooja experience for {feedbackModal.booking?.poojaName}?</Text>
+              
+              <View className="flex-row justify-center gap-4 mb-8 mt-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Pressable key={star} onPress={() => setRating(star)}>
+                    <Star 
+                      size={40} 
+                      color={star <= rating ? "#EAB308" : "#78716C"} 
+                      fill={star <= rating ? "#EAB308" : "transparent"} 
+                    />
                   </Pressable>
-                </View>
-
-                <View className="bg-muted/30 p-4 rounded-xl space-y-2 mt-2">
-                  <Text className="text-xs text-muted-foreground uppercase tracking-wider font-semibold" style={{ fontFamily: 'System' }}>
-                    {t('booking.sevaDetails')}
-                  </Text>
-                  <Text className="font-bold text-base text-foreground" style={{ fontFamily: 'System' }}>
-                    {t('poojaDb.' + payingBooking.poojaId + '.title')}
-                  </Text>
-                  <Text className="text-xs text-muted-foreground" style={{ fontFamily: 'System' }}>
-                    {t('templeDb.' + payingBooking.templeKey + '.name')}
-                  </Text>
-                  <View className="flex-row justify-between pt-2 border-t border-border/20 text-xs">
-                    <Text className="text-muted-foreground">{t('bookingConfirmation.bookingId')}</Text>
-                    <Text className="font-semibold text-foreground">{payingBooking.id}</Text>
-                  </View>
-                </View>
-
-                <View className="space-y-2.5 mt-2">
-                  <View className="flex-row justify-between text-sm">
-                    <Text className="text-muted-foreground">{t('booking.totalPrice')}</Text>
-                    <Text className="text-foreground">₹{payingBooking.totalAmount}</Text>
-                  </View>
-                  <View className="flex-row justify-between text-sm">
-                    <Text className="text-muted-foreground">{t('booking.paidAdvance')}</Text>
-                    <Text className="text-green-500">-₹{payingBooking.paidAmount}</Text>
-                  </View>
-                  <View className="flex-row justify-between pt-3 border-t border-border/40">
-                    <Text className="font-bold text-base text-foreground">{t('booking.remainingBalanceDue')}</Text>
-                    <Text className="font-bold text-lg text-primary">₹{payingBooking.remainingBalance}</Text>
-                  </View>
-                </View>
-
-                <Pressable
-                  onPress={processPayment}
-                  className="w-full mt-6 py-4 rounded-xl bg-primary active:bg-[#E05C10] items-center justify-center"
-                >
-                  <Text className="text-primary-foreground font-semibold text-base" style={{ fontFamily: 'System' }}>
-                    {t('booking.payBalanceAmount').replace('{amount}', payingBooking.remainingBalance?.toString() ?? '0')}
-                  </Text>
-                </Pressable>
+                ))}
               </View>
-            )}
 
-            {paymentStep === 'processing' && (
-              <View className="py-12 items-center justify-center space-y-4">
-                <ActivityIndicator size="large" color="#F97316" />
-                <Text className="font-bold text-lg text-foreground mt-4" style={{ fontFamily: 'System' }}>
-                  {t('booking.processingOffering')}
-                </Text>
-                <Text className="text-xs text-muted-foreground text-center px-6" style={{ fontFamily: 'System' }}>
-                  {t('booking.processingDesc')}
-                </Text>
-              </View>
-            )}
-
-            {paymentStep === 'success' && payingBooking && (
-              <View className="py-8 items-center justify-center space-y-4">
-                <View className="w-16 h-16 bg-green-500/10 border border-green-500/20 rounded-full items-center justify-center mb-2">
-                  <Check size={32} color="#22C55E" />
+              <View className="mb-6">
+                <Text className="text-sm font-medium block mb-2 text-foreground">Write a Review</Text>
+                <View className="border border-border rounded-xl bg-background p-1">
+                  <TextInput
+                    multiline
+                    numberOfLines={4}
+                    value={review}
+                    onChangeText={setReview}
+                    placeholder="Tell us more about your experience..."
+                    placeholderTextColor="#78716C"
+                    style={{ minHeight: 100, textAlignVertical: 'top', padding: 12, color: theme === 'dark' ? '#F5F5F0' : '#1C1917' }}
+                  />
                 </View>
-                <Text className="font-bold text-2xl text-green-500 text-center" style={{ fontFamily: 'System' }}>
-                  {t('booking.paymentSuccess')}
-                </Text>
-                <Text className="text-sm text-foreground text-center font-medium px-4" style={{ fontFamily: 'System' }}>
-                  {t('booking.confirmSuccess').replace('{title}', t('poojaDb.' + payingBooking.poojaId + '.title'))}
-                </Text>
-                <Text className="text-xs text-muted-foreground text-center px-8" style={{ fontFamily: 'System' }}>
-                  {t('booking.sankalpamNote')}
-                </Text>
-                <Pressable
-                  onPress={() => setShowPaymentModal(false)}
-                  className="w-full mt-6 py-3.5 rounded-xl bg-primary active:bg-[#E05C10] items-center justify-center"
-                >
-                  <Text className="text-[#1A0A00] font-semibold text-sm">{t('common.close')}</Text>
-                </Pressable>
               </View>
-            )}
+
+              <Pressable 
+                onPress={handleFeedbackSubmit}
+                disabled={submittingFeedback}
+                className={`w-full py-4 rounded-xl items-center justify-center flex-row gap-2 ${submittingFeedback ? 'bg-primary/50' : 'bg-primary active:bg-[#E05C10]'}`}
+              >
+                {submittingFeedback ? (
+                  <ActivityIndicator color="#1A0A00" />
+                ) : (
+                  <Text className="text-[#1A0A00] font-bold text-base">Submit Feedback</Text>
+                )}
+              </Pressable>
+            </ScrollView>
           </View>
         </View>
       </Modal>
+
     </View>
   );
 }
 
 function BookingCard({
   id,
-  poojaId,
-  templeKey,
-  dateKey,
+  poojaName,
+  templeName,
   dateVal,
   timeVal,
   status,
   currentStage,
   imageUrl,
-  hasRecording,
-  totalAmount,
-  paidAmount,
-  remainingBalance,
-  balanceDue,
-  onPayBalance,
-}: {
-  id: string;
-  poojaId: number;
-  templeKey: string;
-  dateKey: string;
-  dateVal?: string;
-  timeVal?: string;
-  status: string;
-  currentStage: number;
-  imageUrl: string;
-  hasRecording?: boolean;
-  totalAmount?: number;
-  paidAmount?: number;
-  remainingBalance?: number;
-  balanceDue?: boolean;
-  onPayBalance?: (id: string) => void;
-}) {
+  onFeedback,
+}: BookingItem & { onFeedback: () => void }) {
   const { theme } = useTheme();
   const { t, language } = useLanguage();
   const stages = [
@@ -467,16 +303,9 @@ function BookingCard({
     { labelKey: 'journey.poojaScheduled', icon: Clock },
     { labelKey: 'journey.goingLive', icon: PlayCircle },
     { labelKey: 'journey.poojaCompleted', icon: CheckCircle2 },
-    { labelKey: 'journey.recordingReady', icon: PlayCircle },
-    { labelKey: 'journey.prasadPacked', icon: Package },
-    { labelKey: 'journey.prasadDispatched', icon: Package },
-    { labelKey: 'journey.prasadDelivered', icon: CheckCircle2 },
   ];
 
   const getDisplayDate = () => {
-    if (dateKey && dateKey.startsWith('booking.date')) {
-      return t(dateKey);
-    }
     if (dateVal) {
       const monthMap: Record<string, Record<string, string>> = {
         '03': { en: 'March', te: 'మార్చి', hi: 'मार्च', gu: 'માર્ચ' },
@@ -508,10 +337,10 @@ function BookingCard({
         <View className="flex-1 justify-between">
           <View>
             <Text className="font-semibold text-lg text-foreground mb-1" style={{ fontFamily: 'System' }}>
-              {t('poojaDb.' + poojaId + '.title')}
+              {poojaName}
             </Text>
             <Text className="text-sm text-muted-foreground mb-2" style={{ fontFamily: 'System' }}>
-              {t('templeDb.' + templeKey + '.name')}
+              {templeName}
             </Text>
             <View className="self-start px-2 py-1 bg-muted/50 rounded">
               <Text
@@ -526,17 +355,15 @@ function BookingCard({
         <View className="items-end justify-between">
           <View
             className={`px-3 py-1 rounded-full ${
-              balanceDue
-                ? 'bg-red-500/10'
-                : status === 'upcoming'
+              status === 'upcoming'
                 ? 'bg-primary/10'
                 : 'bg-green-500/10'
             }`}
           >
             <Text className={`text-xs font-medium ${
-              balanceDue ? 'text-red-500' : status === 'upcoming' ? 'text-primary' : 'text-green-500'
+              status === 'upcoming' ? 'text-primary' : 'text-green-500'
             }`}>
-              {balanceDue ? t('booking.remainingBalanceDue') : status === 'upcoming' ? t('common.upcoming') : t('common.completed')}
+              {status === 'upcoming' ? t('common.upcoming') : t('common.completed')}
             </Text>
           </View>
           <Text className="text-xs text-muted-foreground mt-2" style={{ fontFamily: 'System' }}>
@@ -544,38 +371,6 @@ function BookingCard({
           </Text>
         </View>
       </View>
-
-      {/* Remaining Balance Info Section */}
-      {balanceDue && remainingBalance && (
-        <View className="px-4 py-4 bg-red-500/5 border-b border-border">
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-row items-center gap-1.5">
-              <AlertCircle size={14} color="#EF4444" />
-              <Text className="text-xs font-bold text-red-500" style={{ fontFamily: 'System' }}>
-                {t('booking.remainingBalanceDue')}
-              </Text>
-            </View>
-            <Text className="text-base font-bold text-red-500" style={{ fontFamily: 'System' }}>
-              ₹{remainingBalance}
-            </Text>
-          </View>
-          
-          <View className="flex-row justify-between mb-3 text-xs text-muted-foreground">
-            <Text style={{ fontFamily: 'System' }}>{t('booking.totalPrice')}: ₹{totalAmount}</Text>
-            <Text style={{ fontFamily: 'System' }}>{t('booking.paidAdvance')}: ₹{paidAmount}</Text>
-          </View>
-
-          <Pressable 
-            onPress={() => onPayBalance?.(id)}
-            className="w-full py-2.5 rounded-xl bg-primary active:bg-[#E05C10] items-center justify-center flex-row gap-2"
-          >
-            <CreditCard size={15} color={theme === 'dark' ? '#1A0A00' : '#F5F5F0'} />
-            <Text className="text-primary-foreground font-semibold text-xs" style={{ fontFamily: 'System' }}>
-              {t('booking.payBalanceAmount').replace('{amount}', remainingBalance.toString())}
-            </Text>
-          </Pressable>
-        </View>
-      )}
 
       {/* Journey Timeline */}
       <View className="p-4">
@@ -622,25 +417,16 @@ function BookingCard({
             );
           })}
         </View>
-        
-        <Link href={`/journey/${id}`} asChild>
-          <Pressable className="w-full mt-4 py-2.5 rounded-xl border-2 border-primary items-center justify-center active:bg-primary/5">
-            <Text className="text-primary font-medium text-sm">
-              {t('bookings.viewJourney')}
-            </Text>
+
+        {/* Feedback Button for Completed */}
+        {status === 'completed' && (
+          <Pressable 
+            onPress={onFeedback}
+            className="w-full mt-2 py-3 rounded-xl border border-border bg-card flex-row items-center justify-center gap-2 active:bg-muted/30"
+          >
+            <Star size={16} color="#EAB308" fill="#EAB308" />
+            <Text className="font-medium text-sm text-foreground">Leave Feedback</Text>
           </Pressable>
-        </Link>
-        
-        {/* Recording Button for Completed Bookings */}
-        {hasRecording && (
-          <Link href={`/live/${id.replace('DS', '')}`} asChild>
-            <Pressable className="w-full mt-3 py-2.5 rounded-xl bg-primary active:bg-[#E05C10] items-center justify-center flex-row gap-2">
-              <Video size={16} color={theme === 'dark' ? '#1A0A00' : '#F5F5F0'} />
-              <Text className="text-primary-foreground font-medium text-sm">
-                {t('bookings.watchRecording')}
-              </Text>
-            </Pressable>
-          </Link>
         )}
       </View>
     </View>

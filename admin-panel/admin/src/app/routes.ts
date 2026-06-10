@@ -25,8 +25,13 @@ import { CategoriesPage } from "./components/pages/Categories";
 import { LanguagesPage } from "./components/pages/Languages";
 import { RefundsPage } from "./components/pages/Refunds";
 import { RevenuePage } from "./components/pages/Revenue";
+import { Login } from "./components/pages/Login";
 
 export const router = createBrowserRouter([
+  {
+    path: "/login",
+    Component: Login,
+  },
   {
     path: "/",
     Component: Layout,

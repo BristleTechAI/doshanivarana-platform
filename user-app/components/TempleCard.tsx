@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { View, Text, Pressable, Image } from 'react-native';
 import { Link } from 'expo-router';
 

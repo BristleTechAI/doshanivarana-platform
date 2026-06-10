@@ -1,0 +1,58 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.role in ['ADMIN', 'SUPER_ADMIN'];
+    }
+    
+    function isTempleAdminFor(templeId) {
+      return isAuthenticated() && request.auth.token.role == 'TEMPLE_ADMIN' && request.auth.token.templeId == templeId;
+    }
+    
+    function isProFor(templeId) {
+      return isAuthenticated() && request.auth.token.role == 'PRO' && request.auth.token.templeId == templeId;
+    }
+
+    // Temples (Public read, Admin/TempleAdmin write)
+    match /temples/{templeId}/images/{allImages=**} {
+      allow read: if true;
+      allow write: if isAdmin() || isTempleAdminFor(templeId);
+    }
+    
+    // Priests (Public read, Admin/PRO write)
+    match /priests/{priestId}/avatars/{allImages=**} {
+      allow read: if true;
+      // Note: Ideally we check if the PRO's templeId matches the priest's templeId. 
+      // For simplicity in storage rules without Firestore lookups, we trust PROs or restrict to Admin.
+      // We will allow PROs to write, but actual reference updates happen in Firestore (protected).
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.token.role == 'PRO');
+    }
+
+    // Recordings (Protected read, Admin/PRO write)
+    match /streams/{poojaId}/recordings/{allVideos=**} {
+      // In production, we can restrict read to booked users using Custom Tokens or signed URLs.
+      // For basic rules, we allow authenticated users to read.
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.token.role == 'PRO');
+    }
+
+    // User KYC / Documents (Private)
+    match /documents/{userId}/kyc/{allDocs=**} {
+      allow read: if isAdmin() || request.auth.uid == userId;
+      allow write: if request.auth.uid == userId;
+    }
+
+    // Festivals (Public read, Admin write)
+    match /festivals/{festivalId}/media/{allMedia=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+  }
+}

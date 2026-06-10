@@ -1,17 +1,46 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { db, type Booking } from '../lib/db';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { useAuth } from '../contexts/AuthContext';
+import type { Booking } from '@devaseva/core';
 
 export function Bookings() {
   const navigate = useNavigate();
+  const { templeId } = useAuth();
   const [activeTab, setActiveTab] = useState<'upcoming' | 'completed' | 'all'>('upcoming');
   const [poojaType, setPoojaType] = useState('All Poojas');
   const [pujariFilter, setPujariFilter] = useState('All');
   const [deliveryFilter, setDeliveryFilter] = useState('All');
   const [paymentFilter, setPaymentFilter] = useState('All');
 
-  const [bookings] = useState<Booking[]>(() => db.getBookings());
+  const [bookings, setBookings] = useState<Booking[]>([]);
 
+  useEffect(() => {
+    const fetchBookings = async () => {
+      if (!templeId) return;
+      try {
+        const q = query(
+          collection(db, "bookings"),
+          where("templeId", "==", templeId),
+          where("isDeleted", "==", false)
+        );
+        const snapshot = await getDocs(q);
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+        
+        // Sort by date descending
+        data.sort((a, b) => {
+          if (!a.scheduledDate || !b.scheduledDate) return 0;
+          return b.scheduledDate.localeCompare(a.scheduledDate);
+        });
+        
+        setBookings(data);
+      } catch (err) {
+        console.error("Failed to load bookings:", err);
+      }
+    };
+    fetchBookings();
+  }, [templeId]);
 
   const handleViewDetails = (id: string) => {
     navigate(`/bookings/${id}`);
@@ -19,18 +48,18 @@ export function Bookings() {
 
   // Filters
   const filteredBookings = bookings.filter(b => {
-    const tabMatch = activeTab === 'all' || b.tab === activeTab;
+    const tabMatch = activeTab === 'all' || (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === activeTab;
     const poojaMatch = poojaType === 'All Poojas' || b.poojaName === poojaType;
     const pujariMatch = pujariFilter === 'All' || 
-      (pujariFilter === 'Yes' && b.pujari !== 'Not Assigned') || 
-      (pujariFilter === 'No' && b.pujari === 'Not Assigned');
-    const deliveryMatch = deliveryFilter === 'All' || b.delivery === deliveryFilter;
+      (pujariFilter === 'Yes' && (b.priestName || 'Not Assigned') !== 'Not Assigned') || 
+      (pujariFilter === 'No' && (b.priestName || 'Not Assigned') === 'Not Assigned');
+    const deliveryMatch = deliveryFilter === 'All' || (b.hasPrasadDelivery ? 'Yes' : 'No') === deliveryFilter;
     const paymentMatch = paymentFilter === 'All' || b.paymentStatus === paymentFilter;
 
     return tabMatch && poojaMatch && pujariMatch && deliveryMatch && paymentMatch;
   });
 
-  const unassignedCount = bookings.filter(b => b.tab === 'upcoming' && b.pujari === 'Not Assigned').length;
+  const unassignedCount = bookings.filter(b => (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'upcoming' && (b.priestName || 'Not Assigned') === 'Not Assigned').length;
 
   return (
     <div className="max-w-[1440px] mx-auto relative">
@@ -59,7 +88,7 @@ export function Bookings() {
             activeTab === 'upcoming' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
           }`}
         >
-          Upcoming ({bookings.filter(b => b.tab === 'upcoming').length})
+          Upcoming ({bookings.filter(b => (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'upcoming').length})
         </button>
         <button 
           onClick={() => setActiveTab('completed')}
@@ -67,7 +96,7 @@ export function Bookings() {
             activeTab === 'completed' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
           }`}
         >
-          Completed ({bookings.filter(b => b.tab === 'completed').length})
+          Completed ({bookings.filter(b => (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'completed').length})
         </button>
         <button 
           onClick={() => setActiveTab('all')}
@@ -138,8 +167,8 @@ export function Bookings() {
               onChange={(e) => setPaymentFilter(e.target.value)}
             >
               <option>All</option>
-              <option>Confirmed</option>
-              <option>Pending</option>
+              <option>PAID</option>
+              <option>PENDING</option>
             </select>
           </div>
         </div>
@@ -189,20 +218,20 @@ export function Bookings() {
                 <tr 
                   key={b.id} 
                   className={`border-b border-outline-variant/30 bg-surface-container-lowest hover:bg-surface-container-low transition-colors ${
-                    b.tab === 'upcoming' && b.pujari === 'Not Assigned' ? 'border-l-4 border-l-error' : ''
+                    (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'upcoming' && (b.priestName || 'Not Assigned') === 'Not Assigned' ? 'border-l-4 border-l-error' : ''
                   }`}
                 >
                   <td className="p-4 font-bold">{b.id}</td>
-                  <td className="p-4 font-semibold">{b.devoteeName}</td>
+                  <td className="p-4 font-semibold">{(b.devoteeDetails?.name)}</td>
                   <td className="p-4 font-semibold">{b.poojaName}</td>
-                  <td className="p-4 text-on-surface-variant">{b.dateTime}</td>
+                  <td className="p-4 text-on-surface-variant">{b.scheduledDate} {b.scheduledTime}</td>
                   <td className="p-4">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-green-100 text-green-800 text-[11px] font-bold tracking-wide">
                       {b.paymentStatus}
                     </span>
                   </td>
                   <td className="p-4">
-                    {b.pujari === 'Not Assigned' ? (
+                    {(b.priestName || 'Not Assigned') === 'Not Assigned' ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-error-container text-on-error-container text-[11px] font-bold tracking-wide gap-1">
                         <span className="material-symbols-outlined text-[14px]">error</span> 
                         Not Assigned
@@ -210,17 +239,17 @@ export function Bookings() {
                     ) : (
                       <span className="inline-flex items-center gap-1 text-green-700 font-semibold">
                         <span className="material-symbols-outlined text-[16px] flex items-center justify-center">check_circle</span> 
-                        {b.pujari}
+                        {(b.priestName || 'Not Assigned')}
                       </span>
                     )}
                   </td>
                   <td className="p-4">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-semibold ${
-                      b.delivery === 'Yes' 
+                      (b.hasPrasadDelivery ? 'Yes' : 'No') === 'Yes' 
                         ? 'bg-blue-50 text-blue-700 border-blue-200' 
                         : 'bg-gray-50 text-gray-600 border-gray-200'
                     }`}>
-                      {b.delivery}
+                      {(b.hasPrasadDelivery ? 'Yes' : 'No')}
                     </span>
                   </td>
                   <td className="p-4 text-right">

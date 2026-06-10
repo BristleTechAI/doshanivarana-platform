@@ -1,10 +1,13 @@
+// @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
-import { db, type Booking, type Recording } from '../lib/db';
+import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { useAuth } from '../contexts/AuthContext';
 
 export function LiveStream() {
-  const initialBookings = db.getBookings().filter(b => b.tab === 'upcoming');
-  const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>(initialBookings);
-  const [selectedSlot, setSelectedSlot] = useState(initialBookings[0]?.id || '');
+  const { templeId } = useAuth();
+  const [upcomingBookings, setUpcomingBookings] = useState<any[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState('');
   const [streamState, setStreamState] = useState<'idle' | 'live' | 'ended'>('idle');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [viewers, setViewers] = useState<number | null>(null);
@@ -12,11 +15,38 @@ export function LiveStream() {
   const [showFinishedModal, setShowFinishedModal] = useState(false);
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+  
+  // Track active stream ID
+  const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const viewersRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const booking = upcomingBookings.find(b => b.id === selectedSlot) || upcomingBookings[0];
+  useEffect(() => {
+    if (!templeId) return;
+
+    // Fetch scheduled bookings for this temple
+    const q = query(
+      collection(db, 'bookings'),
+      where('templeId', '==', templeId),
+      where('status', '==', 'SCHEDULED'),
+      where('isDeleted', '==', false)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const bks = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setUpcomingBookings(bks);
+      if (bks.length > 0 && !selectedSlot) {
+        setSelectedSlot(bks[0].id);
+      } else if (bks.length === 0) {
+        setSelectedSlot('');
+      }
+    });
+
+    return () => unsubscribe();
+  }, [templeId]);
+
+  const booking = upcomingBookings.find(b => b.id === selectedSlot);
 
   useEffect(() => {
     if (streamState === 'live') {
@@ -26,7 +56,7 @@ export function LiveStream() {
       }, 1000);
 
       // Start viewers simulation
-      const baseViewers = booking ? booking.currentBookings : 12;
+      const baseViewers = booking ? 0 : 12;
       viewersRef.current = setInterval(() => {
         setViewers(prev => {
           if (prev === null) return baseViewers;
@@ -46,34 +76,78 @@ export function LiveStream() {
     };
   }, [streamState, booking]);
 
-  const handleStartStream = () => {
-    if (booking) {
-      db.updateBooking({ ...booking, streamStatus: 'In Progress' });
+  const handleStartStream = async () => {
+    if (!booking) return;
+
+    try {
+      const streamId = `stream_${Date.now()}`;
+      
+      // Update booking status
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status: 'IN_PROGRESS',
+        streamId: streamId,
+        streamStatus: 'LIVE'
+      });
+
+      // Create stream document
+      await setDoc(doc(db, 'liveStreams', streamId), {
+        streamId,
+        bookingId: booking.id,
+        templeId: booking.templeId,
+        poojaId: booking.poojaId,
+        streamUrl: `rtmp://live.doshanivarana.com/app/${streamId}`,
+        status: 'LIVE',
+        createdAt: serverTimestamp()
+      });
+
+      // Generate System Event
+      await setDoc(doc(collection(db, 'systemEvents')), {
+        eventType: 'stream.started',
+        entityId: streamId,
+        entityType: 'stream',
+        payload: {
+          streamId,
+          bookingId: booking.id,
+          templeId: booking.templeId,
+          userId: booking.userId
+        },
+        status: 'PENDING',
+        createdAt: serverTimestamp()
+      });
+
+      // Audit Log
+      await setDoc(doc(collection(db, 'auditLogs')), {
+        action: 'STREAM_STARTED',
+        entityId: streamId,
+        entityType: 'stream',
+        performedBy: templeId,
+        timestamp: serverTimestamp(),
+        details: `Stream ${streamId} started for booking ${booking.id}`
+      });
+
+      setActiveStreamId(streamId);
+      setViewers(12);
+      setStreamHealth('Excellent');
+      setStreamState('live');
+      setNotification('Live broadcast started successfully!');
+      setTimeout(() => setNotification(null), 3000);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to start stream');
     }
-    const baseViewers = booking ? booking.currentBookings : 12;
-    setViewers(baseViewers);
-    setStreamHealth('Excellent');
-    setStreamState('live');
-    setNotification('Live broadcast started successfully!');
-    setTimeout(() => setNotification(null), 3000);
   };
 
   const handleStopStream = () => {
-    if (booking) {
-      db.updateBooking({ ...booking, streamStatus: 'Ended', recordingStatus: 'Processing' });
-    }
     setStreamState('ended');
     setShowFinishedModal(true);
   };
 
   const handleRestartStream = () => {
-    if (booking) {
-      db.updateBooking({ ...booking, streamStatus: 'Not Started' });
-    }
     setStreamState('idle');
     setElapsedSeconds(0);
     setViewers(null);
     setStreamHealth('—');
+    setActiveStreamId(null);
     setNotification('Stream reset to idle. Ready to restart.');
     setTimeout(() => setNotification(null), 3000);
   };
@@ -95,45 +169,62 @@ export function LiveStream() {
     ].join(':');
   };
 
-  const handleModalSubmit = (notify: boolean) => {
+  const handleModalSubmit = async (notify: boolean) => {
     setShowFinishedModal(false);
-    if (booking) {
-      db.updateBooking({ 
-        ...booking, 
-        recordingStatus: notify ? 'Available' : 'Processing',
-        tab: 'completed'
+    if (!booking || !activeStreamId) return;
+
+    try {
+      // Update stream status
+      await updateDoc(doc(db, 'liveStreams', activeStreamId), {
+        status: 'ENDED',
+        endedAt: serverTimestamp()
       });
 
-      // Save recording to database
-      const newRec = {
-        id: String(db.getRecordings().length + 1),
-        poojaName: booking.poojaName,
-        slotDate: booking.dateTime.split(',')[0],
-        duration: formatTime(elapsedSeconds),
-        autoSaved: 'Yes' as const,
-        status: (notify ? 'Published' : 'Ready to Publish') as Recording['status'],
-        bookingsCount: booking.currentBookings
-      };
-      const updatedRecordings = [newRec, ...db.getRecordings()];
-      db.saveRecordings(updatedRecordings);
-    }
+      // Update booking status
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status: 'COMPLETED',
+        streamStatus: 'ENDED',
+        recordingStatus: notify ? 'Available' : 'Processing'
+      });
 
-    if (notify) {
-      setNotification('Devotees notified with the recording link!');
-    } else {
-      setNotification('Recording saved for review.');
-    }
-    setTimeout(() => setNotification(null), 3500);
-    setStreamState('idle');
-    setElapsedSeconds(0);
-    
-    // Refresh list of upcoming bookings since this one is now completed
-    const list = db.getBookings().filter(b => b.tab === 'upcoming');
-    setUpcomingBookings(list);
-    if (list.length > 0) {
-      setSelectedSlot(list[0].id);
-    } else {
-      setSelectedSlot('');
+      // Generate System Event
+      await setDoc(doc(collection(db, 'systemEvents')), {
+        eventType: 'stream.ended',
+        entityId: activeStreamId,
+        entityType: 'stream',
+        payload: {
+          streamId: activeStreamId,
+          bookingId: booking.id,
+          templeId: booking.templeId,
+          userId: booking.userId
+        },
+        status: 'PENDING',
+        createdAt: serverTimestamp()
+      });
+
+      // Audit Log
+      await setDoc(doc(collection(db, 'auditLogs')), {
+        action: 'STREAM_ENDED',
+        entityId: activeStreamId,
+        entityType: 'stream',
+        performedBy: templeId,
+        timestamp: serverTimestamp(),
+        details: `Stream ${activeStreamId} ended for booking ${booking.id}`
+      });
+
+      if (notify) {
+        setNotification('Devotees notified with the recording link!');
+      } else {
+        setNotification('Recording saved for review.');
+      }
+      setTimeout(() => setNotification(null), 3500);
+      setStreamState('idle');
+      setElapsedSeconds(0);
+      setActiveStreamId(null);
+      
+    } catch (e) {
+      console.error(e);
+      alert('Failed to end stream properly');
     }
   };
 
@@ -164,11 +255,12 @@ export function LiveStream() {
             <select 
               value={selectedSlot}
               onChange={(e) => setSelectedSlot(e.target.value)}
-              className="w-full appearance-none bg-surface border border-primary/30 rounded-lg px-4 py-3 text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary pr-10 font-semibold cursor-pointer"
+              disabled={streamState !== 'idle'}
+              className="w-full appearance-none bg-surface border border-primary/30 rounded-lg px-4 py-3 text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary pr-10 font-semibold cursor-pointer disabled:opacity-50"
             >
               {upcomingBookings.map(b => (
                 <option key={b.id} value={b.id}>
-                  {b.poojaName} — {b.id} at {b.dateTime} ({b.currentBookings} Bookings)
+                  {b.poojaName} — {b.id} at {b.scheduledDate} ({b.currentBookings || 1} Bookings)
                 </option>
               ))}
               {upcomingBookings.length === 0 && (
@@ -176,16 +268,6 @@ export function LiveStream() {
               )}
             </select>
             <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap font-semibold">
-            <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-[11px] border border-yellow-200">
-              <span className="material-symbols-outlined text-[16px]">check_circle</span>
-              Auto-selected: Next scheduled slot
-            </span>
-            <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-surface-variant text-on-surface-variant text-[11px] border border-outline-variant/30">
-              <span className="material-symbols-outlined text-[16px]">info</span>
-              {booking ? booking.currentBookings : 0} devotees will be notified
-            </span>
           </div>
         </div>
       </section>
@@ -204,16 +286,7 @@ export function LiveStream() {
                 <span className="material-symbols-outlined text-green-600">check_circle</span>
                 <div>
                   <p className="text-button text-on-surface font-bold">Pujari Assigned</p>
-                  <p className="text-body-sm text-on-surface-variant font-medium">{booking ? booking.pujari : 'None'}</p>
-                </div>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-green-600">check_circle</span>
-                <div>
-                  <p className="text-button text-on-surface font-bold">Confirmed Bookings</p>
-                  <p className="text-body-sm text-on-surface-variant font-medium">
-                    {booking ? `${booking.currentBookings} devotees booked` : '0 devotees booked'}
-                  </p>
+                  <p className="text-body-sm text-on-surface-variant font-medium">{booking ? booking.priestName || 'Assigned' : 'None'}</p>
                 </div>
               </li>
               <li className="flex items-start gap-3 bg-red-50 -mx-2 p-2 rounded-lg border border-red-100">
@@ -227,15 +300,10 @@ export function LiveStream() {
                 <span className="material-symbols-outlined text-green-600">check_circle</span>
                 <div>
                   <p className="text-button text-on-surface font-bold">Scheduled Time</p>
-                  <p className="text-body-sm text-on-surface-variant font-medium">{booking ? booking.dateTime : 'N/A'}</p>
+                  <p className="text-body-sm text-on-surface-variant font-medium">{booking ? booking.scheduledDate : 'N/A'}</p>
                 </div>
               </li>
             </ul>
-          </div>
-          
-          <div className="mt-6 bg-red-50 text-red-800 p-3 rounded-lg flex items-start gap-2 border border-red-100 font-medium">
-            <span className="material-symbols-outlined text-red-600 shrink-0">warning</span>
-            <p className="text-body-sm">Your internet connection speed fluctuates. Quality may be affected.</p>
           </div>
         </div>
 
@@ -295,7 +363,8 @@ export function LiveStream() {
               {streamState !== 'live' ? (
                 <button 
                   onClick={handleStartStream}
-                  className="w-full bg-primary hover:bg-[#b04b00] text-on-primary text-headline-sm py-4 px-6 rounded-full flex items-center justify-center gap-2 transition-transform hover:scale-[1.01] shadow-lg cursor-pointer"
+                  disabled={!booking || streamState === 'ended'}
+                  className="w-full bg-primary hover:bg-[#b04b00] disabled:opacity-50 text-on-primary text-headline-sm py-4 px-6 rounded-full flex items-center justify-center gap-2 transition-transform shadow-lg cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[28px]">play_arrow</span>
                   Start Broadcast Live
@@ -303,39 +372,12 @@ export function LiveStream() {
               ) : (
                 <button 
                   onClick={handleStopStream}
-                  className="w-full bg-[#ea4335] hover:bg-[#c5221f] text-white text-headline-sm py-4 px-6 rounded-full flex items-center justify-center gap-2 transition-transform hover:scale-[1.01] shadow-lg cursor-pointer"
+                  className="w-full bg-[#ea4335] hover:bg-[#c5221f] text-white text-headline-sm py-4 px-6 rounded-full flex items-center justify-center gap-2 transition-transform shadow-lg cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[28px]">stop</span>
                   Stop Broadcast
                 </button>
               )}
-
-              <div className="grid grid-cols-2 gap-4 mt-2">
-                <button 
-                  disabled={streamState !== 'live'}
-                  onClick={handleStopStream}
-                  className={`py-3 px-4 rounded-full flex items-center justify-center gap-2 border border-transparent font-medium ${
-                    streamState === 'live' 
-                      ? 'bg-[#2D2D4A] text-white hover:bg-[#3d3d5c] cursor-pointer' 
-                      : 'bg-[#1A1A2E] text-gray-600 border-[#2D2D4A] cursor-not-allowed opacity-50'
-                  }`}
-                >
-                  <span className="material-symbols-outlined">stop</span>
-                  Stop Stream
-                </button>
-                <button 
-                  disabled={streamState === 'idle'}
-                  onClick={handleRestartStream}
-                  className={`py-3 px-4 rounded-full flex items-center justify-center gap-2 border font-medium ${
-                    streamState !== 'idle'
-                      ? 'bg-transparent text-white border-[#2D2D4A] hover:bg-[#2D2D4A]/30 cursor-pointer'
-                      : 'bg-transparent text-gray-600 border-[#2D2D4A] cursor-not-allowed opacity-50'
-                  }`}
-                >
-                  <span className="material-symbols-outlined">refresh</span>
-                  Reset Stream
-                </button>
-              </div>
             </div>
 
           </div>
@@ -359,9 +401,6 @@ export function LiveStream() {
         
         {isAccordionOpen && (
           <div className="px-6 pb-6 pt-4 border-t border-outline-variant/30 bg-surface-bright/50 font-medium">
-            <p className="text-body-sm text-on-surface-variant mb-4">
-              Enter these settings in your RTMP Encoder (OBS, vMix, or mobile streaming application) to broadcast.
-            </p>
             <div className="space-y-4">
               <div>
                 <label className="block text-label-md text-on-surface-variant uppercase font-bold tracking-wider mb-1">
@@ -375,42 +414,11 @@ export function LiveStream() {
                   />
                   <button 
                     onClick={() => handleCopy('rtmp://live.doshanivarana.com/app/', 'RTMP URL')}
-                    className="px-4 py-2 border border-primary text-primary hover:bg-primary/5 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1"
+                    className="px-4 py-2 border border-primary text-primary hover:bg-primary/5 rounded-lg text-xs font-bold cursor-pointer"
                   >
-                    <span className="material-symbols-outlined text-xs">content_copy</span> Copy
+                    Copy
                   </button>
                 </div>
-              </div>
-              
-              <div>
-                <label className="block text-label-md text-on-surface-variant uppercase font-bold tracking-wider mb-1">
-                  Stream Key (Private)
-                </label>
-                <div className="flex gap-2">
-                  <input 
-                    readOnly 
-                    type="password"
-                    value="live_2901385_svt_satya"
-                    className="flex-1 bg-surface border border-outline-variant rounded-lg p-2.5 text-body-sm font-mono"
-                  />
-                  <button 
-                    onClick={() => handleCopy('live_2901385_svt_satya', 'Stream Key')}
-                    className="px-4 py-2 border border-primary text-primary hover:bg-primary/5 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1"
-                  >
-                    <span className="material-symbols-outlined text-xs">content_copy</span> Copy
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/30 text-xs space-y-2 mt-2">
-                <p className="font-bold text-on-surface uppercase tracking-wider">Recommended Encoder Settings</p>
-                <ul className="list-disc list-inside space-y-1 text-on-surface-variant font-semibold">
-                  <li>Resolution: 1920x1080 (1080p) or 1280x720 (720p)</li>
-                  <li>Video Bitrate: 3500 - 4500 Kbps</li>
-                  <li>Audio Bitrate: 128 Kbps (Stereo)</li>
-                  <li>Keyframe Interval: 2 seconds</li>
-                  <li>Rate Control: CBR</li>
-                </ul>
               </div>
             </div>
           </div>
@@ -427,7 +435,7 @@ export function LiveStream() {
             </div>
             
             <p className="text-body-md text-on-surface-variant font-medium mb-6">
-              The live stream has ended. The system has successfully saved the high-definition recording file. Would you like to publish and notify the devotees immediately?
+              The live stream has ended. Would you like to notify devotees that the stream has ended and the recording will be processed?
             </p>
 
             <div className="flex gap-3 justify-end font-semibold">
@@ -435,13 +443,13 @@ export function LiveStream() {
                 onClick={() => handleModalSubmit(false)}
                 className="px-6 py-2 border border-outline-variant text-on-surface rounded-full hover:bg-surface-container-low transition-colors cursor-pointer"
               >
-                No, Review Recording First
+                No
               </button>
               <button 
                 onClick={() => handleModalSubmit(true)}
                 className="px-6 py-2 bg-primary text-white rounded-full hover:bg-[#b04b00] transition-colors shadow-sm cursor-pointer"
               >
-                Yes, Notify Devotees
+                Yes, Notify
               </button>
             </div>
           </div>

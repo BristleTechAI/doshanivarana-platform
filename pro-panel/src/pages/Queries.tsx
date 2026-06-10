@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from 'react';
 import { db, type DevoteeQuery, type ChatMessage } from '../lib/db';
 

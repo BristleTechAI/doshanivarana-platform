@@ -1,0 +1,8 @@
+const fs = require('fs');
+
+const file = 'user-app/app/(tabs)/index.tsx';
+let content = fs.readFileSync(file, 'utf8');
+content = content.replace(/\\\`/g, '`').replace(/\\\$/g, '$');
+fs.writeFileSync(file, content);
+
+console.log('Fixed backticks in User app index');

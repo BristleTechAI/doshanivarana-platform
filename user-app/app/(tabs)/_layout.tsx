@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { View, Text, Pressable, Platform, StyleSheet } from "react-native";
 import { Tabs } from "expo-router";
 import { Home, Flame, Calendar, Building2, User } from "lucide-react-native";

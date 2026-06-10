@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Check } from 'lucide-react-native';

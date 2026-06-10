@@ -1,73 +1,119 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
-import { db, type PoojaSlot } from '../lib/db';
+import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import type { Slot, Pooja } from '@devaseva/core';
+import { SlotStatus } from '@devaseva/core';
+import { useAuth } from '../contexts/AuthContext';
+
+type UISlot = Slot & {
+  poojaName: string;
+};
 
 export function Schedule() {
+  const { templeId } = useAuth();
   const [selectedPooja, setSelectedPooja] = useState('All Poojas');
   const [selectedStatus, setSelectedStatus] = useState('All Status');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [isPastExpanded, setIsPastExpanded] = useState(false);
-  const [deactivatingSlot, setDeactivatingSlot] = useState<PoojaSlot | null>(null);
+  const [deactivatingSlot, setDeactivatingSlot] = useState<UISlot | null>(null);
 
-  const [slots, setSlots] = useState<PoojaSlot[]>(() => db.getSlots());
+  const [slots, setSlots] = useState<UISlot[]>([]);
+  const [poojas, setPoojas] = useState<Record<string, Pooja>>({});
+  const [loading, setLoading] = useState(true);
+
+  const fetchScheduleData = async () => {
+    if (!templeId) return;
+    setLoading(true);
+    try {
+      // Fetch Poojas for this temple
+      const pQuery = query(collection(db, "poojas"), where("templeId", "==", templeId), where("isDeleted", "==", false));
+      const pSnap = await getDocs(pQuery);
+      const pMap: Record<string, Pooja> = {};
+      pSnap.docs.forEach(d => {
+        pMap[d.id] = { id: d.id, ...d.data() } as Pooja;
+      });
+      setPoojas(pMap);
+
+      // Fetch Slots for this temple
+      const sQuery = query(collection(db, "slots"), where("templeId", "==", templeId), where("isDeleted", "==", false));
+      const sSnap = await getDocs(sQuery);
+      const sData: UISlot[] = sSnap.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          poojaName: pMap[data.poojaId]?.name || data.poojaId || 'Unknown Pooja',
+        } as UISlot;
+      });
+      
+      // Sort slots by date and time
+      sData.sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.startTime.localeCompare(b.startTime);
+      });
+      
+      setSlots(sData);
+    } catch (error) {
+      console.error("Failed to fetch schedule data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'doshanivarana_slots') {
-        setSlots(db.getSlots());
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+    fetchScheduleData();
+  }, [templeId]);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const pastSlots = slots.filter(s => s.date < todayStr);
   const pastSlotsCount = pastSlots.length;
 
-  const handleToggleStatus = (id: string) => {
-    setSlots(prev => prev.map(s => {
-      if (s.id === id) {
-        const nextStatus = !s.status;
-        const updated: PoojaSlot = { 
-          ...s, 
-          status: nextStatus,
-          // If reactivated, set availability
-          availability: s.bookings >= s.maxBookings ? 'Full' : 'Open'
-        };
-        db.updateSlot(updated);
-        return updated;
-      }
-      return s;
-    }));
+  const handleToggleStatus = async (slot: UISlot) => {
+    try {
+      const nextStatus = slot.status === SlotStatus.AVAILABLE ? SlotStatus.CANCELLED : SlotStatus.AVAILABLE;
+      
+      await updateDoc(doc(db, "slots", slot.id), {
+        status: nextStatus,
+        updatedAt: serverTimestamp()
+      });
+      
+      setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, status: nextStatus } : s));
+    } catch (err) {
+      console.error("Failed to toggle status", err);
+    }
   };
 
-
-  const handleOpenDeactivateModal = (slot: PoojaSlot) => {
+  const handleOpenDeactivateModal = (slot: UISlot) => {
     setDeactivatingSlot(slot);
   };
 
-  const confirmDeactivate = () => {
+  const confirmDeactivate = async () => {
     if (deactivatingSlot) {
-      setSlots(prev => prev.map(s => {
-        if (s.id === deactivatingSlot.id) {
-          const updated = { ...s, status: false };
-          db.updateSlot(updated);
-          return updated;
-        }
-        return s;
-      }));
-      setDeactivatingSlot(null);
+      try {
+        await updateDoc(doc(db, "slots", deactivatingSlot.id), {
+          status: SlotStatus.CANCELLED,
+          updatedAt: serverTimestamp()
+        });
+        
+        setSlots(prev => prev.map(s => s.id === deactivatingSlot.id ? { ...s, status: SlotStatus.CANCELLED } : s));
+        setDeactivatingSlot(null);
+      } catch (err) {
+        console.error("Failed to deactivate slot", err);
+      }
     }
   };
 
   // Filter slots
   const filteredSlots = slots.filter(slot => {
-    const poojaMatch = selectedPooja === 'All Poojas' || slot.name === selectedPooja;
+    const isPast = slot.date < todayStr;
+    if (isPast) return false;
+
+    const poojaMatch = selectedPooja === 'All Poojas' || slot.poojaId === selectedPooja;
     const statusMatch = selectedStatus === 'All Status' || 
-      (selectedStatus === 'Active' && slot.status) || 
-      (selectedStatus === 'Inactive' && !slot.status);
+      (selectedStatus === 'Active' && slot.status === SlotStatus.AVAILABLE) || 
+      (selectedStatus === 'Inactive' && slot.status !== SlotStatus.AVAILABLE);
     
     let dateMatch = true;
     if (fromDate) {
@@ -80,14 +126,18 @@ export function Schedule() {
     return poojaMatch && statusMatch && dateMatch;
   });
 
-  const totalSlotsCount = filteredSlots.length + pastSlotsCount;
-  const activeSlotsCount = filteredSlots.filter(s => s.status).length;
-  const fullyBookedCount = filteredSlots.filter(s => s.bookings >= s.maxBookings).length;
+  const activeSlotsCount = filteredSlots.filter(s => s.status === SlotStatus.AVAILABLE).length;
+  const fullyBookedCount = filteredSlots.filter(s => s.availableSeats <= 0).length;
 
   const formatDateString = (dateStr: string) => {
+    if (!dateStr) return '';
     const d = new Date(dateStr);
     return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
   };
+
+  if (loading) {
+    return <div className="p-10 text-center text-on-surface-variant">Loading Schedule...</div>;
+  }
 
   return (
     <div className="max-w-[1440px] mx-auto">
@@ -116,11 +166,10 @@ export function Schedule() {
             value={selectedPooja}
             onChange={(e) => setSelectedPooja(e.target.value)}
           >
-            <option>All Poojas</option>
-            <option>Satyanarayana Pooja</option>
-            <option>Ganapathi Homam</option>
-            <option>Lakshmi Pooja</option>
-            <option>Navagraha Pooja</option>
+            <option value="All Poojas">All Poojas</option>
+            {Object.values(poojas).map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
           </select>
         </div>
         <div className="flex gap-4 flex-1 min-w-[300px]">
@@ -162,11 +211,9 @@ export function Schedule() {
         <div className="flex gap-3 h-[42px]">
           <button 
             className="border-2 border-primary text-primary font-sans text-button px-6 rounded-full hover:bg-primary/5 transition-colors font-bold cursor-pointer"
-            onClick={() => {
-              setSlots(db.getSlots());
-            }}
+            onClick={fetchScheduleData}
           >
-            Apply Filters
+            Refresh
           </button>
           <button 
             className="text-on-surface-variant font-sans text-button px-4 hover:text-on-surface transition-colors cursor-pointer font-semibold"
@@ -175,7 +222,6 @@ export function Schedule() {
               setSelectedStatus('All Status');
               setFromDate('');
               setToDate('');
-              setSlots(db.getSlots());
             }}
           >
             Reset
@@ -187,7 +233,7 @@ export function Schedule() {
       <div className="flex gap-4 mb-6">
         <div className="bg-surface-container px-4 py-2 rounded-full border border-outline-variant/50 text-on-surface-variant font-sans text-label-md flex items-center gap-2 font-semibold">
           <span className="w-2 h-2 rounded-full bg-on-surface-variant"></span> 
-          Total Slots: {totalSlotsCount}
+          Total Upcoming Slots: {filteredSlots.length}
         </div>
         <div className="bg-[#e8f5e9] px-4 py-2 rounded-full border border-[#c8e6c9] text-[#2e7d32] font-sans text-label-md flex items-center gap-2 font-semibold">
           <span className="w-2 h-2 rounded-full bg-[#4caf50]"></span> 
@@ -215,30 +261,35 @@ export function Schedule() {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/20 font-sans text-body-sm">
-              {filteredSlots.map(slot => {
-                const percent = (slot.bookings / slot.maxBookings) * 100;
+              {filteredSlots.length === 0 ? (
+                <tr><td colSpan={7} className="p-8 text-center text-on-surface-variant">No upcoming slots found matching criteria.</td></tr>
+              ) : filteredSlots.map(slot => {
+                const percent = ((slot.capacity - slot.availableSeats) / slot.capacity) * 100;
+                const isFull = slot.availableSeats <= 0;
+                const isActive = slot.status === SlotStatus.AVAILABLE;
+                
                 return (
                   <tr 
                     key={slot.id} 
                     className={`hover:bg-surface-container-lowest transition-colors group ${
-                      !slot.status ? 'bg-surface-container/30 opacity-65 grayscale' : slot.bookings >= slot.maxBookings ? 'bg-error-container/5' : 'bg-white'
+                      !isActive ? 'bg-surface-container/30 opacity-65 grayscale' : isFull ? 'bg-error-container/5' : 'bg-white'
                     }`}
                   >
                     <td className="p-4 font-semibold text-on-surface">
-                      {slot.name}
+                      {slot.poojaName}
                     </td>
                     <td className="p-4 text-on-surface-variant">{formatDateString(slot.date)}</td>
-                    <td className="p-4 text-on-surface-variant">{slot.time}</td>
+                    <td className="p-4 text-on-surface-variant">{slot.startTime}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        <span className={`font-semibold ${slot.bookings >= slot.maxBookings ? 'text-error' : 'text-on-surface'}`}>
-                          {slot.bookings}
+                        <span className={`font-semibold ${isFull ? 'text-error' : 'text-on-surface'}`}>
+                          {(slot.capacity - slot.availableSeats)}
                         </span>
-                        <span className="text-on-surface-variant">/ {slot.maxBookings}</span>
-                        <span className="text-xs text-on-surface-variant block mt-0.5">({slot.maxBookings - slot.bookings} remaining)</span>
+                        <span className="text-on-surface-variant">/ {slot.capacity}</span>
+                        <span className="text-xs text-on-surface-variant block mt-0.5">({slot.availableSeats} remaining)</span>
                         <div className="w-16 h-1.5 bg-surface-container rounded-full overflow-hidden">
                           <div 
-                            className={`h-full ${slot.bookings >= slot.maxBookings ? 'bg-error' : 'bg-[#4caf50]'}`}
+                            className={`h-full ${isFull ? 'bg-error' : 'bg-[#4caf50]'}`}
                             style={{ width: `${percent}%` }}
                           ></div>
                         </div>
@@ -246,28 +297,28 @@ export function Schedule() {
                     </td>
                     <td className="p-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                        !slot.status 
+                        !isActive 
                           ? 'bg-outline-variant/30 text-on-surface-variant'
-                          : slot.bookings >= slot.maxBookings 
+                          : isFull 
                           ? 'bg-error-container text-error' 
                           : 'bg-[#e8f5e9] text-[#2e7d32]'
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${
-                          !slot.status
+                          !isActive
                             ? 'bg-on-surface-variant'
-                            : slot.bookings >= slot.maxBookings 
+                            : isFull 
                             ? 'bg-error' 
                             : 'bg-[#4caf50]'
                         }`} />
-                        {!slot.status ? 'Deactivated' : slot.bookings >= slot.maxBookings ? 'Full' : 'Open'}
+                        {!isActive ? 'Deactivated' : isFull ? 'Full' : 'Open'}
                       </span>
                     </td>
                     <td className="p-4">
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input 
                           type="checkbox"
-                          checked={slot.status}
-                          onChange={() => handleToggleStatus(slot.id)}
+                          checked={isActive}
+                          onChange={() => handleToggleStatus(slot)}
                           className="sr-only peer"
                         />
                         <div className="w-11 h-6 bg-surface-container rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-outline-variant after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#4caf50]"></div>
@@ -281,7 +332,7 @@ export function Schedule() {
                         >
                           Edit
                         </Link>
-                        {slot.status ? (
+                        {isActive ? (
                           <button 
                             onClick={() => handleOpenDeactivateModal(slot)}
                             className="border border-error text-error px-3 py-1.5 rounded-full text-xs font-bold hover:bg-error/5 transition-colors cursor-pointer"
@@ -290,7 +341,7 @@ export function Schedule() {
                           </button>
                         ) : (
                           <button 
-                            onClick={() => handleToggleStatus(slot.id)}
+                            onClick={() => handleToggleStatus(slot)}
                             className="border border-[#4caf50] text-[#2e7d32] px-3 py-1.5 rounded-full text-xs font-bold hover:bg-[#4caf50]/10 transition-colors cursor-pointer"
                           >
                             Reactivate
@@ -303,20 +354,6 @@ export function Schedule() {
               })}
             </tbody>
           </table>
-        </div>
-        
-        {/* Pagination */}
-        <div className="border-t border-outline-variant/30 p-4 flex items-center justify-between bg-surface-container-low font-sans">
-          <p className="text-on-surface-variant text-sm">Showing <span className="font-semibold text-on-surface">1–{filteredSlots.length}</span> of <span className="font-semibold text-on-surface">{filteredSlots.length}</span> slots</p>
-          <div className="flex items-center gap-2">
-            <button className="text-on-surface-variant hover:text-primary px-3 py-1 rounded transition-colors disabled:opacity-50" disabled={true}>Previous</button>
-            <div className="flex items-center gap-1">
-              <button className="w-8 h-8 flex items-center justify-center rounded-full bg-primary text-on-primary font-semibold text-sm">1</button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container font-semibold text-sm transition-colors">2</button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container font-semibold text-sm transition-colors">3</button>
-            </div>
-            <button className="text-primary hover:text-primary/80 font-semibold px-3 py-1 rounded transition-colors">Next</button>
-          </div>
         </div>
       </div>
 
@@ -354,10 +391,10 @@ export function Schedule() {
                   <tbody className="divide-y divide-outline-variant/20 font-sans text-body-sm">
                     {pastSlots.map(slot => (
                       <tr key={slot.id} className="bg-[#fcfcfc] opacity-75">
-                        <td className="p-4 font-semibold text-on-surface">{slot.name}</td>
+                        <td className="p-4 font-semibold text-on-surface">{slot.poojaName}</td>
                         <td className="p-4 text-on-surface-variant">{formatDateString(slot.date)}</td>
-                        <td className="p-4 text-on-surface-variant">{slot.time}</td>
-                        <td className="p-4 text-on-surface-variant">{slot.bookings} / {slot.maxBookings}</td>
+                        <td className="p-4 text-on-surface-variant">{slot.startTime}</td>
+                        <td className="p-4 text-on-surface-variant">{(slot.capacity - slot.availableSeats)} / {slot.capacity}</td>
                         <td className="p-4 text-on-surface-variant">Archived</td>
                       </tr>
                     ))}
@@ -376,7 +413,7 @@ export function Schedule() {
             <div className="absolute top-0 left-0 w-full h-1 bg-error"></div>
             <h3 className="font-display text-headline-md text-on-surface mb-2 mt-2 font-bold">Deactivate Slot?</h3>
             <p className="font-sans text-on-surface-variant mb-6 text-sm leading-relaxed">
-              Are you sure you want to deactivate <span className="font-semibold text-on-surface">{deactivatingSlot.name}</span> on <span className="font-semibold text-on-surface">{formatDateString(deactivatingSlot.date)}</span> at <span className="font-semibold text-on-surface">{deactivatingSlot.time}</span>? No new bookings will be accepted.
+              Are you sure you want to deactivate <span className="font-semibold text-on-surface">{deactivatingSlot.poojaName}</span> on <span className="font-semibold text-on-surface">{formatDateString(deactivatingSlot.date)}</span> at <span className="font-semibold text-on-surface">{deactivatingSlot.startTime}</span>? No new bookings will be accepted.
             </p>
             <div className="flex justify-end gap-3 font-sans">
               <button 

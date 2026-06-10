@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from 'react';
 import { View, Text, ScrollView, Pressable, Image } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';

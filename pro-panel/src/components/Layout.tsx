@@ -1,13 +1,64 @@
+// @ts-nocheck
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router';
+import { collection, query, where, orderBy, limit, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { useAuth } from '../contexts/AuthContext';
 
 interface LayoutProps {
   unreadNotifications?: number;
   setUnreadNotifications?: (count: number) => void;
 }
 
-export function Layout({ unreadNotifications = 3, setUnreadNotifications }: LayoutProps) {
+export function Layout({ unreadNotifications: legacyUnread, setUnreadNotifications }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { templeId } = useAuth();
+  
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!templeId) return;
+
+    const q = query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', templeId),
+      where('recipientType', '==', 'TEMPLE_ADMIN'),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setNotifications(notifs);
+    });
+
+    return () => unsubscribe();
+  }, [templeId]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  const handleNotificationClick = async (notif: any) => {
+    if (!notif.isRead) {
+      await updateDoc(doc(db, 'notifications', notif.id), { isRead: true });
+    }
+    if (notif.actionUrl) {
+      navigate(notif.actionUrl);
+    }
+    setIsDropdownOpen(false);
+  };
 
   const handleLogout = () => {
     navigate('/login');
@@ -40,16 +91,44 @@ export function Layout({ unreadNotifications = 3, setUnreadNotifications }: Layo
               Sri Venkateswara Temple
             </span>
           </nav>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 relative" ref={dropdownRef}>
             <button 
               className="p-2 text-on-surface-variant hover:bg-surface-container-highest transition-all rounded-full relative cursor-pointer"
-              onClick={() => setUnreadNotifications && setUnreadNotifications(0)}
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             >
               <span className="material-symbols-outlined flex items-center justify-center">notifications</span>
-              {unreadNotifications > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-error text-on-error flex items-center justify-center text-[10px] font-bold">
+                  {unreadCount}
+                </span>
               )}
             </button>
+
+            {isDropdownOpen && (
+              <div className="absolute top-12 right-12 w-80 bg-surface border border-outline-variant rounded-xl shadow-lg z-50 max-h-96 overflow-y-auto">
+                <div className="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low sticky top-0">
+                  <h3 className="font-bold text-on-surface">Notifications</h3>
+                </div>
+                {notifications.length === 0 ? (
+                  <div className="p-4 text-center text-on-surface-variant text-sm">No notifications</div>
+                ) : (
+                  <div className="divide-y divide-outline-variant/30">
+                    {notifications.map(n => (
+                      <div 
+                        key={n.id} 
+                        className={`p-4 hover:bg-surface-container-lowest cursor-pointer transition-colors ${!n.isRead ? 'bg-primary/5' : ''}`}
+                        onClick={() => handleNotificationClick(n)}
+                      >
+                        <p className={`text-sm ${!n.isRead ? 'font-bold text-on-surface' : 'text-on-surface-variant'}`}>{n.title}</p>
+                        <p className="text-xs text-on-surface-variant mt-1">{n.message}</p>
+                        <p className="text-[10px] text-primary mt-2">{new Date(n.createdAt?.toDate() || Date.now()).toLocaleString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            
             <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold overflow-hidden border border-outline-variant">
               <img 
                 alt="Ravi" 

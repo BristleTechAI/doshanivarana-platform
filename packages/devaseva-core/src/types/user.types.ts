@@ -12,3 +12,14 @@ export interface UserProfile extends SoftDelete {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface UserSession extends SoftDelete {
+  id: string;
+  userId: string;
+  deviceId: string;
+  deviceName?: string;
+  ipAddress?: string;
+  lastSeen: Date;
+  isActive: boolean;
+  createdAt: Date;
+}

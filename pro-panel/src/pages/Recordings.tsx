@@ -1,53 +1,162 @@
-import { useState } from 'react';
-import { db, type Recording } from '../lib/db';
+import { useState, useEffect } from 'react';
+import { collection, query, onSnapshot, doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { v4 as uuidv4 } from 'uuid';
 
 export function Recordings() {
-  const [recordings, setRecordings] = useState<Recording[]>(() => db.getRecordings());
-
+  const [recordings, setRecordings] = useState<any[]>([]);
   const [notification, setNotification] = useState<string | null>(null);
   
   // Modal states
-  const [previewingRec, setPreviewingRec] = useState<Recording | null>(null);
-  const [uploadingRec, setUploadingRec] = useState<Recording | null>(null);
+  const [previewingRec, setPreviewingRec] = useState<any | null>(null);
+  const [uploadingRec, setUploadingRec] = useState<any | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Video play state simulation
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const handlePublish = (rec: Recording) => {
-    const updated: Recording = { ...rec, status: 'Published' };
-    db.updateRecording(updated);
+  useEffect(() => {
+    // For demo purposes, we will fetch all recordings and try to augment with booking info.
+    // In a real app, you would query by templeId.
+    const q = query(collection(db, 'recordings'));
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const promises = snapshot.docs.map(async (d) => {
+        const data = d.data();
+        let poojaName = "Unknown Pooja";
+        let slotDate = "Unknown Date";
 
-    // Sync status to devotees' bookings
-    const bookings = db.getBookings();
-    const updatedBookings = bookings.map(b => {
-      const matchesPooja = b.poojaName.toLowerCase() === rec.poojaName.toLowerCase();
-      // Ensure the slotDate matches the booking's dateTime format (e.g. "09 Jun 2026")
-      const matchesDate = b.dateTime.toLowerCase().includes(rec.slotDate.toLowerCase());
-      if (matchesPooja && matchesDate) {
+        if (data.bookingId) {
+          const bDoc = await getDoc(doc(db, 'bookings', data.bookingId));
+          if (bDoc.exists()) {
+            const bData = bDoc.data();
+            poojaName = bData.poojaName || poojaName;
+            slotDate = bData.dateTime || slotDate;
+          }
+        }
+
         return {
-          ...b,
-          recordingStatus: 'Available' as const,
-          streamStatus: 'Ended' as const
+          id: d.id,
+          ...data,
+          poojaName,
+          slotDate,
+          timestamp: data.createdAt ? data.createdAt.toMillis() : 0
         };
-      }
-      return b;
+      });
+      const resolved = await Promise.all(promises);
+      resolved.sort((a, b) => b.timestamp - a.timestamp);
+      setRecordings(resolved);
+      setLoading(false);
     });
-    db.saveBookings(updatedBookings);
 
-    // Dispatch custom event to notify other windows if running in the same browser
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+    return () => unsubscribe();
+  }, []);
+
+  const generateSystemEvent = async (type: string, payload: any) => {
+    try {
+      const eventId = uuidv4();
+      await setDoc(doc(db, 'systemEvents', eventId), {
+        eventId,
+        eventType: type,
+        payload,
+        status: 'PENDING',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error generating event:', error);
     }
-
-    setRecordings(prev => prev.map(r => r.id === rec.id ? updated : r));
-    setNotification(`Recording published! Download links sent to ${rec.bookingsCount} devotees for ${rec.poojaName} — ${rec.slotDate}.`);
-    setPreviewingRec(null);
-    setIsPlaying(false);
   };
 
-  const handleStartUpload = (rec: Recording) => {
+  const generateAuditLog = async (action: string, entityId: string, details: string) => {
+    try {
+      const logId = uuidv4();
+      await setDoc(doc(db, 'auditLogs', logId), {
+        logId,
+        action,
+        entityType: 'recording',
+        entityId,
+        userId: 'PRO_USER',
+        details,
+        timestamp: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error generating audit log:', error);
+    }
+  };
+
+  const handlePublish = async (rec: any) => {
+    try {
+      const recRef = doc(db, 'recordings', rec.id);
+      await updateDoc(recRef, {
+        status: 'PUBLISHED',
+        updatedAt: serverTimestamp()
+      });
+
+      if (rec.bookingId) {
+        const bookingRef = doc(db, 'bookings', rec.bookingId);
+        await updateDoc(bookingRef, {
+          recordingStatus: 'Available',
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      await generateSystemEvent('recording.published', {
+        recordingId: rec.id,
+        bookingId: rec.bookingId,
+        templeId: rec.templeId,
+        userId: rec.userId || 'USER',
+        status: 'PUBLISHED'
+      });
+
+      await generateAuditLog('PUBLISH_RECORDING', rec.id, `Published recording for booking ${rec.bookingId}`);
+
+      setNotification(`Recording published! Devotees for ${rec.poojaName} have been notified.`);
+      setPreviewingRec(null);
+      setIsPlaying(false);
+      setTimeout(() => setNotification(null), 4000);
+    } catch (error) {
+      console.error('Error publishing recording:', error);
+    }
+  };
+
+  const handleUnpublish = async (rec: any) => {
+    try {
+      const recRef = doc(db, 'recordings', rec.id);
+      await updateDoc(recRef, {
+        status: 'READY',
+        updatedAt: serverTimestamp()
+      });
+
+      if (rec.bookingId) {
+        const bookingRef = doc(db, 'bookings', rec.bookingId);
+        await updateDoc(bookingRef, {
+          recordingStatus: 'Unavailable',
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      await generateSystemEvent('recording.unpublished', {
+        recordingId: rec.id,
+        bookingId: rec.bookingId,
+        templeId: rec.templeId,
+        userId: rec.userId || 'USER',
+        status: 'READY'
+      });
+
+      await generateAuditLog('UNPUBLISH_RECORDING', rec.id, `Unpublished recording for booking ${rec.bookingId}`);
+
+      setNotification(`Recording unpublished for ${rec.poojaName}.`);
+      setPreviewingRec(null);
+      setIsPlaying(false);
+      setTimeout(() => setNotification(null), 4000);
+    } catch (error) {
+      console.error('Error unpublishing recording:', error);
+    }
+  };
+
+  const handleStartUpload = (rec: any) => {
     setUploadingRec(rec);
     setIsUploading(true);
     setUploadProgress(0);
@@ -57,14 +166,33 @@ export function Recordings() {
       setUploadProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval);
-          setTimeout(() => {
-            const updated: Recording = { ...rec, status: 'Ready to Publish', duration: '1h 02m', autoSaved: 'No' };
-            db.updateRecording(updated);
-            setRecordings(p => p.map(r => r.id === rec.id ? updated : r));
-            setIsUploading(false);
-            setUploadingRec(null);
-            setNotification(`Recording for ${rec.poojaName} uploaded and is ready to publish.`);
-            setTimeout(() => setNotification(null), 4000);
+          setTimeout(async () => {
+            try {
+              const recRef = doc(db, 'recordings', rec.id);
+              await updateDoc(recRef, {
+                status: 'READY',
+                duration: '1h 02m',
+                videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+                updatedAt: serverTimestamp()
+              });
+
+              await generateSystemEvent('recording.uploaded', {
+                recordingId: rec.id,
+                bookingId: rec.bookingId,
+                templeId: rec.templeId,
+                userId: rec.userId || 'USER',
+                status: 'READY'
+              });
+
+              await generateAuditLog('UPLOAD_RECORDING', rec.id, `Uploaded recording for booking ${rec.bookingId}`);
+
+              setIsUploading(false);
+              setUploadingRec(null);
+              setNotification(`Recording for ${rec.poojaName} uploaded and is ready to publish.`);
+              setTimeout(() => setNotification(null), 4000);
+            } catch (error) {
+              console.error('Error uploading recording:', error);
+            }
           }, 500);
           return 100;
         }
@@ -74,10 +202,10 @@ export function Recordings() {
   };
 
   // Dynamic status counters
-  const processingCount = recordings.filter(r => r.status === 'Processing').length;
-  const readyCount = recordings.filter(r => r.status === 'Ready to Publish').length;
-  const publishedCount = recordings.filter(r => r.status === 'Published').length;
-  const uploadRequiredCount = recordings.filter(r => r.status === 'Upload Required').length;
+  const processingCount = recordings.filter(r => r.status === 'PROCESSING').length;
+  const readyCount = recordings.filter(r => r.status === 'READY').length;
+  const publishedCount = recordings.filter(r => r.status === 'PUBLISHED').length;
+  const archivedCount = recordings.filter(r => r.status === 'ARCHIVED').length;
 
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
@@ -128,116 +256,117 @@ export function Recordings() {
           </div>
         </div>
         <div className="bg-surface-container-lowest border border-[#F0E6D2] p-4 rounded-xl shadow-sm flex flex-col gap-1">
-          <span className="text-label-md text-on-surface-variant uppercase tracking-wider text-[10px]">Upload Required</span>
+          <span className="text-label-md text-on-surface-variant uppercase tracking-wider text-[10px]">Archived</span>
           <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-headline-md text-red-600">{uploadRequiredCount}</span>
+            <span className="text-headline-md text-gray-600">{archivedCount}</span>
           </div>
         </div>
       </div>
 
-      {/* Recordings Table */}
-      <div className="bg-surface-container-lowest border border-[#F0E6D2] rounded-xl shadow-sm overflow-hidden flex flex-col">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-surface-container-low border-b border-outline-variant/30 text-on-surface-variant uppercase text-label-md font-bold tracking-wider">
-              <tr>
-                <th className="px-6 py-4">Pooja Name</th>
-                <th className="px-6 py-4">Slot Date</th>
-                <th className="px-6 py-4">Duration</th>
-                <th className="px-6 py-4">Auto-Saved</th>
-                <th className="px-6 py-4">Recording Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/20 font-medium text-body-sm text-on-surface">
-              {recordings.map(rec => {
-                const isProcessing = rec.status === 'Processing';
-                const isReady = rec.status === 'Ready to Publish';
-                const isUpload = rec.status === 'Upload Required';
-                const isPublished = rec.status === 'Published';
-                
-                let borderLeft = 'border-l-4 border-transparent';
-                if (isProcessing) borderLeft = 'border-l-4 border-l-yellow-500';
-                if (isReady) borderLeft = 'border-l-4 border-l-blue-600';
-                if (isUpload) borderLeft = 'border-l-4 border-l-error';
-                
-                return (
-                  <tr key={rec.id} className={`hover:bg-surface-container-low/40 transition-colors ${borderLeft} ${isReady ? 'bg-blue-50/20' : ''}`}>
-                    <td className="px-6 py-4 font-bold">{rec.poojaName}</td>
-                    <td className="px-6 py-4 text-on-surface-variant">{rec.slotDate}</td>
-                    <td className="px-6 py-4 text-on-surface-variant">{rec.duration}</td>
-                    <td className="px-6 py-4 text-on-surface-variant">{rec.autoSaved}</td>
-                    <td className="px-6 py-4">
-                      {isProcessing && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-yellow-50 text-yellow-800 border border-yellow-200">
-                          <span className="material-symbols-outlined text-[13px] animate-spin">sync</span> Processing
-                        </span>
-                      )}
-                      {isReady && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
-                          Ready to Publish
-                        </span>
-                      )}
-                      {isUpload && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-800 border border-red-200">
-                          Upload Required
-                        </span>
-                      )}
-                      {isPublished && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-green-50 text-green-800 border border-green-200">
-                          Published
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex gap-2 justify-end font-bold">
+      {loading ? (
+        <div className="text-center p-8 text-gray-500">Loading recordings...</div>
+      ) : recordings.length === 0 ? (
+        <div className="bg-surface-container-lowest border border-[#F0E6D2] rounded-xl shadow-sm p-12 text-center text-on-surface-variant">
+          <span className="material-symbols-outlined text-[48px] mb-4 opacity-50">videocam_off</span>
+          <p className="text-body-lg font-medium">No recordings found.</p>
+        </div>
+      ) : (
+        <div className="bg-surface-container-lowest border border-[#F0E6D2] rounded-xl shadow-sm overflow-hidden flex flex-col">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-surface-container-low border-b border-outline-variant/30 text-on-surface-variant uppercase text-label-md font-bold tracking-wider">
+                <tr>
+                  <th className="px-6 py-4">Pooja Name</th>
+                  <th className="px-6 py-4">Slot Date</th>
+                  <th className="px-6 py-4">Duration</th>
+                  <th className="px-6 py-4">Recording Status</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/20 font-medium text-body-sm text-on-surface">
+                {recordings.map(rec => {
+                  const isProcessing = rec.status === 'PROCESSING';
+                  const isReady = rec.status === 'READY';
+                  const isPublished = rec.status === 'PUBLISHED';
+                  const isArchived = rec.status === 'ARCHIVED';
+                  
+                  let borderLeft = 'border-l-4 border-transparent';
+                  if (isProcessing) borderLeft = 'border-l-4 border-l-yellow-500';
+                  if (isReady) borderLeft = 'border-l-4 border-l-blue-600';
+                  if (isPublished) borderLeft = 'border-l-4 border-l-green-500';
+                  if (isArchived) borderLeft = 'border-l-4 border-l-gray-400';
+                  
+                  return (
+                    <tr key={rec.id} className={`hover:bg-surface-container-low/40 transition-colors ${borderLeft} ${isReady ? 'bg-blue-50/20' : ''}`}>
+                      <td className="px-6 py-4 font-bold">{rec.poojaName}</td>
+                      <td className="px-6 py-4 text-on-surface-variant">{rec.slotDate}</td>
+                      <td className="px-6 py-4 text-on-surface-variant">{rec.duration || '—'}</td>
+                      <td className="px-6 py-4">
                         {isProcessing && (
-                          <>
-                            <button disabled className="px-4 py-1.5 rounded-full text-xs border border-outline-variant text-on-surface-variant opacity-50 cursor-not-allowed">Preview</button>
-                            <button disabled className="px-4 py-1.5 rounded-full text-xs bg-outline-variant/30 text-on-surface-variant/40 cursor-not-allowed">Publish</button>
-                          </>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-yellow-50 text-yellow-800 border border-yellow-200">
+                            <span className="material-symbols-outlined text-[13px] animate-spin">sync</span> Processing
+                          </span>
                         )}
                         {isReady && (
-                          <>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                            Ready to Publish
+                          </span>
+                        )}
+                        {isPublished && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-green-50 text-green-800 border border-green-200">
+                            Published
+                          </span>
+                        )}
+                        {isArchived && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-800 border border-gray-300">
+                            Archived
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex gap-2 justify-end font-bold">
+                          {isProcessing && (
+                            <button 
+                              onClick={() => handleStartUpload(rec)}
+                              className="px-4 py-1.5 rounded-full text-xs border-2 border-primary text-primary hover:bg-primary/10 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <span className="material-symbols-outlined text-[15px]">upload</span> Upload
+                            </button>
+                          )}
+                          {(isReady || isPublished) && (
                             <button 
                               onClick={() => setPreviewingRec(rec)}
                               className="px-4 py-1.5 rounded-full text-xs border-2 border-blue-600 text-blue-700 hover:bg-blue-50 transition-colors flex items-center gap-1 cursor-pointer"
                             >
                               <span className="material-symbols-outlined text-[15px]">play_arrow</span> Preview
                             </button>
+                          )}
+                          {isReady && (
                             <button 
                               onClick={() => handlePublish(rec)}
                               className="px-4 py-1.5 rounded-full text-xs bg-primary text-on-primary hover:bg-[#b04b00] transition-colors flex items-center gap-1 cursor-pointer shadow-sm"
                             >
                               <span className="material-symbols-outlined text-[15px]">check</span> Publish
                             </button>
-                          </>
-                        )}
-                        {isUpload && (
-                          <button 
-                            onClick={() => handleStartUpload(rec)}
-                            className="px-4 py-1.5 rounded-full text-xs border-2 border-error text-error hover:bg-red-50 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <span className="material-symbols-outlined text-[15px]">upload</span> Upload Recording
-                          </button>
-                        )}
-                        {isPublished && (
-                          <button 
-                            onClick={() => setPreviewingRec(rec)}
-                            className="px-4 py-1.5 rounded-full text-xs border-2 border-outline-variant text-on-surface hover:bg-surface-container transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <span className="material-symbols-outlined text-[15px]">play_arrow</span> Preview
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          )}
+                          {isPublished && (
+                            <button 
+                              onClick={() => handleUnpublish(rec)}
+                              className="px-4 py-1.5 rounded-full text-xs border-2 border-outline-variant text-on-surface hover:bg-surface-container transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <span className="material-symbols-outlined text-[15px]">close</span> Unpublish
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Video Preview Modal */}
       {previewingRec && (
@@ -249,7 +378,7 @@ export function Recordings() {
                   {previewingRec.poojaName} — {previewingRec.slotDate}
                 </h3>
                 <p className="text-body-sm text-on-surface-variant font-medium">
-                  Duration {previewingRec.duration} | Quality HD 1080p
+                  Duration {previewingRec.duration || '—'} | Quality HD 1080p
                 </p>
               </div>
               <button 
@@ -265,7 +394,7 @@ export function Recordings() {
               {isPlaying ? (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900">
                   <span className="material-symbols-outlined text-[64px] animate-spin text-primary">sync</span>
-                  <p className="text-sm font-semibold tracking-wide text-gray-300 mt-2">Simulating live playback stream...</p>
+                  <p className="text-sm font-semibold tracking-wide text-gray-300 mt-2">Simulating playback stream...</p>
                 </div>
               ) : (
                 <button 
@@ -286,7 +415,7 @@ export function Recordings() {
                 <div className="h-1 bg-white/30 flex-grow rounded-full overflow-hidden">
                   <div className={`h-full bg-primary transition-all duration-1000 ${isPlaying ? 'w-2/3' : 'w-1/3'}`}></div>
                 </div>
-                <span>{isPlaying ? '28:14' : '15:23'} / {previewingRec.duration === '—' ? '45m' : previewingRec.duration}</span>
+                <span>{isPlaying ? '28:14' : '15:23'} / {previewingRec.duration || '45m'}</span>
                 <span className="material-symbols-outlined">volume_up</span>
                 <span className="material-symbols-outlined">fullscreen</span>
               </div>
@@ -296,7 +425,9 @@ export function Recordings() {
               <div className="flex items-start gap-2 text-[#a04100] bg-primary-container/10 p-3 rounded-lg border border-primary/20">
                 <span className="material-symbols-outlined">info</span>
                 <p className="text-body-sm font-bold">
-                  Note: Publishing this recording notifies all {previewingRec.bookingsCount} booked devotees immediately.
+                  {previewingRec.status === 'READY' 
+                    ? "Publishing this recording will notify the devotee immediately."
+                    : "This recording is currently published to devotees."}
                 </p>
               </div>
               <div className="flex justify-end gap-3 pt-2 border-t border-outline-variant/30">
@@ -304,15 +435,24 @@ export function Recordings() {
                   onClick={() => { setPreviewingRec(null); setIsPlaying(false); }}
                   className="px-6 py-2 border border-outline-variant text-on-surface-variant hover:bg-surface-container transition-colors rounded-full cursor-pointer"
                 >
-                  Cancel
+                  Close
                 </button>
-                {previewingRec.status === 'Ready to Publish' && (
+                {previewingRec.status === 'READY' && (
                   <button 
                     onClick={() => handlePublish(previewingRec)}
                     className="px-6 py-2 bg-primary text-on-primary hover:bg-[#b04b00] rounded-full flex items-center gap-2 cursor-pointer shadow-sm"
                   >
                     <span className="material-symbols-outlined text-[20px]">check</span> 
-                    Confirm &amp; Publish
+                    Publish
+                  </button>
+                )}
+                {previewingRec.status === 'PUBLISHED' && (
+                  <button 
+                    onClick={() => handleUnpublish(previewingRec)}
+                    className="px-6 py-2 border border-outline-variant text-on-surface hover:bg-surface-container rounded-full flex items-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">close</span> 
+                    Unpublish
                   </button>
                 )}
               </div>

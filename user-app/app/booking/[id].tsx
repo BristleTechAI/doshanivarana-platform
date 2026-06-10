@@ -1,16 +1,16 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Calendar, Clock, User, Star, ChevronRight, X, MapPin } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
-import { poojaCatalog, getTempleKey, getTranslatedDeity } from '../../src/old_app/constants/catalog';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { firestore } from '../../src/lib/firebase';
+import { createBookingTransaction } from '../../src/lib/bookingService';
+import { safeStorage } from '../../src/old_app/lib/storage';
 
 interface BookingFormData {
-  selectedDate: string;
-  selectedTime: string;
+  selectedSlotId: string;
   devoteeNames: string;
   gothram: string;
   nakshatra: string;
@@ -94,89 +94,142 @@ export default function BookingFlow() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { t, language } = useLanguage();
+  
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<BookingFormData>({
-    selectedDate: '',
-    selectedTime: '',
+    selectedSlotId: '',
     devoteeNames: '',
     gothram: 'Bharadwaja',
     nakshatra: 'Shravana',
     specialRequests: '',
   });
+  
   const [showNakshatraModal, setShowNakshatraModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [poojaData, setPoojaData] = useState<any>(null);
+  const [templeData, setTempleData] = useState<any>(null);
+  const [slots, setSlots] = useState<any[]>([]);
+  const [processing, setProcessing] = useState(false);
+  
+  const poojaId = id?.toString() || '';
 
-  // Map search param id to translated pooja info
-  const poojaId = id || '1';
-  const pooja = poojaCatalog.find(p => p.id.toString() === poojaId.toString()) || poojaCatalog[0];
-  const templeKey = getTempleKey(pooja.temple);
-  const poojaData = {
-    title: t('poojaDb.' + pooja.id + '.title'),
-    temple: t('templeDb.' + templeKey + '.name'),
-    deity: getTranslatedDeity(pooja.deity, t),
-    price: pooja.price,
-  };
-
-  const availableDates = [
-    { date: '2026-03-20', label: t('common.tomorrow'), day: t('home.thu') },
-    { date: '2026-03-21', label: 'Mar 21', day: t('home.fri') },
-    { date: '2026-03-22', label: 'Mar 22', day: t('home.sat') },
-    { date: '2026-03-23', label: 'Mar 23', day: t('home.sun') },
-    { date: '2026-03-24', label: 'Mar 24', day: t('home.mon') },
-  ];
-
-  const availableTimes = [
-    '6:00 AM', '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
-    '11:00 AM', '4:00 PM', '5:00 PM', '6:00 PM'
-  ];
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const poojaDoc = await firestore().collection('poojas').doc(poojaId).get();
+        if (!poojaDoc.exists) return;
+        
+        const pData = poojaDoc.data();
+        setPoojaData({ id: poojaDoc.id, ...pData });
+        
+        const templeDoc = await firestore().collection('temples').doc(pData?.templeId).get();
+        if (templeDoc.exists) {
+          setTempleData({ id: templeDoc.id, ...templeDoc.data() });
+        }
+        
+        // Load active slots
+        const slotsSnap = await firestore()
+          .collection('slots')
+          .where('poojaId', '==', poojaId)
+          .where('status', '==', 'AVAILABLE')
+          .where('isDeleted', '==', false)
+          .get();
+          
+        const loadedSlots = slotsSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter((s: any) => s.availableSeats > 0);
+          
+        // Sort slots by date and time
+        loadedSlots.sort((a, b) => {
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          return a.startTime.localeCompare(b.startTime);
+        });
+        
+        setSlots(loadedSlots);
+      } catch (err) {
+        console.error("Failed to load booking data", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (poojaId) loadData();
+  }, [poojaId]);
 
   const handleContinue = async () => {
     if (step < 3) {
       setStep(step + 1);
-    } else {
-      const bookingId = `DS${Date.now()}`;
+      return;
+    } 
+    
+    // Process Booking Transaction
+    setProcessing(true);
+    try {
+      const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
+      const userId = userSession ? JSON.parse(userSession).id : 'anonymous_user';
       
-      try {
-        const newBooking = {
-          id: bookingId,
-          poojaId: parseInt(pooja.id.toString()),
-          templeKey: templeKey,
-          dateKey: formData.selectedDate === '2026-03-20' ? 'common.tomorrow' : '',
-          dateVal: formData.selectedDate,
-          timeVal: formData.selectedTime,
-          status: 'upcoming',
-          currentStage: 1, // Seva Offered
-          imageUrl: pooja.imageUrl,
-          devoteeNames: formData.devoteeNames,
-          gothram: formData.gothram, // Store canonical
-          nakshatra: formData.nakshatra, // Store canonical
-          specialRequests: formData.specialRequests,
-          totalAmount: parseInt(pooja.price.replace(/[^0-9]/g, '')) || 1100,
-        };
+      const selectedSlot = slots.find(s => s.id === formData.selectedSlotId);
+      if (!selectedSlot) throw new Error("Slot not found");
 
-        const existingBookingsStr = await AsyncStorage.getItem('doshanivarana_bookings');
-        const existingBookings = existingBookingsStr ? JSON.parse(existingBookingsStr) : [];
-        existingBookings.unshift(newBooking);
-        await AsyncStorage.setItem('doshanivarana_bookings', JSON.stringify(existingBookings));
-      } catch (err) {
-        console.error('Failed to save booking:', err);
-      }
+      const bookingData = {
+        poojaName: poojaData.name,
+        templeName: templeData ? templeData.name : 'Unknown Temple',
+        devoteeDetails: {
+          name: formData.devoteeNames,
+          gotra: formData.gothram,
+          nakshatra: formData.nakshatra,
+        },
+        hasPrasadDelivery: poojaData.prasad ?? true,
+        amountPaid: poojaData.price || 1200,
+        specialRequests: formData.specialRequests,
+        imageUrl: poojaData.imageUrl || 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080'
+      };
 
-      router.push(`/booking/confirmation?bookingId=${bookingId}&poojaId=${pooja.id}` as any);
+      const newBookingId = await createBookingTransaction(
+        formData.selectedSlotId,
+        userId,
+        bookingData
+      );
+
+      router.push(`/booking/confirmation?bookingId=${newBookingId}&poojaId=${poojaId}` as any);
+    } catch (err: any) {
+      console.error('Failed to save booking:', err);
+      Alert.alert('Booking Failed', err.message || 'An error occurred during booking.');
+    } finally {
+      setProcessing(false);
     }
   };
 
   const canContinue = () => {
     switch (step) {
       case 1:
-        return formData.selectedDate !== '' && formData.selectedTime !== '';
+        return formData.selectedSlotId !== '';
       case 2:
         return formData.devoteeNames.trim() !== '' && formData.gothram.trim() !== '';
       case 3:
-        return true;
+        return !processing;
       default:
         return false;
     }
   };
+
+  if (loading) {
+    return (
+      <View className="flex-1 bg-background items-center justify-center">
+        <ActivityIndicator size="large" color="#F97316" />
+      </View>
+    );
+  }
+
+  if (!poojaData) {
+    return (
+      <View className="flex-1 bg-background items-center justify-center">
+        <Text className="text-foreground">Pooja not found</Text>
+      </View>
+    );
+  }
+
+  const selectedSlot = slots.find(s => s.id === formData.selectedSlotId);
 
   return (
     <View className="flex-1 bg-background">
@@ -221,13 +274,13 @@ export default function BookingFlow() {
           </View>
           <View className="flex-1">
             <Text className="font-semibold text-foreground mb-1" style={{ fontFamily: 'System' }}>
-              {poojaData.title}
+              {poojaData.name}
             </Text>
             <Text className="text-sm text-muted-foreground mb-2" style={{ fontFamily: 'System' }}>
-              {poojaData.temple} • {poojaData.deity}
+              {templeData?.name || 'Unknown Temple'}
             </Text>
             <Text className="text-primary font-semibold" style={{ fontFamily: 'System' }}>
-              {poojaData.price}
+              ₹{poojaData.price}
             </Text>
           </View>
         </View>
@@ -235,68 +288,57 @@ export default function BookingFlow() {
         {/* Step Content */}
         {step === 1 && (
           <View className="space-y-6">
-            {/* Date Selection */}
             <View>
               <Text className="text-sm font-semibold text-foreground mb-3" style={{ fontFamily: 'System' }}>
-                {t('booking.selectDate')}
+                Select Available Slot
               </Text>
-              <View className="flex-row flex-wrap justify-between">
-                {availableDates.map((dateOption) => (
-                  <Pressable
-                    key={dateOption.date}
-                    onPress={() => setFormData({ ...formData, selectedDate: dateOption.date })}
-                    className={`w-[48%] p-4 rounded-xl border-2 mb-3 ${
-                      formData.selectedDate === dateOption.date
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border'
-                    }`}
-                  >
-                    <View className="flex-row items-center gap-2 mb-1">
-                      <Calendar size={16} color="#F97316" />
-                      <Text className="font-semibold text-sm text-foreground" style={{ fontFamily: 'System' }}>
-                        {dateOption.label}
-                      </Text>
-                    </View>
-                    <Text className="text-xs text-muted-foreground" style={{ fontFamily: 'System' }}>
-                      {dateOption.day}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-
-            {/* Time Selection */}
-            {formData.selectedDate !== '' && (
-              <View className="mt-4">
-                <Text className="text-sm font-semibold text-foreground mb-3" style={{ fontFamily: 'System' }}>
-                  {t('booking.selectTime')}
-                </Text>
-                <View className="flex-row flex-wrap justify-between gap-y-2">
-                  {availableTimes.map((time) => (
-                    <Pressable
-                      key={time}
-                      onPress={() => setFormData({ ...formData, selectedTime: time })}
-                      className={`w-[31%] p-3 rounded-xl border-2 items-center justify-center ${
-                        formData.selectedTime === time
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border'
-                      }`}
-                    >
-                      <Text
-                        className={`text-sm ${
-                          formData.selectedTime === time
-                            ? 'text-primary font-semibold'
-                            : 'text-foreground'
-                        }`}
-                        style={{ fontFamily: 'System' }}
-                      >
-                        {time}
-                      </Text>
-                    </Pressable>
-                  ))}
+              {slots.length === 0 ? (
+                <View className="p-4 bg-card border border-border rounded-xl">
+                  <Text className="text-muted-foreground text-center font-medium">No available slots for this pooja currently.</Text>
                 </View>
-              </View>
-            )}
+              ) : (
+                <View className="space-y-3">
+                  {slots.map((slot) => {
+                    const isSelected = formData.selectedSlotId === slot.id;
+                    const dateObj = new Date(slot.date);
+                    const formattedDate = dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                    
+                    return (
+                      <Pressable
+                        key={slot.id}
+                        onPress={() => setFormData({ ...formData, selectedSlotId: slot.id })}
+                        className={`p-4 rounded-xl border-2 flex-row items-center justify-between ${
+                          isSelected
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border bg-card'
+                        }`}
+                      >
+                        <View>
+                          <View className="flex-row items-center gap-2 mb-1">
+                            <Calendar size={16} color={isSelected ? '#F97316' : '#78716C'} />
+                            <Text className={`font-semibold text-sm ${isSelected ? 'text-primary' : 'text-foreground'}`} style={{ fontFamily: 'System' }}>
+                              {formattedDate}
+                            </Text>
+                          </View>
+                          <View className="flex-row items-center gap-2 ml-6">
+                            <Clock size={14} color="#78716C" />
+                            <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>
+                              {slot.startTime}
+                            </Text>
+                          </View>
+                        </View>
+                        <View className="items-end">
+                          <Text className="text-xs text-muted-foreground font-medium mb-1">Available</Text>
+                          <View className="bg-green-500/10 px-2 py-0.5 rounded-full">
+                            <Text className="text-green-600 font-bold text-xs">{slot.availableSeats} Seats</Text>
+                          </View>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
           </View>
         )}
 
@@ -377,7 +419,7 @@ export default function BookingFlow() {
           </View>
         )}
 
-        {step === 3 && (
+        {step === 3 && selectedSlot && (
           <View className="space-y-6">
             <View className="bg-card border border-border rounded-2xl overflow-hidden">
               <View className="p-4 border-b border-border">
@@ -385,7 +427,7 @@ export default function BookingFlow() {
                   {t('booking.poojaDetails')}
                 </Text>
               </View>
-              <ReviewItem label={t('booking.selectDateTime')} value={`${availableDates.find(d => d.date === formData.selectedDate)?.label}, ${formData.selectedTime}`} />
+              <ReviewItem label={t('booking.selectDateTime')} value={`${selectedSlot.date}, ${selectedSlot.startTime}`} />
               <ReviewItem label={t('booking.devoteeNames')} value={formData.devoteeNames} />
               <ReviewItem label={t('booking.gothram')} value={translateGothram(formData.gothram, language)} />
               {formData.nakshatra !== '' && <ReviewItem label={t('booking.nakshatra')} value={translateNakshatra(formData.nakshatra, language)} />}
@@ -399,20 +441,20 @@ export default function BookingFlow() {
               <View className="space-y-2">
                 <View className="flex-row justify-between mb-2">
                   <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>{t('booking.poojaAmount')}</Text>
-                  <Text className="text-sm text-foreground" style={{ fontFamily: 'System' }}>{poojaData.price}</Text>
+                  <Text className="text-sm text-foreground" style={{ fontFamily: 'System' }}>₹{poojaData.price}</Text>
                 </View>
                 <View className="flex-row justify-between mb-2">
                   <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>{t('booking.prasadDelivery')}</Text>
-                  <Text className="text-sm text-primary font-semibold" style={{ fontFamily: 'System' }}>{t('common.free')}</Text>
+                  <Text className="text-sm text-primary font-semibold" style={{ fontFamily: 'System' }}>{poojaData.prasad ? t('common.free') : 'Not Included'}</Text>
                 </View>
                 <View className="flex-row justify-between mb-2">
                   <Text className="text-sm text-muted-foreground" style={{ fontFamily: 'System' }}>{t('booking.liveStream')}</Text>
-                  <Text className="text-sm text-primary font-semibold" style={{ fontFamily: 'System' }}>{t('common.included')}</Text>
+                  <Text className="text-sm text-primary font-semibold" style={{ fontFamily: 'System' }}>{poojaData.liveStream ? t('common.included') : 'Not Included'}</Text>
                 </View>
                 <View className="border-t border-border pt-3 mt-3">
                   <View className="flex-row justify-between">
                     <Text className="font-semibold text-lg text-foreground" style={{ fontFamily: 'System' }}>{t('booking.totalAmount')}</Text>
-                    <Text className="text-primary font-semibold text-lg" style={{ fontFamily: 'System' }}>{poojaData.price}</Text>
+                    <Text className="text-primary font-semibold text-lg" style={{ fontFamily: 'System' }}>₹{poojaData.price}</Text>
                   </View>
                 </View>
               </View>
@@ -431,20 +473,21 @@ export default function BookingFlow() {
       <View className="absolute bottom-0 left-0 right-0 bg-background border-t border-border p-4">
         <Pressable
           onPress={handleContinue}
-          disabled={!canContinue()}
-          className={`w-full py-4 rounded-xl items-center justify-center ${
+          disabled={!canContinue() || processing}
+          className={`w-full py-4 rounded-xl items-center justify-center flex-row gap-2 ${
             canContinue()
               ? 'bg-primary active:bg-[#E05C10]'
               : 'bg-muted'
           }`}
         >
+          {processing && <ActivityIndicator size="small" color="#1A0A00" />}
           <Text
             className={`font-semibold text-base ${
               canContinue() ? 'text-[#1A0A00]' : 'text-muted-foreground'
             }`}
             style={{ fontFamily: 'System' }}
           >
-            {step === 3 ? t('booking.proceedToPayment') : t('common.continue')}
+            {processing ? 'Processing...' : step === 3 ? t('booking.proceedToPayment') : t('common.continue')}
           </Text>
         </Pressable>
       </View>

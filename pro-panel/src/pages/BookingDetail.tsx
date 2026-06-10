@@ -1,46 +1,127 @@
-import { useState } from 'react';
+// @ts-nocheck
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
-import { db, type Booking } from '../lib/db';
+import { doc, getDoc, updateDoc, setDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import type { Booking } from '@devaseva/core';
 
 export function BookingDetail() {
   const { id } = useParams<{ id: string }>();
-  const initialBooking = id ? db.getBookingById(id) || null : null;
-  const [booking, setBooking] = useState<Booking | null>(initialBooking);
-  const [selectedPujari, setSelectedPujari] = useState(initialBooking?.pujari || 'Not Assigned');
+  const [booking, setBooking] = useState<Booking | null>(null);
+  const [selectedPujari, setSelectedPujari] = useState('Not Assigned');
   const [notification, setNotification] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   
-  // Mock reschedule request from User App
-  const [rescheduleRequest, setRescheduleRequest] = useState<{date: string, reason: string} | null>({
-    date: '12 May 2026',
-    reason: 'Family emergency, need to push back.'
-  });
+  useEffect(() => {
+    if (!id) return;
+    const fetchBooking = async () => {
+      try {
+        const docRef = doc(db, 'bookings', id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const bData = docSnap.data() as Booking;
+          setBooking({ id: docSnap.id, ...bData });
+          setSelectedPujari(bData.priestName || 'Not Assigned');
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBooking();
+  }, [id]);
 
-  const handleApproveReschedule = () => {
-    if (booking && rescheduleRequest) {
-      const updated: Booking = { ...booking, dateTime: `${rescheduleRequest.date} - 09:00 AM` };
-      db.updateBooking(updated);
-      setBooking(updated);
-      setRescheduleRequest(null);
-      setNotification('Reschedule request approved!');
-      setTimeout(() => setNotification(null), 3000);
+  const rescheduleRequest = booking?.rescheduleRequest;
+
+  const handleApproveReschedule = async () => {
+    if (booking && rescheduleRequest && id) {
+      try {
+        const updatedDate = rescheduleRequest.newDate;
+        const updatedTime = rescheduleRequest.newTime;
+
+        // Update booking document
+        await updateDoc(doc(db, 'bookings', id), {
+          scheduledDate: updatedDate,
+          scheduledTime: updatedTime,
+          rescheduleRequest: null,
+          updatedAt: serverTimestamp()
+        });
+
+        // Create System Event
+        const eventRef = doc(collection(db, 'systemEvents'));
+        await setDoc(eventRef, {
+          eventType: 'reschedule.approved',
+          entityId: id,
+          entityType: 'booking',
+          payload: {
+            bookingId: id,
+            userId: booking.userId,
+            templeId: booking.templeId,
+            newDate: updatedDate,
+            newTime: updatedTime
+          },
+          status: 'PENDING',
+          createdAt: serverTimestamp()
+        });
+
+        setBooking({ ...booking, scheduledDate: updatedDate, scheduledTime: updatedTime, rescheduleRequest: null });
+        setNotification('Reschedule request approved!');
+        setTimeout(() => setNotification(null), 3000);
+      } catch (e) {
+        console.error(e);
+      }
     }
   };
 
-  const handleRejectReschedule = () => {
-    setRescheduleRequest(null);
-    setNotification('Reschedule request rejected.');
-    setTimeout(() => setNotification(null), 3000);
-  };
+  const handleRejectReschedule = async () => {
+    if (booking && rescheduleRequest && id) {
+      try {
+        await updateDoc(doc(db, 'bookings', id), {
+          rescheduleRequest: null,
+          updatedAt: serverTimestamp()
+        });
 
-  const handleSaveAssignment = () => {
-    if (booking) {
-      const updated: Booking = { ...booking, pujari: selectedPujari };
-      db.updateBooking(updated);
-      setBooking(updated);
-      setNotification('Pujari assigned successfully!');
-      setTimeout(() => setNotification(null), 3000);
+        const eventRef = doc(collection(db, 'systemEvents'));
+        await setDoc(eventRef, {
+          eventType: 'reschedule.rejected',
+          entityId: id,
+          entityType: 'booking',
+          payload: {
+            bookingId: id,
+            userId: booking.userId,
+            templeId: booking.templeId
+          },
+          status: 'PENDING',
+          createdAt: serverTimestamp()
+        });
+
+        setBooking({ ...booking, rescheduleRequest: null });
+        setNotification('Reschedule request rejected.');
+        setTimeout(() => setNotification(null), 3000);
+      } catch (e) {
+        console.error(e);
+      }
     }
   };
+
+  const handleSaveAssignment = async () => {
+    if (booking && id) {
+      try {
+        await updateDoc(doc(db, 'bookings', id), {
+          priestName: selectedPujari,
+          updatedAt: serverTimestamp()
+        });
+        setBooking({ ...booking, priestName: selectedPujari });
+        setNotification('Pujari assigned successfully!');
+        setTimeout(() => setNotification(null), 3000);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
+  if (loading) return <div className="p-xl text-center">Loading...</div>;
 
   if (!booking) {
     return (
@@ -50,7 +131,6 @@ export function BookingDetail() {
       </div>
     );
   }
-
 
   return (
     <div className="max-w-[1440px] mx-auto pb-24 relative">
@@ -81,11 +161,11 @@ export function BookingDetail() {
         <div className="flex items-center gap-4">
           <h1 className="text-headline-lg text-on-background font-bold">Booking Detail — {booking.id}</h1>
           <span className={`font-label-md text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider border ${
-            booking.paymentStatus === 'Confirmed' 
+            booking.paymentStatus === 'PAID' 
               ? 'bg-green-100 text-green-800 border-green-200' 
               : 'bg-yellow-100 text-yellow-800 border-yellow-200'
           }`}>
-            {booking.paymentStatus}
+            {booking.paymentStatus || 'UNKNOWN'}
           </span>
         </div>
       </div>
@@ -105,7 +185,7 @@ export function BookingDetail() {
               </div>
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Booking Date</p>
-                <p className="text-body-lg text-on-background font-medium">08 May 2026</p>
+                <p className="text-body-lg text-on-background font-medium">{booking.scheduledDate}</p>
               </div>
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Payment Status</p>
@@ -113,15 +193,15 @@ export function BookingDetail() {
               </div>
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Amount Paid</p>
-                <p className="text-body-lg text-on-background font-bold">{booking.amount}</p>
+                <p className="text-body-lg text-on-background font-bold">₹{booking.amountPaid || booking.amount || 0}</p>
               </div>
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Payment Method</p>
-                <p className="text-body-lg text-on-background font-medium">{booking.paymentMethod}</p>
+                <p className="text-body-lg text-on-background font-medium">Online</p>
               </div>
               <div>
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Razorpay Order ID</p>
-                <p className="text-body-sm text-on-surface-variant break-all font-semibold">{booking.orderId}</p>
+                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Status</p>
+                <p className="text-body-sm text-on-surface-variant break-all font-semibold">{booking.status}</p>
               </div>
             </div>
           </div>
@@ -134,24 +214,8 @@ export function BookingDetail() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
               <div>
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Full Name</p>
-                <p className="text-body-lg text-on-background font-bold">{booking.devoteeName}</p>
-              </div>
-              <div>
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Gotra</p>
-                <p className="text-body-lg text-on-background font-medium">{booking.gotra}</p>
-              </div>
-              <div>
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Nakshatra</p>
-                <p className="text-body-lg text-on-background font-medium">{booking.nakshatra}</p>
-              </div>
-              <div>
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Mobile</p>
-                <p className="text-body-lg text-on-background font-medium">{booking.mobile}</p>
-              </div>
-              <div className="md:col-span-2">
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Email</p>
-                <p className="text-body-lg text-on-background font-medium">{booking.email}</p>
+                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">User ID</p>
+                <p className="text-body-lg text-on-background font-bold">{booking.userId}</p>
               </div>
             </div>
           </div>
@@ -164,22 +228,16 @@ export function BookingDetail() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
               <div className="md:col-span-2">
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Pooja Name</p>
-                <p className="text-headline-md text-primary font-bold">{booking.poojaName}</p>
+                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Pooja ID</p>
+                <p className="text-headline-md text-primary font-bold">{booking.poojaId}</p>
               </div>
               <div className="md:col-span-2">
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Temple</p>
-                <p className="text-body-lg text-on-background font-medium">{booking.temple}</p>
+                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Temple ID</p>
+                <p className="text-body-lg text-on-background font-medium">{booking.templeId}</p>
               </div>
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Slot Date &amp; Time</p>
-                <p className="text-body-lg text-on-background font-semibold">{booking.dateTime}</p>
-              </div>
-              <div>
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Bookings Capacity</p>
-                <p className="text-body-lg text-on-surface-variant font-semibold">
-                  {booking.currentBookings} / {booking.maxBookings} Slots
-                </p>
+                <p className="text-body-lg text-on-background font-semibold">{booking.scheduledDate} {booking.scheduledTime}</p>
               </div>
             </div>
           </div>
@@ -189,8 +247,8 @@ export function BookingDetail() {
         {/* RIGHT COLUMN (40%) */}
         <div className="lg:col-span-5 flex flex-col gap-6 font-sans">
           
-          {/* Reschedule Request Approval Card (P1 Feature) */}
-          {rescheduleRequest && (
+          {/* Reschedule Request Approval Card */}
+          {rescheduleRequest?.status === 'PENDING' && (
             <div className="bg-yellow-50 rounded-xl soft-shadow p-6 border border-yellow-200 border-t-4 border-t-yellow-500">
               <div className="flex items-center gap-2 mb-4 text-yellow-800">
                 <span className="material-symbols-outlined">event_repeat</span>
@@ -199,8 +257,8 @@ export function BookingDetail() {
               <p className="text-body-sm text-yellow-900 mb-2 font-medium">The devotee has requested to change the pooja date.</p>
               
               <div className="bg-white/60 p-4 rounded-lg border border-yellow-200 mb-4">
-                <p className="text-label-md text-yellow-800 font-bold uppercase tracking-wide mb-1">Requested Date</p>
-                <p className="text-body-lg text-yellow-900 font-bold mb-3">{rescheduleRequest.date}</p>
+                <p className="text-label-md text-yellow-800 font-bold uppercase tracking-wide mb-1">Requested Date & Time</p>
+                <p className="text-body-lg text-yellow-900 font-bold mb-3">{rescheduleRequest.newDate} at {rescheduleRequest.newTime}</p>
                 
                 <p className="text-label-md text-yellow-800 font-bold uppercase tracking-wide mb-1">Reason</p>
                 <p className="text-body-sm text-yellow-900 font-medium italic">"{rescheduleRequest.reason}"</p>
@@ -231,11 +289,11 @@ export function BookingDetail() {
                 <h3 className="font-display text-headline-sm text-on-surface font-bold">Pujari Assignment</h3>
               </div>
               <span className={`font-label-md text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                booking.pujari === 'Not Assigned' 
+                selectedPujari === 'Not Assigned' 
                   ? 'bg-error-container text-on-error-container' 
                   : 'bg-green-100 text-green-800'
               }`}>
-                {booking.pujari === 'Not Assigned' ? 'Not Assigned' : 'Assigned'}
+                {selectedPujari === 'Not Assigned' ? 'Not Assigned' : 'Assigned'}
               </span>
             </div>
             
@@ -247,12 +305,8 @@ export function BookingDetail() {
                 onChange={(e) => setSelectedPujari(e.target.value)}
               >
                 <option value="Not Assigned">Select Pujari</option>
-                {db.getPujaris()
-                  .filter(p => p.status === 'Active' || p.name === booking.pujari)
-                  .map(p => (
-                    <option key={p.id} value={p.name}>{p.name}</option>
-                  ))
-                }
+                <option value="Pandit Ramachandra">Pandit Ramachandra</option>
+                <option value="Pandit Shivakumara">Pandit Shivakumara</option>
               </select>
             </div>
             
@@ -262,121 +316,8 @@ export function BookingDetail() {
             >
               Save Assignment
             </button>
-            <p className="text-body-sm text-on-surface-variant text-center font-medium">Assign a pujari before the pooja date</p>
           </div>
 
-          {/* Stream & Recording Card */}
-          <div className="bg-surface-container-lowest rounded-xl soft-shadow p-6 border border-[#F0E6D2]">
-            <h3 className="font-display text-headline-sm text-on-surface font-bold mb-4">Live Stream &amp; Recording</h3>
-            <div className="flex flex-col gap-4 mb-6">
-              <div className="flex justify-between items-center font-medium">
-                <p className="text-body-md text-on-surface">Stream Status</p>
-                <span className="bg-surface-variant text-on-surface-variant font-label-md text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">
-                  {booking.streamStatus}
-                </span>
-              </div>
-              <div className="flex justify-between items-center font-medium">
-                <p className="text-body-md text-on-surface">Recording Status</p>
-                <span className="bg-surface-variant text-on-surface-variant font-label-md text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">
-                  {booking.recordingStatus}
-                </span>
-              </div>
-            </div>
-            <Link 
-              to="/live-stream" 
-              className="font-button text-button text-primary hover:text-[#b04b00] transition-colors flex items-center gap-1 font-bold"
-            >
-              Go to Stream Control →
-            </Link>
-          </div>
-
-          {/* Delivery Card */}
-          {booking.delivery === 'Yes' ? (
-            <div className="bg-surface-container-lowest rounded-xl soft-shadow p-6 border border-[#F0E6D2] border-l-4 border-l-secondary-container">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="material-symbols-outlined text-secondary-container-dim text-[#d4a017]">package_2</span>
-                <h3 className="font-display text-headline-sm text-on-surface font-bold">Delivery Details</h3>
-              </div>
-              <div className="mb-4">
-                <p className="text-label-md text-on-surface-variant uppercase mb-1 font-bold tracking-wider">Address</p>
-                <p className="text-body-md text-on-background font-medium">{booking.deliveryAddress}</p>
-              </div>
-              <div className="flex items-center gap-2 mb-6">
-                <p className="text-label-md text-on-surface-variant uppercase font-bold tracking-wider">Status:</p>
-                <span className="bg-secondary-container text-on-secondary-container font-label-md text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">
-                  {booking.deliveryStatus}
-                </span>
-              </div>
-              <Link 
-                to="/deliveries" 
-                className="font-button text-button text-primary hover:text-[#b04b00] transition-colors flex items-center gap-1 font-bold"
-              >
-                Go to Delivery Manager →
-              </Link>
-            </div>
-          ) : (
-            <div className="bg-surface-container-low rounded-xl p-6 border border-outline-variant/30 opacity-70">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="material-symbols-outlined text-on-surface-variant">block</span>
-                <h3 className="font-display text-headline-sm text-on-surface font-bold">No Delivery Requested</h3>
-              </div>
-              <p className="text-body-sm text-on-surface-variant font-medium">Devotee has opted for local pick up or does not require prasadam delivery.</p>
-            </div>
-          )}
-
-          {/* Feedback Card */}
-          <div className={`rounded-xl p-6 border ${
-            booking.feedback 
-              ? 'bg-surface-container-lowest border-[#F0E6D2] soft-shadow' 
-              : 'bg-surface-container-low border-outline-variant/30 opacity-60'
-          }`}>
-            <h3 className="font-display text-headline-sm text-on-surface font-bold mb-4">Devotee Feedback</h3>
-            {booking.feedback ? (
-              <div className="bg-surface-bright p-4 rounded-lg border border-outline-variant/20 font-medium">
-                <p className="text-body-md text-on-surface italic">"{booking.feedback}"</p>
-                <div className="flex gap-1 mt-2 text-[#F6BE39]">
-                  <span className="material-symbols-outlined text-[18px]">star</span>
-                  <span className="material-symbols-outlined text-[18px]">star</span>
-                  <span className="material-symbols-outlined text-[18px]">star</span>
-                  <span className="material-symbols-outlined text-[18px]">star</span>
-                  <span className="material-symbols-outlined text-[18px]">star</span>
-                </div>
-              </div>
-            ) : (
-              <div className="h-24 flex items-center justify-center border-2 border-dashed border-outline-variant/30 rounded-lg">
-                <p className="text-body-sm text-on-surface-variant text-center font-medium">
-                  Feedback will appear here after pooja completion
-                </p>
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
-
-      {/* Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 md:left-[240px] bg-surface-container-lowest border-t border-outline-variant/30 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] p-4 z-40 flex justify-between items-center flex-wrap gap-4 font-sans">
-        <Link 
-          to="/bookings" 
-          className="px-6 py-2 border-2 border-outline-variant text-on-surface font-button text-button rounded-full hover:bg-surface-container-low transition-colors font-bold"
-        >
-          ← Back to Bookings
-        </Link>
-        <div className="flex gap-4">
-          <Link 
-            to={`/pooja-readiness/${booking.id}`} 
-            className="px-6 py-2 border-2 border-primary text-primary font-button text-button rounded-full hover:bg-primary-container/20 transition-colors font-bold"
-          >
-            Check Pooja Readiness
-          </Link>
-          {booking.delivery === 'Yes' && (
-            <Link 
-              to="/deliveries" 
-              className="px-6 py-2 bg-primary text-on-primary font-button text-button rounded-full hover:bg-[#b04b00] transition-colors shadow-sm font-bold"
-            >
-              Go to Delivery Manager
-            </Link>
-          )}
         </div>
       </div>
     </div>

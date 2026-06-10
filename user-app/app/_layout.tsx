@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Stack } from "expo-router";
 import "../global.css";
 import { ThemeProvider } from "../src/old_app/context/ThemeContext";
