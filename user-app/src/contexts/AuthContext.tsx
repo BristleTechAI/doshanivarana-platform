@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
+import { auth, firestore } from '../lib/firebase';
+import type { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { UserRole } from '@devaseva/core';
 
 interface AuthContextType {
