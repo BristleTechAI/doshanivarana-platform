@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
 import { db, type Booking } from '../lib/db';
 
@@ -8,6 +8,25 @@ export function BookingDetail() {
   const [booking, setBooking] = useState<Booking | null>(initialBooking);
   const [selectedPujari, setSelectedPujari] = useState(initialBooking?.pujari || 'Not Assigned');
   const [notification, setNotification] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      if (!id) return;
+      const b = db.getBookingById(id);
+      if (b) {
+        setBooking(b);
+        setSelectedPujari(b.pujari || 'Not Assigned');
+      }
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('focus', handleUpdate);
+    window.addEventListener('doshanivarana_bookings_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('focus', handleUpdate);
+      window.removeEventListener('doshanivarana_bookings_updated', handleUpdate);
+    };
+  }, [id]);
 
   const handleSaveAssignment = () => {
     if (booking) {

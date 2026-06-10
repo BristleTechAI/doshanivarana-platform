@@ -178,9 +178,89 @@ export default function PoojaJourneyScreen() {
     if (b.streamStatus === 'Ended') stage = 5; // Completed
     if (b.recordingStatus === 'Available') stage = 6; // Recording Ready
     if (b.deliveryStatus === 'Packed') stage = 7; // Prasad Packed
-    if (b.deliveryStatus === 'Dispatched') stage = 8; // Dispatched
+    if (b.deliveryStatus === 'Dispatched' || b.deliveryStatus === 'In Transit' || b.deliveryStatus === 'Out for Delivery') stage = 8; // Dispatched / In Transit / Out for Delivery
     if (b.deliveryStatus === 'Delivered') stage = 9; // Delivered
     return stage;
+  };
+
+  const getTransitTitle = (b: any, lang: string, defaultTitle: string): string => {
+    if (!b) return defaultTitle;
+    const status = b.deliveryStatus;
+    if (status === 'In Transit') {
+      if (lang === 'te') return 'రవాణాలో ఉంది';
+      if (lang === 'hi') return 'पारगमन में है';
+      if (lang === 'gu') return 'ટ્રાન્ઝિટમાં છે';
+      return 'In Transit';
+    }
+    if (status === 'Out for Delivery') {
+      if (lang === 'te') return 'డెలివరీకి సిద్ధంగా ఉంది';
+      if (lang === 'hi') return 'वितरण के लिए तैयार';
+      if (lang === 'gu') return 'ડિલીવરી માટે બહાર';
+      return 'Out for Delivery';
+    }
+    return defaultTitle;
+  };
+
+  const getTransitDescription = (b: any, lang: string, translate: (k: string) => string): string => {
+    const courier = b.deliveryCourier || 'Courier';
+    const tracking = b.deliveryTrackingNumber || '';
+    const est = b.deliveryEstimatedDelivery || '';
+    const status = b.deliveryStatus;
+
+    if (status === 'In Transit') {
+      const inTransitTime = b.deliveryInTransitAt || '';
+      if (lang === 'te') {
+        return `${courier} ద్వారా రవాణాలో ఉంది. ${tracking ? 'ట్రాకింగ్ ఐడి: ' + tracking : ''}${inTransitTime ? ' (' + inTransitTime + ')' : ''}`;
+      } else if (lang === 'hi') {
+        return `${courier} के माध्यम से पारगमन में है। ${tracking ? 'ट्रैकिंग आईडी: ' + tracking : ''}${inTransitTime ? ' (' + inTransitTime + ')' : ''}`;
+      } else if (lang === 'gu') {
+        return `${courier} દ્વારા ટ્રાન્ઝિટમાં છે. ${tracking ? 'ટ્રેકિંગ આઈડી: ' + tracking : ''}${inTransitTime ? ' (' + inTransitTime + ')' : ''}`;
+      } else {
+        return `In transit via ${courier}. ${tracking ? 'Tracking ID: ' + tracking : ''}${inTransitTime ? ' (' + inTransitTime + ')' : ''}`;
+      }
+    }
+
+    if (status === 'Out for Delivery') {
+      const outTime = b.deliveryOutForDeliveryAt || '';
+      if (lang === 'te') {
+        return `డెలివరీకి సిద్ధంగా ఉంది. ${courier} (ట్రాకింగ్ ఐడి: ${tracking})${outTime ? ' (' + outTime + ')' : ''}`;
+      } else if (lang === 'hi') {
+        return `वितरण के लिए तैयार है। ${courier} (ट्रैकिंग आईडी: ${tracking})${outTime ? ' (' + outTime + ')' : ''}`;
+      } else if (lang === 'gu') {
+        return `ડિલિવરી માટે બહાર છે. ${courier} (ટ્રેકિંગ આઈડી: ${tracking})${outTime ? ' (' + outTime + ')' : ''}`;
+      } else {
+        return `Out for delivery via ${courier}. (Tracking ID: ${tracking})${outTime ? ' (' + outTime + ')' : ''}`;
+      }
+    }
+
+    if (tracking) {
+      if (lang === 'te') {
+        return `${courier} ద్వారా పంపబడింది. ట్రాకింగ్ ఐడి: ${tracking}.${est ? ' అంచనా డెలివరీ: ' + est : ''}`;
+      } else if (lang === 'hi') {
+        return `${courier} के माध्यम से भेजा गया। ट्रैकिंग आईडी: ${tracking}।${est ? ' अनुमानित डिलीवरी: ' + est : ''}`;
+      } else if (lang === 'gu') {
+        return `${courier} દ્વારા મોકલવામાં આવ્યું. ટ્રેકિંગ આઈડી: ${tracking}.${est ? ' અંદાજિત વિતરણ: ' + est : ''}`;
+      } else {
+        return `Dispatched via ${courier}. Tracking ID: ${tracking}.${est ? ' Est. Delivery: ' + est : ''}`;
+      }
+    }
+
+    return translate('journey.prasadDispatchedDesc');
+  };
+
+  const getDeliveredDescription = (b: any, lang: string, translate: (k: string) => string): string => {
+    const deliveredTime = b.deliveryDeliveredAt;
+    if (!deliveredTime) return translate('journey.prasadDeliveredDesc');
+
+    if (lang === 'te') {
+      return `${deliveredTime} న విజయవంతంగా డెలివరీ చేయబడింది. పవిత్ర ప్రసాదం మీ ఇంట శాంతిని చేకూర్చుగాక.`;
+    } else if (lang === 'hi') {
+      return `${deliveredTime} को सफलतापूर्वक वितरित किया गया। पवित्र प्रसाद आपके घर में शांति लाए।`;
+    } else if (lang === 'gu') {
+      return `${deliveredTime} ના રોજ સફળતાપૂર્વક વિતરિત કરવામાં આવ્યું. પવિત્ર પ્રસાદ તમારા ઘરમાં શાંતિ લાવે.`;
+    } else {
+      return `Delivered on ${deliveredTime}. May the sacred offerings bring peace to your home.`;
+    }
   };
 
   const currentStage = booking?.currentStage || (booking ? getBookingStage(booking) : 4);
@@ -226,17 +306,20 @@ export default function PoojaJourneyScreen() {
       id: 7,
       nameKey: 'journey.prasadPacked',
       descKey: 'journey.prasadPackedDesc',
+      timestamp: booking?.deliveryPackedAt,
     },
     {
       id: 8,
       nameKey: 'journey.prasadDispatched',
       descKey: 'journey.prasadDispatchedDesc',
       ctaKey: 'bookings.trackPrasad',
+      timestamp: booking?.deliveryDispatchedAt || booking?.deliveryInTransitAt || booking?.deliveryOutForDeliveryAt,
     },
     {
       id: 9,
       nameKey: 'journey.prasadDelivered',
       descKey: 'journey.prasadDeliveredDesc',
+      timestamp: booking?.deliveryDeliveredAt,
     },
   ];
 
@@ -346,7 +429,9 @@ export default function PoojaJourneyScreen() {
                       } ${isCurrent ? 'text-primary' : ''}`}
                       style={{ fontFamily: 'System' }}
                     >
-                      {t(stage.nameKey)}
+                      {stage.id === 8 && booking
+                        ? getTransitTitle(booking, language, t(stage.nameKey))
+                        : t(stage.nameKey)}
                     </Text>
                     {isCompleted && (
                       <Text className="text-xs text-primary font-bold">✓</Text>
@@ -355,6 +440,10 @@ export default function PoojaJourneyScreen() {
                   <Text className="text-xs text-muted-foreground leading-relaxed mb-2" style={{ fontFamily: 'System' }}>
                     {stage.id === 2 && booking && booking.pujari !== 'Not Assigned'
                       ? t(stage.descKey).replace('Pandit Ramesh Sharma', booking.pujari)
+                      : stage.id === 8 && booking
+                      ? getTransitDescription(booking, language, t)
+                      : stage.id === 9 && booking
+                      ? getDeliveredDescription(booking, language, t)
                       : t(stage.descKey)}
                   </Text>
                   {stage.timestamp && (

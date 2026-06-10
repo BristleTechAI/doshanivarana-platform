@@ -35,6 +35,12 @@ export interface Booking {
   deliveryTrackingNumber?: string;
   deliveryDispatchDate?: string;
   deliveryEstimatedDelivery?: string;
+  deliveryBookedAt?: string;
+  deliveryPackedAt?: string;
+  deliveryDispatchedAt?: string;
+  deliveryInTransitAt?: string;
+  deliveryOutForDeliveryAt?: string;
+  deliveryDeliveredAt?: string;
 }
 
 export interface PoojaSlot {
@@ -256,7 +262,9 @@ const initialBookings: Booking[] = [
     deliveryCourier: 'Delhivery',
     deliveryTrackingNumber: 'DL2026051098765',
     deliveryDispatchDate: getRelativeDateTimeStr(0, '10:00 AM').split(',')[0],
-    deliveryEstimatedDelivery: getRelativeDateTimeStr(3, '06:00 PM').split(',')[0]
+    deliveryEstimatedDelivery: getRelativeDateTimeStr(3, '06:00 PM').split(',')[0],
+    deliveryBookedAt: getRelativeDateTimeStr(-2, '10:00 AM'),
+    deliveryPackedAt: getRelativeDateTimeStr(-1, '03:45 PM')
   },
   {
     id: 'BK-1002',
@@ -317,7 +325,8 @@ const initialBookings: Booking[] = [
     deliveryCourier: 'BlueDart',
     deliveryTrackingNumber: '',
     deliveryDispatchDate: getRelativeDateTimeStr(0, '09:00 AM').split(',')[0],
-    deliveryEstimatedDelivery: getRelativeDateTimeStr(4, '06:00 PM').split(',')[0]
+    deliveryEstimatedDelivery: getRelativeDateTimeStr(4, '06:00 PM').split(',')[0],
+    deliveryBookedAt: getRelativeDateTimeStr(-1, '09:00 AM')
   },
   {
     id: 'BK-1004',
@@ -378,7 +387,8 @@ const initialBookings: Booking[] = [
     deliveryCourier: 'DTDC',
     deliveryTrackingNumber: '',
     deliveryDispatchDate: getRelativeDateTimeStr(0, '10:00 AM').split(',')[0],
-    deliveryEstimatedDelivery: getRelativeDateTimeStr(3, '06:00 PM').split(',')[0]
+    deliveryEstimatedDelivery: getRelativeDateTimeStr(3, '06:00 PM').split(',')[0],
+    deliveryBookedAt: getRelativeDateTimeStr(-1, '11:15 AM')
   },
   {
     id: 'BK-1006',
@@ -439,7 +449,9 @@ const initialBookings: Booking[] = [
     deliveryCourier: 'Delhivery',
     deliveryTrackingNumber: 'DL2026050511223',
     deliveryDispatchDate: getRelativeDateTimeStr(-5, '10:00 AM').split(',')[0],
-    deliveryEstimatedDelivery: getRelativeDateTimeStr(-2, '06:00 PM').split(',')[0]
+    deliveryEstimatedDelivery: getRelativeDateTimeStr(-2, '06:00 PM').split(',')[0],
+    deliveryBookedAt: getRelativeDateTimeStr(-6, '10:00 AM'),
+    deliveryPackedAt: getRelativeDateTimeStr(-5, '04:20 PM')
   },
   {
     id: 'BK-1008',
@@ -475,7 +487,10 @@ const initialBookings: Booking[] = [
     deliveryCourier: 'Delhivery',
     deliveryTrackingNumber: 'DL2026050844556',
     deliveryDispatchDate: getRelativeDateTimeStr(-2, '02:00 PM').split(',')[0],
-    deliveryEstimatedDelivery: getRelativeDateTimeStr(1, '06:00 PM').split(',')[0]
+    deliveryEstimatedDelivery: getRelativeDateTimeStr(1, '06:00 PM').split(',')[0],
+    deliveryBookedAt: getRelativeDateTimeStr(-4, '02:00 PM'),
+    deliveryPackedAt: getRelativeDateTimeStr(-3, '11:00 AM'),
+    deliveryDispatchedAt: getRelativeDateTimeStr(-2, '03:45 PM')
   },
   {
     id: 'BK-1009',
@@ -511,7 +526,11 @@ const initialBookings: Booking[] = [
     deliveryCourier: 'BlueDart',
     deliveryTrackingNumber: 'BD998877665',
     deliveryDispatchDate: getRelativeDateTimeStr(-2, '09:00 AM').split(',')[0],
-    deliveryEstimatedDelivery: getRelativeDateTimeStr(1, '06:00 PM').split(',')[0]
+    deliveryEstimatedDelivery: getRelativeDateTimeStr(1, '06:00 PM').split(',')[0],
+    deliveryBookedAt: getRelativeDateTimeStr(-4, '09:00 AM'),
+    deliveryPackedAt: getRelativeDateTimeStr(-3, '11:20 AM'),
+    deliveryDispatchedAt: getRelativeDateTimeStr(-2, '02:30 PM'),
+    deliveryInTransitAt: getRelativeDateTimeStr(-2, '06:00 PM')
   },
   {
     id: 'BK-1010',
@@ -547,7 +566,11 @@ const initialBookings: Booking[] = [
     deliveryCourier: 'BlueDart',
     deliveryTrackingNumber: 'BD443322110',
     deliveryDispatchDate: getRelativeDateTimeStr(-3, '11:00 AM').split(',')[0],
-    deliveryEstimatedDelivery: getRelativeDateTimeStr(0, '06:00 PM').split(',')[0]
+    deliveryEstimatedDelivery: getRelativeDateTimeStr(0, '06:00 PM').split(',')[0],
+    deliveryBookedAt: getRelativeDateTimeStr(-5, '11:00 AM'),
+    deliveryPackedAt: getRelativeDateTimeStr(-4, '02:15 PM'),
+    deliveryDispatchedAt: getRelativeDateTimeStr(-3, '04:00 PM'),
+    deliveryInTransitAt: getRelativeDateTimeStr(-2, '09:30 AM')
   },
   {
     id: 'BK-0990',
@@ -583,7 +606,13 @@ const initialBookings: Booking[] = [
     deliveryCourier: 'Delhivery',
     deliveryTrackingNumber: 'DL2026050511223',
     deliveryDispatchDate: getRelativeDateTimeStr(-5, '10:00 AM').split(',')[0],
-    deliveryEstimatedDelivery: getRelativeDateTimeStr(-2, '06:00 PM').split(',')[0]
+    deliveryEstimatedDelivery: getRelativeDateTimeStr(-2, '06:00 PM').split(',')[0],
+    deliveryBookedAt: getRelativeDateTimeStr(-8, '10:00 AM'),
+    deliveryPackedAt: getRelativeDateTimeStr(-7, '11:30 AM'),
+    deliveryDispatchedAt: getRelativeDateTimeStr(-6, '04:30 PM'),
+    deliveryInTransitAt: getRelativeDateTimeStr(-5, '10:00 AM'),
+    deliveryOutForDeliveryAt: getRelativeDateTimeStr(-4, '09:00 AM'),
+    deliveryDeliveredAt: getRelativeDateTimeStr(-4, '02:30 PM')
   },
   {
     id: 'BK-0989',
@@ -613,7 +642,13 @@ const initialBookings: Booking[] = [
     deliveryIsUrgent: false,
     deliveryWeight: '0.7',
     deliveryCourier: 'Delhivery',
-    deliveryTrackingNumber: 'DL2026050477889'
+    deliveryTrackingNumber: 'DL2026050477889',
+    deliveryBookedAt: getRelativeDateTimeStr(-9, '02:00 PM'),
+    deliveryPackedAt: getRelativeDateTimeStr(-8, '03:30 PM'),
+    deliveryDispatchedAt: getRelativeDateTimeStr(-7, '10:15 AM'),
+    deliveryInTransitAt: getRelativeDateTimeStr(-6, '09:00 AM'),
+    deliveryOutForDeliveryAt: getRelativeDateTimeStr(-5, '08:30 AM'),
+    deliveryDeliveredAt: getRelativeDateTimeStr(-5, '01:00 PM')
   },
   {
     id: 'BK-0988',
@@ -643,7 +678,13 @@ const initialBookings: Booking[] = [
     deliveryIsUrgent: false,
     deliveryWeight: '0.5',
     deliveryCourier: 'BlueDart',
-    deliveryTrackingNumber: 'BD554433221'
+    deliveryTrackingNumber: 'BD554433221',
+    deliveryBookedAt: getRelativeDateTimeStr(-10, '09:00 AM'),
+    deliveryPackedAt: getRelativeDateTimeStr(-9, '11:00 AM'),
+    deliveryDispatchedAt: getRelativeDateTimeStr(-8, '02:30 PM'),
+    deliveryInTransitAt: getRelativeDateTimeStr(-7, '10:00 AM'),
+    deliveryOutForDeliveryAt: getRelativeDateTimeStr(-6, '09:15 AM'),
+    deliveryDeliveredAt: getRelativeDateTimeStr(-6, '03:45 PM')
   }
 ];
 
@@ -988,6 +1029,9 @@ class LocalStorageDB {
 
   saveBookings(bookings: Booking[]) {
     localStorage.setItem(KEYS.BOOKINGS, JSON.stringify(bookings));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+    }
   }
 
   updateBooking(booking: Booking) {
@@ -1007,6 +1051,9 @@ class LocalStorageDB {
 
   saveSlots(slots: PoojaSlot[]) {
     localStorage.setItem(KEYS.SLOTS, JSON.stringify(slots));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event('doshanivarana_slots_updated'));
+    }
   }
 
   updateSlot(slot: PoojaSlot) {
@@ -1028,6 +1075,9 @@ class LocalStorageDB {
 
   savePujaris(pujaris: Pujari[]) {
     localStorage.setItem(KEYS.PUJARIS, JSON.stringify(pujaris));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event('doshanivarana_pujaris_updated'));
+    }
   }
 
   updatePujari(pujari: Pujari) {
@@ -1049,6 +1099,9 @@ class LocalStorageDB {
 
   saveQueries(queries: DevoteeQuery[]) {
     localStorage.setItem(KEYS.QUERIES, JSON.stringify(queries));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event('doshanivarana_queries_updated'));
+    }
   }
 
   updateQuery(query: DevoteeQuery) {
@@ -1068,6 +1121,9 @@ class LocalStorageDB {
 
   saveFeedback(feedback: Review[]) {
     localStorage.setItem(KEYS.FEEDBACK, JSON.stringify(feedback));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event('doshanivarana_feedback_updated'));
+    }
   }
 
   // Recordings
@@ -1078,6 +1134,9 @@ class LocalStorageDB {
 
   saveRecordings(recordings: Recording[]) {
     localStorage.setItem(KEYS.RECORDINGS, JSON.stringify(recordings));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event('doshanivarana_recordings_updated'));
+    }
   }
 
   updateRecording(recording: Recording) {

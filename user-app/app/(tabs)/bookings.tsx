@@ -36,7 +36,7 @@ const getBookingStage = (b: any) => {
   if (b.streamStatus === 'Ended') stage = 5; // Completed
   if (b.recordingStatus === 'Available') stage = 6; // Recording Ready
   if (b.deliveryStatus === 'Packed') stage = 7; // Prasad Packed
-  if (b.deliveryStatus === 'Dispatched') stage = 8; // Dispatched
+  if (b.deliveryStatus === 'Dispatched' || b.deliveryStatus === 'In Transit' || b.deliveryStatus === 'Out for Delivery') stage = 8; // Dispatched / In Transit / Out for Delivery
   if (b.deliveryStatus === 'Delivered') stage = 9; // Delivered
   return stage;
 };

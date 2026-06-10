@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Filter, Download, Eye, Edit, RefreshCcw, ChevronDown, Calendar, Building2, Package, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { Modal, ModalFooter } from "../Modal";
 
@@ -28,6 +28,10 @@ const statusConfig: Record<string, { bg: string; color: string; icon: typeof Che
 const deliveryConfig: Record<string, { bg: string; color: string }> = {
   Delivered: { bg: "#F0FDF4", color: "#16A34A" },
   Dispatched: { bg: "#EFF6FF", color: "#2563EB" },
+  "In Transit": { bg: "#FAF5FF", color: "#7E22CE" },
+  "Out for Delivery": { bg: "#FFF1F2", color: "#E11D48" },
+  Packed: { bg: "#FEF3C7", color: "#D97706" },
+  Booked: { bg: "#FFFBEB", color: "#B45309" },
   Pending: { bg: "#FFFBEB", color: "#D97706" },
   "Not Required": { bg: "#F3F4F6", color: "#9CA3AF" },
   Failed: { bg: "#FFF1F2", color: "#DC2626" },
@@ -43,9 +47,48 @@ export function Bookings() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(1);
+
+  const loadBookings = () => {
+    const data = localStorage.getItem('doshanivarana_bookings');
+    if (!data) return bookings;
+    try {
+      const parsed = JSON.parse(data) as any[];
+      if (parsed.length === 0) return bookings;
+      return parsed.map((b: any) => ({
+        id: b.id,
+        devotee: b.devoteeName,
+        temple: b.temple,
+        pooja: b.poojaName,
+        date: b.dateTime.split(',')[0],
+        amount: b.amount,
+        delivery: b.delivery === 'No' ? 'Not Required' : b.deliveryStatus,
+        status: b.paymentStatus === 'Pending' ? 'Pending' : (b.streamStatus === 'Ended' ? 'Completed' : (b.streamStatus === 'In Progress' ? 'In Progress' : 'Confirmed')),
+        payment: b.paymentStatus === 'Confirmed' ? 'Paid' : 'Pending',
+        lang: 'Telugu',
+      }));
+    } catch (e) {
+      return bookings;
+    }
+  };
+
+  const [bookingsList, setBookingsList] = useState<typeof bookings>(() => loadBookings());
   const [selectedBooking, setSelectedBooking] = useState<typeof bookings[0] | null>(null);
 
-  const filtered = bookings.filter((b) => {
+  useEffect(() => {
+    const handleUpdate = () => {
+      setBookingsList(loadBookings());
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('focus', handleUpdate);
+    window.addEventListener('doshanivarana_bookings_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('focus', handleUpdate);
+      window.removeEventListener('doshanivarana_bookings_updated', handleUpdate);
+    };
+  }, []);
+
+  const filtered = bookingsList.filter((b) => {
     const matchSearch =
       b.id.toLowerCase().includes(search.toLowerCase()) ||
       b.devotee.toLowerCase().includes(search.toLowerCase()) ||
@@ -60,11 +103,11 @@ export function Bookings() {
       {/* Stats bar */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: "Total Today", value: "1,284", color: "#C76A00", bg: "#FFF0E6" },
-          { label: "Confirmed", value: "948", color: "#2563EB", bg: "#EFF6FF" },
-          { label: "Completed", value: "284", color: "#16A34A", bg: "#F0FDF4" },
-          { label: "Pending", value: "32", color: "#D97706", bg: "#FFFBEB" },
-          { label: "Cancelled", value: "20", color: "#DC2626", bg: "#FFF1F2" },
+          { label: "Total Today", value: bookingsList.length.toLocaleString(), color: "#C76A00", bg: "#FFF0E6" },
+          { label: "Confirmed", value: bookingsList.filter(b => b.status === "Confirmed").length.toLocaleString(), color: "#2563EB", bg: "#EFF6FF" },
+          { label: "Completed", value: bookingsList.filter(b => b.status === "Completed").length.toLocaleString(), color: "#16A34A", bg: "#F0FDF4" },
+          { label: "Pending", value: bookingsList.filter(b => b.status === "Pending").length.toLocaleString(), color: "#D97706", bg: "#FFFBEB" },
+          { label: "Cancelled", value: bookingsList.filter(b => b.status === "Cancelled").length.toLocaleString(), color: "#DC2626", bg: "#FFF1F2" },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-4 border" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
             <div className="text-xl" style={{ color: s.color, fontWeight: 700 }}>{s.value}</div>
@@ -254,7 +297,7 @@ export function Bookings() {
         {/* Pagination */}
         <div className="px-5 py-3 border-t flex items-center justify-between" style={{ borderColor: "rgba(199,106,0,0.08)" }}>
           <span className="text-xs" style={{ color: "#9CA3AF" }}>
-            Showing {filtered.length} of {bookings.length} bookings
+            Showing {filtered.length} of {bookingsList.length} bookings
           </span>
           <div className="flex items-center gap-1.5">
             {[1, 2, 3, 4, 5].map((p) => (

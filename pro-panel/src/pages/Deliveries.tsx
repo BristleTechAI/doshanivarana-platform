@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { db } from '../lib/db';
+import { db, type Booking } from '../lib/db';
 
 interface DeliveryRecord {
   bookingId: string;
@@ -15,11 +15,32 @@ interface DeliveryRecord {
 export function Deliveries() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'action' | 'ready' | 'transit' | 'completed'>('action');
-  
-  const [records] = useState<DeliveryRecord[]>(() => {
-    const bookings = db.getBookings();
-    const deliveryBookings = bookings.filter(b => b.delivery === 'Yes');
-    return deliveryBookings.map(b => {
+  const [bookings, setBookings] = useState<Booking[]>(() => db.getBookings());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPooja, setSelectedPooja] = useState('All');
+  const [sortBy, setSortBy] = useState('daysPendingDesc');
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setBookings(db.getBookings());
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('focus', handleUpdate);
+    window.addEventListener('doshanivarana_bookings_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('focus', handleUpdate);
+      window.removeEventListener('doshanivarana_bookings_updated', handleUpdate);
+    };
+  }, []);
+
+  const handleViewDetails = (bookingId: string) => {
+    navigate(`/deliveries/${bookingId}`);
+  };
+
+  const records: DeliveryRecord[] = bookings
+    .filter(b => b.delivery === 'Yes')
+    .map(b => {
       const address = b.deliveryAddress;
       let destination = address;
       if (address.includes(',')) {
@@ -40,11 +61,6 @@ export function Deliveries() {
         isUrgent: b.deliveryIsUrgent || false
       };
     });
-  });
-
-  const handleViewDetails = (bookingId: string) => {
-    navigate(`/deliveries/${bookingId}`);
-  };
 
   // Stats calculation
   const actionRequiredCount = records.filter(r => r.status === 'Booked').length;
@@ -67,7 +83,47 @@ export function Deliveries() {
     }
   };
 
-  const filteredRecords = getFilteredRecords();
+  const getFilteredAndSortedRecords = () => {
+    let filtered = getFilteredRecords();
+
+    // Filter by Pooja Type
+    if (selectedPooja !== 'All') {
+      filtered = filtered.filter(r => r.poojaName === selectedPooja);
+    }
+
+    // Filter by Search Query
+    if (searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(r => 
+        r.bookingId.toLowerCase().includes(q) || 
+        r.devoteeName.toLowerCase().includes(q) || 
+        r.destination.toLowerCase().includes(q) ||
+        r.poojaName.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort Records
+    filtered.sort((a, b) => {
+      if (sortBy === 'daysPendingDesc') {
+        return b.daysPending - a.daysPending;
+      }
+      if (sortBy === 'daysPendingAsc') {
+        return a.daysPending - b.daysPending;
+      }
+      if (sortBy === 'devoteeName') {
+        return a.devoteeName.localeCompare(b.devoteeName);
+      }
+      if (sortBy === 'bookingId') {
+        return a.bookingId.localeCompare(b.bookingId);
+      }
+      return 0;
+    });
+
+    return filtered;
+  };
+
+  const filteredRecords = getFilteredAndSortedRecords();
+  const uniquePoojas = Array.from(new Set(records.map(r => r.poojaName)));
 
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
@@ -124,7 +180,65 @@ export function Deliveries() {
             <h3 className="text-label-md text-on-surface-variant uppercase tracking-wider text-[10px]">Delivered</h3>
             <span className="material-symbols-outlined text-green-600 text-[20px]">check_circle</span>
           </div>
-          <p className="font-display text-headline-lg text-on-surface font-bold leading-none">{completedCount}</p>
+        </div>
+      </div>
+
+      {/* Search, Filter & Sort Bar */}
+      <div className="bg-surface-container-lowest soft-shadow rounded-xl p-6 mb-8 border border-[#F0E6D2] flex flex-wrap items-end gap-6 font-sans">
+        {/* Search */}
+        <div className="flex-1 min-w-[250px]">
+          <label className="block text-label-md text-on-surface-variant mb-2 font-semibold">Search Orders</label>
+          <input
+            type="text"
+            placeholder="Search by Devotee Name, Booking ID, or Destination..."
+            className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-2 text-body-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors font-semibold"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        {/* Pooja Type Filter */}
+        <div className="w-[220px] min-w-[180px]">
+          <label className="block text-label-md text-on-surface-variant mb-2 font-semibold">Pooja Type</label>
+          <select 
+            className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-2 text-body-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors cursor-pointer font-semibold"
+            value={selectedPooja}
+            onChange={(e) => setSelectedPooja(e.target.value)}
+          >
+            <option value="All">All Poojas</option>
+            {uniquePoojas.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Sort By */}
+        <div className="w-[200px] min-w-[150px]">
+          <label className="block text-label-md text-on-surface-variant mb-2 font-semibold">Sort By</label>
+          <select
+            className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-2 text-body-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors cursor-pointer font-semibold"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+          >
+            <option value="daysPendingDesc">Days Pending (High to Low)</option>
+            <option value="daysPendingAsc">Days Pending (Low to High)</option>
+            <option value="devoteeName">Devotee Name (A-Z)</option>
+            <option value="bookingId">Booking ID</option>
+          </select>
+        </div>
+
+        {/* Reset Button */}
+        <div className="flex h-[38px] items-center">
+          <button 
+            className="text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer font-semibold text-body-sm px-4"
+            onClick={() => {
+              setSearchQuery('');
+              setSelectedPooja('All');
+              setSortBy('daysPendingDesc');
+            }}
+          >
+            Reset
+          </button>
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { db, type Booking } from '../lib/db';
 
@@ -10,7 +10,21 @@ export function Bookings() {
   const [deliveryFilter, setDeliveryFilter] = useState('All');
   const [paymentFilter, setPaymentFilter] = useState('All');
 
-  const [bookings] = useState<Booking[]>(() => db.getBookings());
+  const [bookings, setBookings] = useState<Booking[]>(() => db.getBookings());
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setBookings(db.getBookings());
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('focus', handleUpdate);
+    window.addEventListener('doshanivarana_bookings_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('focus', handleUpdate);
+      window.removeEventListener('doshanivarana_bookings_updated', handleUpdate);
+    };
+  }, []);
 
 
   const handleViewDetails = (id: string) => {

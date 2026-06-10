@@ -1,13 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { db, type Booking, type PoojaSlot, type DevoteeQuery } from '../lib/db';
 
 export function Home() {
   const navigate = useNavigate();
 
-  const [bookings] = useState<Booking[]>(() => db.getBookings());
-  const [slots] = useState<PoojaSlot[]>(() => db.getSlots());
-  const [queries] = useState<DevoteeQuery[]>(() => db.getQueries());
+  const [bookings, setBookings] = useState<Booking[]>(() => db.getBookings());
+  const [slots, setSlots] = useState<PoojaSlot[]>(() => db.getSlots());
+  const [queries, setQueries] = useState<DevoteeQuery[]>(() => db.getQueries());
+  
+  useEffect(() => {
+    const handleBookingsUpdate = () => setBookings(db.getBookings());
+    const handleSlotsUpdate = () => setSlots(db.getSlots());
+    const handleQueriesUpdate = () => setQueries(db.getQueries());
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'doshanivarana_bookings') handleBookingsUpdate();
+      if (e.key === 'doshanivarana_slots') handleSlotsUpdate();
+      if (e.key === 'doshanivarana_queries') handleQueriesUpdate();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('focus', handleBookingsUpdate);
+    window.addEventListener('doshanivarana_bookings_updated', handleBookingsUpdate);
+    window.addEventListener('doshanivarana_slots_updated', handleSlotsUpdate);
+    window.addEventListener('doshanivarana_queries_updated', handleQueriesUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleBookingsUpdate);
+      window.removeEventListener('doshanivarana_bookings_updated', handleBookingsUpdate);
+      window.removeEventListener('doshanivarana_slots_updated', handleSlotsUpdate);
+      window.removeEventListener('doshanivarana_queries_updated', handleQueriesUpdate);
+    };
+  }, []);
+
   const [profileName] = useState(() => {
     const profile = db.getProfile();
     if (profile && profile.fullName) {
