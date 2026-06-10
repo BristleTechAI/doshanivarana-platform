@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { db, type DevoteeQuery, type ChatMessage } from '../lib/db';
+import { useState, useEffect } from 'react';
+import { type DevoteeQuery } from '../lib/db';
 
 export function Queries() {
-  const [queries, setQueries] = useState<DevoteeQuery[]>(() => db.getQueries());
+  const [queries, setQueries] = useState<DevoteeQuery[]>([]);
 
   const [selectedQueryId, setSelectedQueryId] = useState('Q-101');
   const [activeTab, setActiveTab] = useState<'All' | 'Open' | 'Replied' | 'Closed'>('All');
@@ -12,46 +12,79 @@ export function Queries() {
 
   const activeQuery = queries.find(q => q.id === selectedQueryId) || queries[0];
 
-  const handleSendReply = (e: React.FormEvent) => {
+  const fetchQueries = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/queries');
+      if (res.ok) {
+        const data = await res.json();
+        setQueries(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch queries from backend:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchQueries();
+    const interval = setInterval(() => {
+      fetchQueries();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyText.trim() || !activeQuery) return;
 
-    const now = new Date();
-    const formattedTime = now.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + `, ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
-
-    const newReply: ChatMessage = {
-      sender: 'admin',
-      senderName: 'Ravi PRO',
-      avatarText: 'RP',
-      time: formattedTime,
-      text: replyText.trim()
-    };
-
-    const updatedQuery: DevoteeQuery = {
-      ...activeQuery,
-      status: 'Replied',
-      snippet: replyText.trim(),
-      thread: [...activeQuery.thread, newReply]
-    };
-
-    db.updateQuery(updatedQuery);
-    setQueries(prev => prev.map(q => q.id === activeQuery.id ? updatedQuery : q));
-
+    const replyContent = replyText.trim();
     setReplyText('');
-    setNotification('Reply sent successfully!');
-    setTimeout(() => setNotification(null), 3000);
+
+    try {
+      const res = await fetch(`http://localhost:3001/api/queries/${activeQuery.id}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: 'admin',
+          senderName: 'Ravi PRO',
+          avatarText: 'RP',
+          text: replyContent
+        })
+      });
+      if (res.ok) {
+        const updatedQuery = await res.json();
+        setQueries(prev => prev.map(q => q.id === activeQuery.id ? updatedQuery : q));
+        setNotification('Reply sent successfully!');
+        setTimeout(() => setNotification(null), 3000);
+      } else {
+        setReplyText(replyContent);
+        setNotification('Failed to send reply.');
+        setTimeout(() => setNotification(null), 3000);
+      }
+    } catch (err) {
+      setReplyText(replyContent);
+      console.error(err);
+      setNotification('Network error sending reply.');
+      setTimeout(() => setNotification(null), 3000);
+    }
   };
 
-  const handleCloseQuery = () => {
+  const handleCloseQuery = async () => {
     if (!activeQuery) return;
-    const updatedQuery: DevoteeQuery = {
-      ...activeQuery,
-      status: 'Closed'
-    };
-    db.updateQuery(updatedQuery);
-    setQueries(prev => prev.map(q => q.id === activeQuery.id ? updatedQuery : q));
-    setNotification('Query marked as Closed.');
-    setTimeout(() => setNotification(null), 3000);
+    try {
+      const res = await fetch(`http://localhost:3001/api/queries/${activeQuery.id}/close`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const updatedQuery = await res.json();
+        setQueries(prev => prev.map(q => q.id === activeQuery.id ? updatedQuery : q));
+        setNotification('Query marked as Closed.');
+        setTimeout(() => setNotification(null), 3000);
+      }
+    } catch (err) {
+      console.error(err);
+      setNotification('Failed to close query.');
+      setTimeout(() => setNotification(null), 3000);
+    }
   };
 
   // Filter and search logic
@@ -327,12 +360,22 @@ export function Queries() {
                     This query is closed. Click "Reopen Query" to reply.
                   </p>
                   <button 
-                    onClick={() => {
-                      const updatedQuery: DevoteeQuery = { ...activeQuery, status: 'Open' };
-                      db.updateQuery(updatedQuery);
-                      setQueries(prev => prev.map(q => q.id === activeQuery.id ? updatedQuery : q));
-                      setNotification('Query reopened.');
-                      setTimeout(() => setNotification(null), 3000);
+                    onClick={async () => {
+                      try {
+                        const res = await fetch(`http://localhost:3001/api/queries/${activeQuery.id}/reopen`, {
+                          method: 'POST'
+                        });
+                        if (res.ok) {
+                          const updatedQuery = await res.json();
+                          setQueries(prev => prev.map(q => q.id === activeQuery.id ? updatedQuery : q));
+                          setNotification('Query reopened.');
+                          setTimeout(() => setNotification(null), 3000);
+                        }
+                      } catch (err) {
+                        console.error(err);
+                        setNotification('Failed to reopen query.');
+                        setTimeout(() => setNotification(null), 3000);
+                      }
                     }}
                     className="mt-2 text-xs font-bold text-primary hover:underline cursor-pointer"
                   >

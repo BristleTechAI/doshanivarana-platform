@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, Image, Modal, ActivityIndicator } from 'react-native';
-import { CheckCircle2, Clock, Package, PlayCircle, Video, CreditCard, AlertCircle, Check } from 'lucide-react-native';
+import { CheckCircle2, Clock, Package, PlayCircle, Video, CreditCard, AlertCircle, Check, MessageSquare } from 'lucide-react-native';
 import { Link, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
@@ -627,6 +627,15 @@ function BookingCard({
           <Pressable className="w-full mt-4 py-2.5 rounded-xl border-2 border-primary items-center justify-center active:bg-primary/5">
             <Text className="text-primary font-medium text-sm">
               {t('bookings.viewJourney')}
+            </Text>
+          </Pressable>
+        </Link>
+
+        <Link href={{ pathname: '/support/chat', params: { bookingId: id } }} asChild>
+          <Pressable className="w-full mt-3 py-2.5 rounded-xl border border-border bg-card items-center justify-center flex-row gap-2 active:bg-muted/40">
+            <MessageSquare size={14} color={theme === 'dark' ? '#F5F5F0' : '#1C1917'} />
+            <Text className="text-foreground font-semibold text-sm">
+              Chat with Support
             </Text>
           </Pressable>
         </Link>

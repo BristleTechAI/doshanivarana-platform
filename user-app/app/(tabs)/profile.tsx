@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, Switch } from 'react-native';
 import { useRouter, Link } from 'expo-router';
-import { ChevronRight, User, Star, Calendar, Settings, Bell, HelpCircle, LogOut, Sparkles, Edit2, X, MapPin, Phone, Mail, Languages, Check } from 'lucide-react-native';
+import { ChevronRight, User, Star, Calendar, Settings, Bell, HelpCircle, LogOut, Sparkles, Edit2, X, MapPin, Phone, Mail, Languages, Check, MessageSquare } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
 import { safeStorage } from '../../src/old_app/lib/storage';
@@ -608,10 +608,20 @@ export default function Profile() {
                   <Mail size={16} color="#F97316" />
                   <Text className="text-foreground">support@doshanivarana.in</Text>
                 </View>
-                <View className="flex-row items-center gap-2">
+                <View className="flex-row items-center gap-2 mb-4">
                   <Phone size={16} color="#F97316" />
                   <Text className="text-foreground">+91 80 1234 5678</Text>
                 </View>
+                <Pressable
+                  onPress={() => {
+                    setShowHelp(false);
+                    router.push('/support/chat');
+                  }}
+                  className="w-full py-3 bg-primary rounded-xl items-center justify-center flex-row gap-2 active:bg-[#E05C10]"
+                >
+                  <MessageSquare size={16} color="#1A0A00" />
+                  <Text className="text-[#1A0A00] font-semibold text-sm">Chat with Temple PRO</Text>
+                </Pressable>
               </View>
               <Text className="font-semibold mb-3 text-foreground">{t('help.faq')}</Text>
               <FAQItem q={t('help.faq1Q')} a={t('help.faq1A')} />

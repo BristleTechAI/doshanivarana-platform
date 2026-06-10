@@ -1,0 +1,120 @@
+[
+  {
+    "id": "Q-101",
+    "bookingId": "BK-1001",
+    "devoteeName": "Rajesh Kumar",
+    "timeAgo": "Just now",
+    "subject": "Can I reschedule my pooja date?",
+    "snippet": "Namaste Rajesh, we can reschedule it to tomorrow. Please confirm if that works.",
+    "status": "Replied",
+    "thread": [
+      {
+        "sender": "devotee",
+        "senderName": "Rajesh Kumar",
+        "avatarText": "RK",
+        "time": "Jun 10, 2026, 08:30 AM",
+        "text": "Namaste, I have booked the Satyanarayana Pooja for today. Due to a family emergency I need to know if there is any option to move it to a different date. Please help. Thank you."
+      },
+      {
+        "sender": "devotee",
+        "senderName": "Rajesh Kumar",
+        "avatarText": "RK",
+        "time": "Jun 10, 11:00 AM",
+        "text": "Namaste, is there any update on rescheduling?"
+      },
+      {
+        "sender": "admin",
+        "senderName": "Ravi PRO",
+        "avatarText": "RP",
+        "time": "Jun 10, 11:00 AM",
+        "text": "Namaste Rajesh, we can reschedule it to tomorrow. Please confirm if that works."
+      }
+    ]
+  },
+  {
+    "id": "Q-102",
+    "bookingId": "BK-1002",
+    "devoteeName": "Priya Sharma",
+    "timeAgo": "5 hours ago",
+    "subject": "When will recording be available?",
+    "snippet": "I watched the pooja live but wanted to download...",
+    "status": "Open",
+    "thread": [
+      {
+        "sender": "devotee",
+        "senderName": "Priya Sharma",
+        "avatarText": "PS",
+        "time": "Jun 10, 2026, 05:15 AM",
+        "text": "I watched the pooja live but wanted to download the high quality recording file to share with my relatives. Will it be sent via email or is it available inside the portal?"
+      }
+    ]
+  },
+  {
+    "id": "Q-103",
+    "bookingId": "BK-1003",
+    "devoteeName": "Anand Reddy",
+    "timeAgo": "Yesterday",
+    "subject": "Prasad delivery status",
+    "snippet": "My parcel was dispatched 3 days ago but has not...",
+    "status": "Open",
+    "thread": [
+      {
+        "sender": "devotee",
+        "senderName": "Anand Reddy",
+        "avatarText": "AR",
+        "time": "Jun 9, 2026, 04:20 PM",
+        "text": "My parcel was dispatched 3 days ago according to the notification, but the tracking ID is not updating on BlueDart. Can you check if it was picked up?"
+      }
+    ]
+  },
+  {
+    "id": "Q-104",
+    "bookingId": "BK-1004",
+    "devoteeName": "Sunita Devi",
+    "timeAgo": "2 days ago",
+    "subject": "Booking confirmation not received",
+    "snippet": "I completed payment but did not get confirmation...",
+    "status": "Replied",
+    "thread": [
+      {
+        "sender": "devotee",
+        "senderName": "Sunita Devi",
+        "avatarText": "SD",
+        "time": "Jun 8, 2026, 09:10 AM",
+        "text": "I completed payment of Rs.1500 on UPI but did not get any booking confirmation email or slot details. Please verify payment."
+      },
+      {
+        "sender": "admin",
+        "senderName": "Ravi PRO",
+        "avatarText": "RP",
+        "time": "Jun 8, 2026, 11:30 AM",
+        "text": "Namaste Sunita Devi, we checked our system and confirmed your payment for Booking BK-1004. You should have received the notification on the app now. Let us know if you need more assistance."
+      }
+    ]
+  },
+  {
+    "id": "Q-105",
+    "bookingId": "BK-1005",
+    "devoteeName": "Kiran Patel",
+    "timeAgo": "3 days ago",
+    "subject": "Pujari name for my pooja",
+    "snippet": "Who is the pujari assigned for Satyanarayana?",
+    "status": "Replied",
+    "thread": [
+      {
+        "sender": "devotee",
+        "senderName": "Kiran Patel",
+        "avatarText": "KP",
+        "time": "Jun 7, 2026, 11:15 AM",
+        "text": "Who is the pujari assigned for Satyanarayana pooja? It says Pt. Sharma Ji or Pt. Acharya? I want to know who is the main priest."
+      },
+      {
+        "sender": "admin",
+        "senderName": "Ravi PRO",
+        "avatarText": "RP",
+        "time": "Jun 7, 2026, 02:00 PM",
+        "text": "Namaste Kiran Patel, Pt. Sharma Ji is assigned for your Satyanarayana pooja. He will contact you 1 hour before the pooja."
+      }
+    ]
+  }
+]

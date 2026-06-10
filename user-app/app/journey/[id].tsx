@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, Package, PlayCircle, Truck } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, Package, PlayCircle, Truck, MessageSquare, ChevronRight } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
@@ -369,7 +369,7 @@ export default function PoojaJourneyScreen() {
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 20, paddingBottom: 120 }} className="flex-1">
         {/* Devotee Details Summary Card */}
-        <View className="bg-card border border-border rounded-2xl p-5 mb-8">
+        <View className="bg-card border border-border rounded-2xl p-5 mb-4">
           <Text className="font-bold text-primary text-xs uppercase tracking-wider mb-3">{t('journey.sankalpamDetails')}</Text>
           <View className="space-y-2.5">
             <View className="flex-row justify-between mb-1.5">
@@ -390,6 +390,26 @@ export default function PoojaJourneyScreen() {
             </View>
           </View>
         </View>
+
+        <Pressable
+          onPress={() => router.push({ pathname: '/support/chat', params: { bookingId: displayId } })}
+          className="bg-card border border-border rounded-2xl p-4 mb-8 flex-row items-center justify-between active:bg-muted/40"
+        >
+          <View className="flex-row items-center gap-3">
+            <View className="w-10 h-10 rounded-xl bg-primary/10 items-center justify-center">
+              <MessageSquare size={20} color="#F97316" />
+            </View>
+            <View>
+              <Text className="font-semibold text-foreground text-sm" style={{ fontFamily: 'System' }}>
+                Need Help with this Pooja?
+              </Text>
+              <Text className="text-xs text-muted-foreground" style={{ fontFamily: 'System' }}>
+                Chat with our Support PRO
+              </Text>
+            </View>
+          </View>
+          <ChevronRight size={16} color="#78716C" />
+        </Pressable>
 
         {/* Timeline */}
         <View className="px-2">
