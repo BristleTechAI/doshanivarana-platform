@@ -33,9 +33,11 @@ export function LanguagesPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<null | typeof languages[0]>(null);
   const [form, setForm] = useState({ name: "", code: "", flag: "🇮🇳", region: "" });
+  const [saving, setSaving] = useState(false);
 
   function handleAdd() {
     if (!form.name || !form.code) return;
+    setSaving(true);
     const newLang = {
       code: form.code.toLowerCase(), name: form.name, flag: form.flag || "🌐",
       region: form.region, users: 0, temples: 0, poojas: 0, status: "Active",
@@ -43,13 +45,16 @@ export function LanguagesPage() {
     setLangs(prev => [...prev, newLang]);
     setForm({ name: "", code: "", flag: "🇮🇳", region: "" });
     setAddOpen(false);
+    setSaving(false);
   }
 
   function handleEdit() {
     if (!editTarget || !form.name) return;
+    setSaving(true);
     setLangs(prev => prev.map(l => l.code === editTarget.code ? { ...l, name: form.name, flag: form.flag, region: form.region } : l));
     setEditTarget(null);
     setForm({ name: "", code: "", flag: "🇮🇳", region: "" });
+    setSaving(false);
   }
 
   function openEdit(l: typeof languages[0]) {
@@ -139,7 +144,7 @@ export function LanguagesPage() {
             <input className={inputCls} style={inputStyle} placeholder="e.g. West Bengal, Bangladesh" value={form.region} onChange={e => setForm(f => ({ ...f, region: e.target.value }))} />
           </Field>
         </div>
-        <ModalFooter onClose={() => setAddOpen(false)} onSubmit={handleAdd} submitLabel="Add Language" />
+        <ModalFooter onClose={() => setAddOpen(false)} onSubmit={handleAdd} submitLabel="Add Language" saving={saving} />
       </Modal>
 
       <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="Edit Language">
@@ -154,7 +159,7 @@ export function LanguagesPage() {
             <input className={inputCls} style={inputStyle} value={form.region} onChange={e => setForm(f => ({ ...f, region: e.target.value }))} />
           </Field>
         </div>
-        <ModalFooter onClose={() => setEditTarget(null)} onSubmit={handleEdit} submitLabel="Save Changes" />
+        <ModalFooter onClose={() => setEditTarget(null)} onSubmit={handleEdit} submitLabel="Save Changes" saving={saving} />
       </Modal>
     </div>
   );

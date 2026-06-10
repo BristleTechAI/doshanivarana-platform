@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Building2, Search, Plus, Filter, MapPin, Star, CalendarCheck,
   IndianRupee, Radio, MoreVertical, UserCircle, Edit, PowerOff,
@@ -34,6 +34,35 @@ type UITemple = Temple & {
   devotees: number; 
 };
 
+function mapDocToTemple(docSnapshot: any): UITemple {
+  const d = docSnapshot.data();
+  return {
+    id: docSnapshot.id,
+    name: d.name || "",
+    description: d.description || "",
+    location: d.location || "",
+    city: d.city || "",
+    state: d.state || "",
+    deity: d.deity || "",
+    isActive: d.isActive ?? true,
+    createdAt: d.createdAt?.toDate?.() || new Date(),
+    updatedAt: d.updatedAt?.toDate?.() || new Date(),
+    isDeleted: d.isDeleted || false,
+    // UI specific mocks/aggregations for V1
+    bookings: d.bookings || Math.floor(Math.random() * 5000),
+    revenue: d.revenue || "₹0L",
+    rating: d.rating || 4.5,
+    poojas: d.poojas || 0,
+    streams: d.streams || 0,
+    status: d.status || (d.isActive ? "Active" : "Inactive"),
+    pro: d.pro || "Unassigned",
+    color: d.color || "#C76A00",
+    type: d.type || "Shaiva",
+    since: d.since || "Jan 2026",
+    devotees: d.devotees || Math.floor(Math.random() * 100000),
+  } as UITemple;
+}
+
 export function Temples() {
   const [view, setView] = useState<"cards" | "table">("cards");
   const [search, setSearch] = useState("");
@@ -43,52 +72,35 @@ export function Temples() {
   const [templeForm, setTempleForm] = useState(emptyTempleForm);
   const [temples, setTemples] = useState<UITemple[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const fetchTemples = async () => {
+  // Silent re-fetch (no loading spinner flash — used after mutations)
+  const refetchSilent = useCallback(async () => {
+    try {
+      const q = query(collection(db, "temples"), where("isDeleted", "==", false));
+      const snapshot = await getDocs(q);
+      setTemples(snapshot.docs.map(mapDocToTemple));
+    } catch (err) {
+      console.error("Failed to refetch temples", err);
+    }
+  }, []);
+
+  const fetchTemples = useCallback(async () => {
     setLoading(true);
     try {
       const q = query(collection(db, "temples"), where("isDeleted", "==", false));
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => {
-        const d = doc.data();
-        return {
-          id: doc.id,
-          name: d.name || "",
-          description: d.description || "",
-          location: d.location || "",
-          city: d.city || "",
-          state: d.state || "",
-          deity: d.deity || "",
-          isActive: d.isActive ?? true,
-          createdAt: d.createdAt?.toDate?.() || new Date(),
-          updatedAt: d.updatedAt?.toDate?.() || new Date(),
-          isDeleted: d.isDeleted || false,
-          
-          // UI specific mocks/aggregations for V1
-          bookings: d.bookings || Math.floor(Math.random() * 5000),
-          revenue: d.revenue || "₹0L",
-          rating: d.rating || 4.5,
-          poojas: d.poojas || 0,
-          streams: d.streams || 0,
-          status: d.status || (d.isActive ? "Active" : "Inactive"),
-          pro: d.pro || "Unassigned",
-          color: d.color || "#C76A00",
-          type: d.type || "Shaiva",
-          since: d.since || "Jan 2026",
-          devotees: d.devotees || Math.floor(Math.random() * 100000),
-        } as UITemple;
-      });
-      setTemples(data);
+      setTemples(snapshot.docs.map(mapDocToTemple));
     } catch (err) {
       console.error("Failed to fetch temples", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchTemples();
-  }, []);
+  }, [fetchTemples]);
 
   function openTempleEdit(t: UITemple) {
     setEditTarget(t);
@@ -100,7 +112,14 @@ export function Temples() {
     setTempleForm(emptyTempleForm);
   }
 
+  function closeModal() {
+    setEditTarget(null);
+    setIsAdding(false);
+    setTempleForm(emptyTempleForm);
+  }
+
   async function handleSaveTemple() {
+    setSaving(true);
     try {
       const dataToSave = {
         name: templeForm.name,
@@ -114,9 +133,24 @@ export function Temples() {
       };
 
       if (editTarget) {
+        // Optimistic update — immediately reflect changes in UI
+        const updatedTemple: UITemple = {
+          ...editTarget,
+          ...dataToSave,
+          isActive: templeForm.status === "Active",
+        };
+        setTemples(prev => prev.map(t => t.id === editTarget.id ? updatedTemple : t));
+        
+        // Close modal immediately
+        closeModal();
+        
+        // Persist to Firebase in background
         await updateDoc(doc(db, "temples", editTarget.id), dataToSave);
+        // Silent background sync
+        refetchSilent();
       } else {
-        await addDoc(collection(db, "temples"), {
+        // For add: persist first to get the real ID, then optimistically prepend
+        const docRef = await addDoc(collection(db, "temples"), {
           ...dataToSave,
           description: "",
           city: "",
@@ -124,19 +158,51 @@ export function Temples() {
           isDeleted: false,
           createdAt: serverTimestamp(),
         });
+
+        // Optimistic local add with generated ID
+        const newTemple: UITemple = {
+          id: docRef.id,
+          name: templeForm.name,
+          description: "",
+          location: templeForm.location,
+          city: "",
+          state: "",
+          deity: templeForm.deity,
+          isActive: templeForm.status === "Active",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          isDeleted: false,
+          bookings: 0,
+          revenue: "₹0L",
+          rating: 5.0,
+          poojas: 0,
+          streams: 0,
+          status: templeForm.status,
+          pro: templeForm.pro,
+          color: "#C76A00",
+          type: templeForm.type,
+          since: new Date().toLocaleDateString("en-GB", { month: "short", year: "numeric" }),
+          devotees: 0,
+        };
+        setTemples(prev => [newTemple, ...prev]);
+        
+        // Close modal immediately
+        closeModal();
+        
+        // Silent background sync to get accurate server data
+        refetchSilent();
       }
-      
-      setEditTarget(null);
-      setIsAdding(false);
-      setTempleForm(emptyTempleForm);
-      fetchTemples();
     } catch (error) {
       console.error("Error saving temple:", error);
+    } finally {
+      setSaving(false);
     }
   }
 
   async function handleDeleteTemple(t: UITemple) {
     if (confirm(`Are you sure you want to deactivate/delete ${t.name}?`)) {
+      // Optimistic remove
+      setTemples(prev => prev.filter(temple => temple.id !== t.id));
       try {
         await updateDoc(doc(db, "temples", t.id), {
           isDeleted: true,
@@ -144,9 +210,12 @@ export function Temples() {
           deletedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
-        fetchTemples();
+        // Silent background sync
+        refetchSilent();
       } catch (e) {
         console.error("Error deleting temple", e);
+        // Revert optimistic update on error
+        refetchSilent();
       }
     }
   }
@@ -409,10 +478,10 @@ export function Temples() {
         </>
       )}
 
-      {/* Edit Temple Modal */}
+      {/* Edit / Add Temple Modal */}
       <Modal
         open={!!editTarget || isAdding}
-        onClose={() => { setEditTarget(null); setIsAdding(false); setTempleForm(emptyTempleForm); }}
+        onClose={closeModal}
         title={editTarget ? `Edit Temple — ${editTarget.id.slice(0, 8)}` : "Add Temple"}
       >
         <div className="px-6 py-5 space-y-4">
@@ -471,9 +540,10 @@ export function Temples() {
           </Field>
         </div>
         <ModalFooter
-          onClose={() => { setEditTarget(null); setIsAdding(false); setTempleForm(emptyTempleForm); }}
+          onClose={closeModal}
           onSubmit={handleSaveTemple}
           submitLabel="Save Changes"
+          saving={saving}
         />
       </Modal>
     </div>

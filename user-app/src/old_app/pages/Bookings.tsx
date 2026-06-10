@@ -1,8 +1,9 @@
 import { Circle, CheckCircle2, Clock, Package, PlayCircle, Video, X, Star } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { Link } from 'react-router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { POOJAS } from '../lib/poojas';
 
 export function Bookings() {
   const { t } = useLanguage();
@@ -14,38 +15,36 @@ export function Bookings() {
   const [refundModal, setRefundModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
   const [feedbackModal, setFeedbackModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
 
-  const [bookings, setBookings] = useState([
-    {
-      id: 'DS2026031801',
-      title: 'Satyanarayana Pooja',
-      temple: 'Tirumala Temple',
-      date: 'Tomorrow, 6:30 AM',
-      status: 'upcoming',
-      currentStage: 2,
-      imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
-    },
-    {
-      id: 'DS2026031502',
-      title: 'Rudrabhishekam',
-      temple: 'Rameshwaram Temple',
-      date: 'March 15, 2026',
-      status: 'completed',
-      currentStage: 9,
-      hasRecording: true,
-      imageUrl: 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080',
-    },
-    {
-      id: 'DS2026031003',
-      title: 'Navagraha Homam',
-      temple: 'Varanasi Temple',
-      date: 'March 10, 2026',
-      status: 'cancelled',
-      currentStage: 0,
-      imageUrl: 'https://images.unsplash.com/photo-1772787429537-77ba39d3f855?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZW1wbGUlMjBmbG93ZXIlMjBvZmZlcmluZ3MlMjBpbmNlbnNlfGVufDF8fHx8MTc3MzgyNTQ1Nnww&ixlib=rb-4.1.0&q=80&w=1080',
-    }
-  ]);
+  // Feedback fields
+  const [feedbackRating, setFeedbackRating] = useState<number>(5);
+  const [feedbackComment, setFeedbackComment] = useState<string>("");
 
-<<<<<<< HEAD
+  // Fetch bookings dynamically from localStorage
+  const [allBookings, setAllBookings] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      const bookingsData = localStorage.getItem('doshanivarana_bookings');
+      return bookingsData ? JSON.parse(bookingsData) : [];
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'doshanivarana_bookings') {
+        const data = localStorage.getItem('doshanivarana_bookings');
+        setAllBookings(data ? JSON.parse(data) : []);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    const handleCustomUpdate = () => {
+      const data = localStorage.getItem('doshanivarana_bookings');
+      setAllBookings(data ? JSON.parse(data) : []);
+    };
+    window.addEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
+    window.addEventListener('focus', handleCustomUpdate);
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
@@ -91,25 +90,70 @@ export function Bookings() {
 
   const filteredBookings = mappedBookings.filter((booking) =>
     activeTab === 'active' ? booking.status === 'upcoming' : booking.status === 'completed'
-=======
-  const filteredBookings = bookings.filter(booking => 
-    activeTab === 'active' ? booking.status === 'upcoming' : ['completed', 'cancelled'].includes(booking.status)
->>>>>>> 1fb880da40406bfa87bf3877806242baa16f362a
   );
 
   const handleCancelBooking = (id: string) => {
-    setBookings(bookings.map(b => b.id === id ? { ...b, status: 'cancelled' } : b));
+    const updated = allBookings.map(b => b.id === id ? { ...b, tab: 'cancelled', paymentStatus: 'Pending' } : b);
+    localStorage.setItem('doshanivarana_bookings', JSON.stringify(updated));
+    window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
     setCancelModal({isOpen: false, bookingId: null});
   };
 
   const handleRefundRequest = () => {
-    // Mock refund submission
     setRefundModal({isOpen: false, bookingId: null});
     alert("Refund request submitted successfully.");
   };
 
   const handleFeedbackSubmit = () => {
+    const bookingId = feedbackModal.bookingId;
+    if (!bookingId) return;
+
+    // 1. Update the booking feedback locally in doshanivarana_bookings
+    const currentBookingsData = localStorage.getItem('doshanivarana_bookings');
+    let bookingsList = currentBookingsData ? JSON.parse(currentBookingsData) : [];
+    
+    const updatedBookings = bookingsList.map((b: any) => {
+      if (b.id === bookingId) {
+        return {
+          ...b,
+          feedback: feedbackComment
+        };
+      }
+      return b;
+    });
+
+    localStorage.setItem('doshanivarana_bookings', JSON.stringify(updatedBookings));
+    window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+
+    // 2. Find the updated booking to copy details to review
+    const booking = updatedBookings.find((b: any) => b.id === bookingId);
+    if (booking) {
+      // 3. Save the feedback to the global feed
+      const currentFeedbackData = localStorage.getItem('doshanivarana_feedback');
+      let feedbackList = currentFeedbackData ? JSON.parse(currentFeedbackData) : [];
+
+      const newReview = {
+        id: String(Date.now()),
+        devoteeName: booking.devoteeName || "Anonymous Devotee",
+        avatarText: booking.devoteeName ? booking.devoteeName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) : "DV",
+        avatarBg: "bg-[#e8def8] text-[#1d192b]",
+        poojaName: booking.poojaName,
+        temple: booking.temple || "Sri Venkateswara Temple",
+        date: booking.dateTime ? booking.dateTime.split(',')[0] : new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
+        rating: feedbackRating,
+        submittedTime: `Submitted Today, ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+        comment: `"${feedbackComment}"`,
+        flagged: false
+      };
+
+      feedbackList.unshift(newReview);
+      localStorage.setItem('doshanivarana_feedback', JSON.stringify(feedbackList));
+      window.dispatchEvent(new Event('doshanivarana_feedback_updated'));
+    }
+
     setFeedbackModal({isOpen: false, bookingId: null});
+    setFeedbackRating(5);
+    setFeedbackComment("");
     alert("Thank you for your feedback!");
   };
 
@@ -267,12 +311,29 @@ export function Bookings() {
             <p className="text-sm text-muted-foreground mb-4">How was your pooja experience?</p>
             <div className="flex justify-center gap-2 mb-6">
               {[1, 2, 3, 4, 5].map((star) => (
-                <Star key={star} className={`w-8 h-8 ${star <= 4 ? 'text-yellow-500 fill-yellow-500' : 'text-muted'}`} />
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setFeedbackRating(star)}
+                  className="focus:outline-none"
+                >
+                  <Star
+                    className={`w-8 h-8 transition-colors ${
+                      star <= feedbackRating ? 'text-yellow-500 fill-yellow-500' : 'text-muted'
+                    }`}
+                  />
+                </button>
               ))}
             </div>
             <div className="mb-4">
               <label className="text-sm font-medium block mb-1">Write a Review</label>
-              <textarea className="w-full border border-border rounded-lg p-3 text-sm bg-background" rows={3} placeholder="Tell us more..."></textarea>
+              <textarea
+                className="w-full border border-border rounded-lg p-3 text-sm bg-background"
+                rows={3}
+                placeholder="Tell us more..."
+                value={feedbackComment}
+                onChange={(e) => setFeedbackComment(e.target.value)}
+              />
             </div>
             <button onClick={handleFeedbackSubmit} className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90">Submit Feedback</button>
           </div>

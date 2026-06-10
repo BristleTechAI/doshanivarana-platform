@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 
 interface ModalProps {
   open: boolean;
@@ -70,16 +70,28 @@ interface ModalFooterProps {
   onClose: () => void;
   onSubmit: () => void;
   submitLabel?: string;
+  saving?: boolean;
 }
 
-export function ModalFooter({ onClose, onSubmit, submitLabel = "Save" }: ModalFooterProps) {
+export function ModalFooter({ onClose, onSubmit, submitLabel = "Save", saving = false }: ModalFooterProps) {
   return (
     <div className="flex items-center justify-end gap-3 px-6 py-4 border-t flex-shrink-0" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
-      <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: "#FAF6F2", color: "#6B7280", fontWeight: 500 }}>
+      <button
+        onClick={onClose}
+        disabled={saving}
+        className="px-4 py-2 rounded-lg text-sm transition-opacity"
+        style={{ backgroundColor: "#FAF6F2", color: "#6B7280", fontWeight: 500, opacity: saving ? 0.5 : 1 }}
+      >
         Cancel
       </button>
-      <button onClick={onSubmit} className="px-5 py-2 rounded-lg text-sm" style={{ backgroundColor: "#C76A00", color: "#FFFFFF", fontWeight: 600 }}>
-        {submitLabel}
+      <button
+        onClick={onSubmit}
+        disabled={saving}
+        className="px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-opacity"
+        style={{ backgroundColor: "#C76A00", color: "#FFFFFF", fontWeight: 600, opacity: saving ? 0.85 : 1, minWidth: 110, justifyContent: "center" }}
+      >
+        {saving ? <Loader2 size={13} className="animate-spin" /> : null}
+        {saving ? "Saving..." : submitLabel}
       </button>
     </div>
   );

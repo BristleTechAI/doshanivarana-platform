@@ -1,14 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Modal, Field, ModalFooter, inputCls, inputStyle, selectStyle } from "../Modal";
 import {
-  Radio, Eye, Users, Clock, Wifi, WifiOff, Video, Play, Download,
-  Package, MapPin, CheckCircle, AlertCircle, Truck, MessageCircle,
-  Flag, Star, ChevronDown, Search, Plus, Edit, XCircle, Filter,
-  Briefcase, Building2, UserCircle, TrendingUp, IndianRupee,
-  Flame, Tag, Globe, RefreshCcw, BarChart2, ArrowUpRight,
-  ClipboardList, PowerOff, Send, CheckCircle2, HardDrive, LayoutGrid,
-  List, Calendar, ChevronRight, Reply, MoreVertical, Phone, Mail,
-  TriangleAlert, Inbox, Timer, ArrowLeft
+  Flame, Search, Plus, Edit, Eye, Star, CheckCircle, XCircle
 } from "lucide-react";
 import { db } from "../../../lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, query, where } from "firebase/firestore";
@@ -29,6 +22,33 @@ type UIPooja = Pooja & {
 
 const emptyPoojaForm = { name: "", category: "Abhishek", duration: "", price: "", liveStream: true, prasad: true };
 
+function mapDocToPooja(docSnap: any): UIPooja {
+  const d = docSnap.data();
+  return {
+    id: docSnap.id,
+    name: d.name || "",
+    description: d.description || "",
+    templeId: d.templeId || "",
+    category: d.category || "SPECIAL",
+    price: d.price || 0,
+    durationMinutes: d.durationMinutes || 60,
+    isActive: d.isActive ?? true,
+    createdAt: d.createdAt?.toDate?.() || new Date(),
+    updatedAt: d.updatedAt?.toDate?.() || new Date(),
+    isDeleted: d.isDeleted || false,
+    // UI specific mocks/aggregations for V1
+    duration: d.duration || "1h 00m",
+    priceDisplay: d.priceDisplay || `₹${d.price || 1200}`,
+    templesCount: d.templesCount || Math.floor(Math.random() * 200),
+    bookings: d.bookings || Math.floor(Math.random() * 20000),
+    rating: d.rating || 4.8,
+    prasad: d.prasad ?? true,
+    liveStream: d.liveStream ?? true,
+    status: d.status || (d.isActive ? "Active" : "Inactive"),
+    categoryStr: d.categoryStr || d.category || "Abhishek",
+  } as UIPooja;
+}
+
 export function PoojasPage() {
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
@@ -37,48 +57,31 @@ export function PoojasPage() {
   const [editTarget, setEditTarget] = useState<UIPooja | null>(null);
   const [editForm, setEditForm] = useState(emptyPoojaForm);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const fetchPoojas = async () => {
-    setLoading(true);
+  const refetchSilent = useCallback(async () => {
     try {
       const q = query(collection(db, "poojas"), where("isDeleted", "==", false));
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(docSnap => {
-        const d = docSnap.data();
-        return {
-          id: docSnap.id,
-          name: d.name || "",
-          description: d.description || "",
-          templeId: d.templeId || "",
-          category: d.category || "SPECIAL",
-          price: d.price || 0,
-          durationMinutes: d.durationMinutes || 60,
-          isActive: d.isActive ?? true,
-          createdAt: d.createdAt?.toDate?.() || new Date(),
-          updatedAt: d.updatedAt?.toDate?.() || new Date(),
-          isDeleted: d.isDeleted || false,
-
-          // UI specific mocks/aggregations for V1
-          duration: d.duration || "1h 00m",
-          priceDisplay: d.priceDisplay || `₹${d.price || 1200}`,
-          templesCount: d.templesCount || Math.floor(Math.random() * 200),
-          bookings: d.bookings || Math.floor(Math.random() * 20000),
-          rating: d.rating || 4.8,
-          prasad: d.prasad ?? true,
-          liveStream: d.liveStream ?? true,
-          status: d.status || (d.isActive ? "Active" : "Inactive"),
-          categoryStr: d.categoryStr || d.category || "Abhishek",
-        } as UIPooja;
-      });
-      setPoojasState(data);
+      setPoojasState(snapshot.docs.map(mapDocToPooja));
     } catch (err) {
-      console.error("Failed to fetch poojas", err);
-    } finally {
-      setLoading(false);
+      console.error("Failed to refetch poojas", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    const fetchPoojas = async () => {
+      setLoading(true);
+      try {
+        const q = query(collection(db, "poojas"), where("isDeleted", "==", false));
+        const snapshot = await getDocs(q);
+        setPoojasState(snapshot.docs.map(mapDocToPooja));
+      } catch (err) {
+        console.error("Failed to fetch poojas", err);
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchPoojas();
   }, []);
 
@@ -87,21 +90,19 @@ export function PoojasPage() {
   async function handleAdd() {
     if (!form.name || !form.duration || !form.price) return;
     const numericPrice = parseInt(form.price.replace(/[^0-9]/g, ''), 10) || 0;
-    
+    setSaving(true);
     try {
-      const newPooja = {
+      const newPoojaData = {
         name: form.name,
         description: "",
         templeId: "",
-        category: "SPECIAL", // Maps to enum
+        category: "SPECIAL",
         price: numericPrice,
         durationMinutes: 60,
         isActive: true,
         isDeleted: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-
-        // UI Specifics preserved
         duration: form.duration,
         priceDisplay: form.price.startsWith("₹") ? form.price : `₹${form.price}`,
         prasad: form.prasad,
@@ -109,38 +110,90 @@ export function PoojasPage() {
         status: "Active",
         categoryStr: form.category,
       };
-      
-      await addDoc(collection(db, "poojas"), newPooja);
+
+      const docRef = await addDoc(collection(db, "poojas"), newPoojaData);
+
+      // Optimistic local add
+      const newPooja: UIPooja = {
+        id: docRef.id,
+        name: form.name,
+        description: "",
+        templeId: "",
+        category: "SPECIAL",
+        price: numericPrice,
+        durationMinutes: 60,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        isDeleted: false,
+        duration: form.duration,
+        priceDisplay: form.price.startsWith("₹") ? form.price : `₹${form.price}`,
+        templesCount: 0,
+        bookings: 0,
+        rating: 5.0,
+        prasad: form.prasad,
+        liveStream: form.liveStream,
+        status: "Active",
+        categoryStr: form.category,
+      };
+      setPoojasState(prev => [newPooja, ...prev]);
+
+      // Close modal immediately
       setForm(emptyPoojaForm);
       setAddOpen(false);
-      fetchPoojas();
+
+      // Background sync
+      refetchSilent();
     } catch (error) {
       console.error("Error adding pooja", error);
+    } finally {
+      setSaving(false);
     }
   }
 
   function openEdit(p: UIPooja) {
     setEditTarget(p);
-    setEditForm({ 
-      name: p.name, 
-      category: p.categoryStr, 
-      duration: p.duration, 
-      price: p.priceDisplay.replace("₹", ""), 
-      liveStream: p.liveStream, 
-      prasad: p.prasad 
+    setEditForm({
+      name: p.name,
+      category: p.categoryStr,
+      duration: p.duration,
+      price: p.priceDisplay.replace("₹", ""),
+      liveStream: p.liveStream,
+      prasad: p.prasad
     });
+  }
+
+  function closeEditModal() {
+    setEditTarget(null);
+    setEditForm(emptyPoojaForm);
   }
 
   async function handleEdit() {
     if (!editTarget) return;
     const numericPrice = parseInt(editForm.price.replace(/[^0-9]/g, ''), 10) || 0;
-
+    setSaving(true);
     try {
+      // Optimistic local update
+      const updatedPooja: UIPooja = {
+        ...editTarget,
+        name: editForm.name,
+        price: numericPrice,
+        priceDisplay: editForm.price.startsWith("₹") ? editForm.price : `₹${editForm.price}`,
+        duration: editForm.duration,
+        liveStream: editForm.liveStream,
+        prasad: editForm.prasad,
+        categoryStr: editForm.category,
+      };
+      setPoojasState(prev => prev.map(p => p.id === editTarget.id ? updatedPooja : p));
+
+      // Close modal immediately
+      closeEditModal();
+
+      // Persist to Firebase
       await updateDoc(doc(db, "poojas", editTarget.id), {
         name: editForm.name,
         price: numericPrice,
         updatedAt: serverTimestamp(),
-        
         duration: editForm.duration,
         priceDisplay: editForm.price.startsWith("₹") ? editForm.price : `₹${editForm.price}`,
         liveStream: editForm.liveStream,
@@ -148,11 +201,13 @@ export function PoojasPage() {
         categoryStr: editForm.category,
       });
 
-      setEditTarget(null);
-      setEditForm(emptyPoojaForm);
-      fetchPoojas();
+      // Background sync
+      refetchSilent();
     } catch (error) {
       console.error("Error editing pooja", error);
+      refetchSilent();
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -273,7 +328,8 @@ export function PoojasPage() {
         </div>
       )}
 
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add New Pooja">
+      {/* Add Pooja Modal */}
+      <Modal open={addOpen} onClose={() => { setAddOpen(false); setForm(emptyPoojaForm); }} title="Add New Pooja">
         <div className="px-6 py-5 space-y-4">
           <Field label="Pooja Name">
             <input className={inputCls} style={inputStyle} placeholder="e.g. Rudrabhishek" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
@@ -302,11 +358,11 @@ export function PoojasPage() {
             </label>
           </div>
         </div>
-        <ModalFooter onClose={() => setAddOpen(false)} onSubmit={handleAdd} submitLabel="Add Pooja" />
+        <ModalFooter onClose={() => { setAddOpen(false); setForm(emptyPoojaForm); }} onSubmit={handleAdd} submitLabel="Add Pooja" saving={saving} />
       </Modal>
 
       {/* Edit Pooja Modal */}
-      <Modal open={!!editTarget} onClose={() => { setEditTarget(null); setEditForm(emptyPoojaForm); }} title={`Edit Pooja — ${editTarget?.name ?? ""}`}>
+      <Modal open={!!editTarget} onClose={closeEditModal} title={`Edit Pooja — ${editTarget?.name ?? ""}`}>
         <div className="px-6 py-5 space-y-4">
           <Field label="Pooja Name">
             <input className={inputCls} style={inputStyle} value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
@@ -335,7 +391,7 @@ export function PoojasPage() {
             </label>
           </div>
         </div>
-        <ModalFooter onClose={() => { setEditTarget(null); setEditForm(emptyPoojaForm); }} onSubmit={handleEdit} submitLabel="Save Changes" />
+        <ModalFooter onClose={closeEditModal} onSubmit={handleEdit} submitLabel="Save Changes" saving={saving} />
       </Modal>
     </div>
   );

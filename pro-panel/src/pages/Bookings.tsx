@@ -263,6 +263,13 @@ export function Bookings() {
                 </tr>
               ))}
 
+              {filteredBookings.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-on-surface-variant font-medium">
+                    No bookings found matching the current filters.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

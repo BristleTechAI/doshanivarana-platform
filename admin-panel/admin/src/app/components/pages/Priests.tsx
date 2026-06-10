@@ -33,6 +33,7 @@ export function Priests() {
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<typeof priestsData[0] | null>(null);
   const [priestForm, setPriestForm] = useState(emptyPriestForm);
+  const [saving, setSaving] = useState(false);
 
   const filtered = priests.filter((p) => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -44,6 +45,7 @@ export function Priests() {
 
   function handleAddPriest() {
     if (!priestForm.name) return;
+    setSaving(true);
     const initials = priestForm.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
     const newPriest = {
       id: `PR${String(priests.length + 1).padStart(3, "0")}`,
@@ -55,13 +57,17 @@ export function Priests() {
       languages: priestForm.languagesStr.split(",").map(l => l.trim()).filter(Boolean),
       since: "Jun 2026",
     };
+    // Immediate local update — modal closes, UI updates instantly
     setPriests(prev => [...prev, newPriest]);
     setPriestForm(emptyPriestForm);
     setAddOpen(false);
+    setSaving(false);
   }
 
   function handleEditPriest() {
     if (!editTarget || !priestForm.name) return;
+    setSaving(true);
+    // Immediate local update — modal closes, UI updates instantly
     setPriests(prev => prev.map(p => p.id === editTarget.id ? {
       ...p, name: priestForm.name, experience: priestForm.experience,
       temple: priestForm.temple, location: priestForm.location,
@@ -70,6 +76,7 @@ export function Priests() {
     } : p));
     setEditTarget(null);
     setPriestForm(emptyPriestForm);
+    setSaving(false);
   }
 
   function openEditPriest(p: typeof priestsData[0]) {
@@ -82,10 +89,10 @@ export function Priests() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Total Priests", value: "1,284", color: "#C76A00", bg: "#FFF0E6" },
-          { label: "Active Priests", value: "1,142", color: "#22C55E", bg: "#F0FDF4" },
-          { label: "Avg Rating", value: "4.73 ★", color: "#D4A017", bg: "#FFFBEB" },
-          { label: "Available Now", value: "48", color: "#4A1259", bg: "#F3E8FF" },
+          { label: "Total Priests", value: priests.length.toLocaleString(), color: "#C76A00", bg: "#FFF0E6" },
+          { label: "Active Priests", value: priests.filter(p => p.status === "Active").length.toLocaleString(), color: "#22C55E", bg: "#F0FDF4" },
+          { label: "Avg Rating", value: priests.length > 0 ? (priests.reduce((s, p) => s + p.rating, 0) / priests.length).toFixed(1) + " ★" : "—", color: "#D4A017", bg: "#FFFBEB" },
+          { label: "Available Now", value: priests.filter(p => p.status === "Available").length.toLocaleString(), color: "#4A1259", bg: "#F3E8FF" },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-4 border" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
             <div className="text-xl" style={{ color: s.color, fontWeight: 700 }}>{s.value}</div>
@@ -248,7 +255,7 @@ export function Priests() {
             <input className={inputCls} style={inputStyle} value={priestForm.languagesStr} onChange={e => setPriestForm(f => ({ ...f, languagesStr: e.target.value }))} />
           </Field>
         </div>
-        <ModalFooter onClose={() => { setAddOpen(false); setPriestForm(emptyPriestForm); }} onSubmit={handleAddPriest} submitLabel="Add Priest" />
+        <ModalFooter onClose={() => { setAddOpen(false); setPriestForm(emptyPriestForm); }} onSubmit={handleAddPriest} submitLabel="Add Priest" saving={saving} />
       </Modal>
 
       {/* Edit Priest Modal */}
@@ -282,7 +289,7 @@ export function Priests() {
             <input className={inputCls} style={inputStyle} value={priestForm.languagesStr} onChange={e => setPriestForm(f => ({ ...f, languagesStr: e.target.value }))} />
           </Field>
         </div>
-        <ModalFooter onClose={() => { setEditTarget(null); setPriestForm(emptyPriestForm); }} onSubmit={handleEditPriest} submitLabel="Save Changes" />
+        <ModalFooter onClose={() => { setEditTarget(null); setPriestForm(emptyPriestForm); }} onSubmit={handleEditPriest} submitLabel="Save Changes" saving={saving} />
       </Modal>
     </div>
   );

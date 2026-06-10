@@ -12,7 +12,9 @@ export function Login() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (email === db.getProfile().email && password === 'password') {
+    const storedProfile = db.getProfile();
+    const storedPassword = storedProfile.password || 'password';
+    if (email === storedProfile.email && password === storedPassword) {
       navigate('/');
     } else {
       setError('Invalid email or password. Please try again.');
@@ -46,10 +48,8 @@ export function Login() {
           
           {/* Brand Header */}
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 bg-primary-container/20 rounded-full flex items-center justify-center text-primary mb-4 border border-outline-variant/30">
-              <span className="material-symbols-outlined text-headline-lg flex items-center justify-center" style={{ fontVariationSettings: "'FILL' 1" }}>
-                temple_hindu
-              </span>
+            <div className="w-16 h-16 rounded-full overflow-hidden border border-outline-variant/30 flex items-center justify-center mb-4">
+              <img src="/logo.jpg" alt="Doshanivarana Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="font-display text-headline-md text-primary tracking-tight font-bold">Doshanivarana</h1>
             <p className="font-sans text-label-md text-on-surface-variant uppercase tracking-wider mt-1">Digital Temple Services</p>

@@ -1,92 +1,29 @@
-// @ts-nocheck
 import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { useAuth } from '../contexts/AuthContext';
-
-interface FeedbackData {
-  id: string;
-  bookingId: string;
-  poojaName: string;
-  devoteeName: string;
-  rating: number;
-  comment: string;
-  status: string;
-  date: string;
-  submittedTime: string;
-  avatarText: string;
-  avatarBg: string;
-  flagged: boolean;
-}
-
-const colors = ['bg-orange-100 text-orange-800', 'bg-blue-100 text-blue-800', 'bg-green-100 text-green-800', 'bg-purple-100 text-purple-800', 'bg-pink-100 text-pink-800'];
+import { db, type Review } from '../lib/db';
 
 export function Feedback() {
-  const { templeId } = useAuth();
-  const [reviews, setReviews] = useState<FeedbackData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [reviews, setReviews] = useState<Review[]>(() => db.getFeedback());
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setReviews(db.getFeedback());
+    };
+    window.addEventListener('focus', handleUpdate);
+    window.addEventListener('doshanivarana_feedback_updated', handleUpdate);
+
+    return () => {
+      window.removeEventListener('focus', handleUpdate);
+      window.removeEventListener('doshanivarana_feedback_updated', handleUpdate);
+    };
+  }, []);
 
   const [poojaFilter, setPoojaFilter] = useState('All Poojas');
   const [starFilter, setStarFilter] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    if (!templeId) return;
-
-    const q = query(
-      collection(db, 'feedback'),
-      where('templeId', '==', templeId)
-    );
-
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const feedbackPromises = snapshot.docs.map(async (d) => {
-        const data = d.data();
-        let poojaName = 'Unknown Pooja';
-        let devoteeName = 'Devotee';
-        
-        try {
-          // Fetch booking to get poojaName and devoteeName
-          if (data.bookingId) {
-            const bookingSnap = await getDoc(doc(db, 'bookings', data.bookingId));
-            if (bookingSnap.exists()) {
-              const bData = bookingSnap.data();
-              poojaName = bData.poojaName || poojaName;
-              devoteeName = bData.devoteeDetails?.name || bData.devoteeName || devoteeName;
-            }
-          }
-        } catch (e) {
-          console.error(e);
-        }
-
-        const dateObj = data.createdAt ? data.createdAt.toDate() : new Date();
-        const date = dateObj.toLocaleDateString();
-        const submittedTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-        return {
-          id: d.id,
-          bookingId: data.bookingId || '',
-          poojaName,
-          devoteeName,
-          rating: data.rating || 0,
-          comment: data.review || '',
-          status: data.status || 'PENDING',
-          date,
-          submittedTime,
-          avatarText: devoteeName.substring(0, 1).toUpperCase(),
-          avatarBg: colors[d.id.charCodeAt(0) % colors.length],
-          flagged: data.status === 'HIDDEN' || data.status === 'REJECTED'
-        };
-      });
-
-      const resolvedReviews = await Promise.all(feedbackPromises);
-      // Sort by latest first
-      resolvedReviews.sort((a, b) => new Date(b.date + ' ' + b.submittedTime).getTime() - new Date(a.date + ' ' + a.submittedTime).getTime());
-      
-      setReviews(resolvedReviews);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [templeId]);
+    setCurrentPage(1);
+  }, [poojaFilter, starFilter]);
 
   const handleReset = () => {
     setPoojaFilter('All Poojas');
@@ -102,7 +39,7 @@ export function Feedback() {
   const uniquePoojas = ['All Poojas', ...Array.from(new Set(reviews.map(r => r.poojaName)))];
 
   const totalReviewsCount = reviews.length;
-  const averageRating = totalReviewsCount > 0 
+  const averageRating = totalReviewsCount > 0
     ? (reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviewsCount).toFixed(1)
     : '0.0';
 
@@ -111,9 +48,14 @@ export function Feedback() {
     ? Math.round((countByStar(star) / totalReviewsCount) * 100)
     : 0;
 
-  if (loading) {
-    return <div className="p-8 text-center text-on-surface-variant font-semibold">Loading Feedback...</div>;
-  }
+  // Pagination calculations
+  const reviewsPerPage = 5;
+  const totalPages = Math.ceil(filteredReviews.length / reviewsPerPage) || 1;
+  const startIndex = (currentPage - 1) * reviewsPerPage;
+  const paginatedReviews = filteredReviews.slice(startIndex, startIndex + reviewsPerPage);
+
+  const fromIndex = filteredReviews.length > 0 ? startIndex + 1 : 0;
+  const toIndex = Math.min(startIndex + reviewsPerPage, filteredReviews.length);
 
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
@@ -248,7 +190,7 @@ export function Feedback() {
 
       {/* Feedback Cards List */}
       <div className="flex flex-col gap-4 mb-8 font-sans">
-        {filteredReviews.map(review => {
+        {paginatedReviews.map(review => {
           if (review.flagged) {
             return (
               <div key={review.id} className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant p-6 relative overflow-hidden">
@@ -319,6 +261,42 @@ export function Feedback() {
             No feedback found matching filters.
           </div>
         )}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex flex-col sm:flex-row justify-between items-center bg-surface-container-lowest rounded-xl border border-[#F0E6D2] p-4 gap-4 font-semibold text-body-sm">
+        <span className="text-on-surface-variant">Showing {fromIndex}–{toIndex} of {filteredReviews.length} reviews</span>
+        <div className="flex items-center gap-2">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            className="w-8 h-8 rounded-full border border-outline-variant flex items-center justify-center text-on-surface hover:bg-surface-container-low cursor-pointer disabled:opacity-40"
+          >
+            <span className="material-symbols-outlined text-sm">chevron_left</span>
+          </button>
+          
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+            <button
+              key={page}
+              onClick={() => setCurrentPage(page)}
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                currentPage === page
+                  ? 'bg-primary text-on-primary font-bold'
+                  : 'hover:bg-surface-container-low text-on-surface'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+          
+          <button
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+            className="w-8 h-8 rounded-full border border-outline-variant flex items-center justify-center text-on-surface hover:bg-surface-container-low cursor-pointer disabled:opacity-40"
+          >
+            <span className="material-symbols-outlined text-sm">chevron_right</span>
+          </button>
+        </div>
       </div>
 
     </div>
