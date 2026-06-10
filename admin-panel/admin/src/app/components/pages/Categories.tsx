@@ -36,10 +36,12 @@ export function CategoriesPage() {
   const [editTarget, setEditTarget] = useState<null | typeof categories[0]>(null);
   const [cats, setCats] = useState(categories);
   const [form, setForm] = useState({ name: "", icon: "🕉️", description: "" });
+  const [saving, setSaving] = useState(false);
   const filtered = cats.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
 
   function handleAdd() {
     if (!form.name) return;
+    setSaving(true);
     const newCat = {
       id: `CAT${String(cats.length + 1).padStart(3, "0")}`,
       name: form.name, icon: form.icon || "🕉️",
@@ -49,13 +51,16 @@ export function CategoriesPage() {
     setCats(prev => [...prev, newCat]);
     setForm({ name: "", icon: "🕉️", description: "" });
     setAddOpen(false);
+    setSaving(false);
   }
 
   function handleEdit() {
     if (!editTarget || !form.name) return;
+    setSaving(true);
     setCats(prev => prev.map(c => c.id === editTarget.id ? { ...c, name: form.name, icon: form.icon, description: form.description } : c));
     setEditTarget(null);
     setForm({ name: "", icon: "🕉️", description: "" });
+    setSaving(false);
   }
 
   function openEdit(c: typeof categories[0]) {
@@ -67,10 +72,10 @@ export function CategoriesPage() {
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Total Categories", value: "28", color: "#C76A00", bg: "#FFF0E6" },
-          { label: "Total Poojas", value: "284", color: "#4A1259", bg: "#F3E8FF" },
-          { label: "Most Popular", value: "Archana", color: "#D4A017", bg: "#FFFBEB" },
-          { label: "Total Bookings", value: "3.01L", color: "#22C55E", bg: "#F0FDF4" },
+          { label: "Total Categories", value: String(cats.length), color: "#C76A00", bg: "#FFF0E6" },
+          { label: "Total Poojas", value: cats.reduce((s, c) => s + c.poojas, 0).toLocaleString(), color: "#4A1259", bg: "#F3E8FF" },
+          { label: "Most Popular", value: cats.length > 0 ? cats.reduce((max, c) => c.bookings > max.bookings ? c : max, cats[0]).name : "—", color: "#D4A017", bg: "#FFFBEB" },
+          { label: "Total Bookings", value: cats.reduce((s, c) => s + c.bookings, 0).toLocaleString(), color: "#22C55E", bg: "#F0FDF4" },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl p-4 border" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
             <div className="text-lg" style={{ color: s.color, fontWeight: 700 }}>{s.value}</div>
@@ -120,7 +125,7 @@ export function CategoriesPage() {
             <textarea className={inputCls} style={inputStyle} rows={3} placeholder="Brief description of this category..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           </Field>
         </div>
-        <ModalFooter onClose={() => setAddOpen(false)} onSubmit={handleAdd} submitLabel="Add Category" />
+        <ModalFooter onClose={() => setAddOpen(false)} onSubmit={handleAdd} submitLabel="Add Category" saving={saving} />
       </Modal>
 
       <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="Edit Category">
@@ -135,7 +140,7 @@ export function CategoriesPage() {
             <textarea className={inputCls} style={inputStyle} rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           </Field>
         </div>
-        <ModalFooter onClose={() => setEditTarget(null)} onSubmit={handleEdit} submitLabel="Save Changes" />
+        <ModalFooter onClose={() => setEditTarget(null)} onSubmit={handleEdit} submitLabel="Save Changes" saving={saving} />
       </Modal>
     </div>
   );

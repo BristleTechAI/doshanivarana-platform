@@ -64,6 +64,7 @@ export function Festivals() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<typeof festivalsData[0] | null>(null);
   const [festForm, setFestForm] = useState(emptyFestForm);
+  const [saving, setSaving] = useState(false);
 
   const filtered = festivalsState.filter((f) => {
     const matchSearch = f.name.toLowerCase().includes(search.toLowerCase());
@@ -73,6 +74,7 @@ export function Festivals() {
 
   function handleCreate() {
     if (!festForm.name || !festForm.startDate || !festForm.endDate) return;
+    setSaving(true);
     const newFest = {
       id: `FV${String(festivalsState.length + 1).padStart(3, "0")}`,
       name: festForm.name,
@@ -92,6 +94,7 @@ export function Festivals() {
     setFestivalsState(prev => [newFest, ...prev]);
     setFestForm(emptyFestForm);
     setCreateOpen(false);
+    setSaving(false);
   }
 
   function openEdit(f: typeof festivalsData[0]) {
@@ -101,6 +104,7 @@ export function Festivals() {
 
   function handleEdit() {
     if (!editTarget) return;
+    setSaving(true);
     setFestivalsState(prev => prev.map(f => f.id === editTarget.id ? {
       ...f,
       name: festForm.name, status: festForm.status, startDate: festForm.startDate,
@@ -111,6 +115,7 @@ export function Festivals() {
     } : f));
     setEditTarget(null);
     setFestForm(emptyFestForm);
+    setSaving(false);
   }
 
   return (
@@ -118,10 +123,10 @@ export function Festivals() {
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Active Festivals", value: "6", color: "#22C55E", bg: "#F0FDF4" },
-          { label: "Total Bookings", value: "1.31L", color: "#C76A00", bg: "#FFF0E6" },
-          { label: "Festival Revenue", value: "₹2.74Cr", color: "#D4A017", bg: "#FFFBEB" },
-          { label: "Participating Temples", value: "335", color: "#4A1259", bg: "#F3E8FF" },
+          { label: "Total Festivals", value: String(festivalsState.length), color: "#22C55E", bg: "#F0FDF4" },
+          { label: "Active / Upcoming", value: String(festivalsState.filter(f => f.status === "Active" || f.status === "Upcoming").length), color: "#C76A00", bg: "#FFF0E6" },
+          { label: "Total Bookings", value: festivalsState.reduce((s, f) => s + f.bookings, 0).toLocaleString(), color: "#D4A017", bg: "#FFFBEB" },
+          { label: "Participating Temples", value: festivalsState.reduce((s, f) => s + (f.temples || 0), 0).toLocaleString(), color: "#4A1259", bg: "#F3E8FF" },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-4 border" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
             <div className="text-xl" style={{ color: s.color, fontWeight: 700 }}>{s.value}</div>
@@ -335,7 +340,7 @@ export function Festivals() {
                 </Field>
               </div>
             </div>
-            <ModalFooter onClose={onClose} onSubmit={onSubmit} submitLabel={submitLabel} />
+            <ModalFooter onClose={onClose} onSubmit={onSubmit} submitLabel={submitLabel} saving={saving} />
           </Modal>
         );
       })()}

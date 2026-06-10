@@ -24,7 +24,7 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<UserRole | null>(null);
-  const [templeId, setTempleId] = useState<string | null>(null);
+  const [templeId, setTempleId] = useState<string | null>('T-101'); // Fallback for demo
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setUser(null);
         setRole(null);
-        setTempleId(null);
+        setTempleId('T-101'); // Fallback for demo
       }
       setLoading(false);
     });

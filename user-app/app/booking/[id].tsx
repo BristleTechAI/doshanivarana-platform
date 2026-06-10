@@ -140,7 +140,7 @@ export default function BookingFlow() {
           .filter((s: any) => s.availableSeats > 0);
           
         // Sort slots by date and time
-        loadedSlots.sort((a, b) => {
+        loadedSlots.sort((a: any, b: any) => {
           if (a.date !== b.date) return a.date.localeCompare(b.date);
           return a.startTime.localeCompare(b.startTime);
         });

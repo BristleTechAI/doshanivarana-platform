@@ -1,21 +1,6 @@
 import { useState } from "react";
-import { Modal, Field, ModalFooter, inputCls, inputStyle, selectStyle } from "../Modal";
-import {
-  Radio, Eye, Users, Clock, Wifi, WifiOff, Video, Play, Download,
-  Package, MapPin, CheckCircle, AlertCircle, Truck, MessageCircle,
-  Flag, Star, ChevronDown, Search, Plus, Edit, XCircle, Filter,
-  Briefcase, Building2, UserCircle, TrendingUp, IndianRupee,
-  Flame, Tag, Globe, RefreshCcw, BarChart2, ArrowUpRight,
-  ClipboardList, PowerOff, Send, CheckCircle2, HardDrive, LayoutGrid,
-  List, Calendar, ChevronRight, Reply, MoreVertical, Phone, Mail,
-  TriangleAlert, Inbox, Timer, ArrowLeft
-} from "lucide-react";
-import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, PieChart, Pie, Cell
-} from "recharts";
-
-
+import { Modal, Field, ModalFooter, inputCls, inputStyle } from "../Modal";
+import { MapPin, Search, Plus, Edit, Eye, Star } from "lucide-react";
 
 const proManagers = [
   { id: "PRO001", name: "Ravi Shankar K.", avatar: "RS", temples: 4, location: "Tirupati, AP", email: "ravi@devaseva.com", phone: "+91 98421 84210", revenue: "₹28.4L", bookings: 4820, rating: 4.9, status: "Active", since: "Jan 2024", color: "#C76A00" },
@@ -27,17 +12,29 @@ const proManagers = [
 ];
 
 const proColors = ["#C76A00", "#4A1259", "#D4A017", "#22C55E", "#6366F1", "#EF4444", "#2563EB", "#0891B2"];
+const emptyForm = { name: "", location: "", email: "", phone: "", temples: "1" };
 
 export function PROManagersPage() {
   const [managers, setManagers] = useState(proManagers);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", location: "", email: "", phone: "", temples: "1" });
+  const [editTarget, setEditTarget] = useState<typeof proManagers[0] | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
 
-  const filtered = managers.filter(m => m.name.toLowerCase().includes(search.toLowerCase()) || m.location.toLowerCase().includes(search.toLowerCase()));
+  const filtered = managers.filter(m =>
+    m.name.toLowerCase().includes(search.toLowerCase()) ||
+    m.location.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Reactive stats derived from local state
+  const avgTemples = managers.length > 0
+    ? (managers.reduce((s, m) => s + m.temples, 0) / managers.length).toFixed(1)
+    : "0";
 
   function handleAdd() {
     if (!form.name || !form.location || !form.email) return;
+    setSaving(true);
     const initials = form.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
     const newMgr = {
       id: `PRO${String(managers.length + 1).padStart(3, "0")}`,
@@ -47,17 +44,47 @@ export function PROManagersPage() {
       color: proColors[managers.length % proColors.length],
     };
     setManagers(prev => [...prev, newMgr]);
-    setForm({ name: "", location: "", email: "", phone: "", temples: "1" });
+    setForm(emptyForm);
     setAddOpen(false);
+    setSaving(false);
+  }
+
+  function openEdit(p: typeof proManagers[0]) {
+    setEditTarget(p);
+    setForm({ name: p.name, location: p.location, email: p.email, phone: p.phone, temples: String(p.temples) });
+  }
+
+  function handleEdit() {
+    if (!editTarget || !form.name) return;
+    setSaving(true);
+    setManagers(prev => prev.map(m => m.id === editTarget.id ? {
+      ...m,
+      name: form.name,
+      location: form.location,
+      email: form.email,
+      phone: form.phone,
+      temples: parseInt(form.temples) || m.temples,
+      avatar: form.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase(),
+    } : m));
+    setEditTarget(null);
+    setForm(emptyForm);
+    setSaving(false);
+  }
+
+  function closeModal() {
+    setAddOpen(false);
+    setEditTarget(null);
+    setForm(emptyForm);
   }
 
   return (
     <div className="space-y-5">
+      {/* Stats — fully reactive */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Total PRO Managers", value: String(managers.length), color: "#C76A00", bg: "#FFF0E6" },
           { label: "Active", value: String(managers.filter(m => m.status === "Active").length), color: "#22C55E", bg: "#F0FDF4" },
-          { label: "Avg Temples Managed", value: "3.4", color: "#4A1259", bg: "#F3E8FF" },
+          { label: "Avg Temples Managed", value: avgTemples, color: "#4A1259", bg: "#F3E8FF" },
           { label: "Avg Revenue", value: "₹14.2L", color: "#D4A017", bg: "#FFFBEB" },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl p-4 border" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
@@ -66,6 +93,8 @@ export function PROManagersPage() {
           </div>
         ))}
       </div>
+
+      {/* Search + Add */}
       <div className="bg-white rounded-xl p-4 border flex items-center gap-3" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#9CA3AF" }} />
@@ -73,10 +102,12 @@ export function PROManagersPage() {
             className="w-full pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
             style={{ backgroundColor: "#FAF6F2", border: "1px solid rgba(199,106,0,0.15)", color: "#1F1F1F" }} />
         </div>
-        <button onClick={() => setAddOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: "#C76A00", color: "#FFFFFF", fontWeight: 600 }}>
+        <button onClick={() => { setForm(emptyForm); setAddOpen(true); }} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: "#C76A00", color: "#FFFFFF", fontWeight: 600 }}>
           <Plus size={15} /> Add PRO Manager
         </button>
       </div>
+
+      {/* Manager Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtered.map(p => (
           <div key={p.id} className="bg-white rounded-2xl border hover:shadow-md transition-shadow overflow-hidden" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
@@ -109,14 +140,15 @@ export function PROManagersPage() {
               </div>
               <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "rgba(199,106,0,0.08)" }}>
                 <button className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#FFF0E6", color: "#C76A00", fontWeight: 600 }}><Eye size={11} /> View</button>
-                <button className="flex items-center justify-center px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#F3EDE8", color: "#6B7280" }}><Edit size={11} /></button>
+                <button onClick={() => openEdit(p)} className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#F3EDE8", color: "#6B7280", fontWeight: 600 }}><Edit size={11} /> Edit</button>
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add PRO Manager">
+      {/* Add Modal */}
+      <Modal open={addOpen} onClose={closeModal} title="Add PRO Manager">
         <div className="px-6 py-5 space-y-4">
           <Field label="Full Name">
             <input className={inputCls} style={inputStyle} placeholder="e.g. Ravi Shankar K." value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
@@ -134,9 +166,30 @@ export function PROManagersPage() {
             <input className={inputCls} style={inputStyle} type="number" min="1" max="20" value={form.temples} onChange={e => setForm(f => ({ ...f, temples: e.target.value }))} />
           </Field>
         </div>
-        <ModalFooter onClose={() => setAddOpen(false)} onSubmit={handleAdd} submitLabel="Add Manager" />
+        <ModalFooter onClose={closeModal} onSubmit={handleAdd} submitLabel="Add Manager" saving={saving} />
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal open={!!editTarget} onClose={closeModal} title={editTarget ? `Edit — ${editTarget.name}` : "Edit PRO Manager"}>
+        <div className="px-6 py-5 space-y-4">
+          <Field label="Full Name">
+            <input className={inputCls} style={inputStyle} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+          </Field>
+          <Field label="Location">
+            <input className={inputCls} style={inputStyle} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+          </Field>
+          <Field label="Email">
+            <input className={inputCls} style={inputStyle} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+          </Field>
+          <Field label="Phone">
+            <input className={inputCls} style={inputStyle} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+          </Field>
+          <Field label="Number of Temples Assigned">
+            <input className={inputCls} style={inputStyle} type="number" min="1" max="20" value={form.temples} onChange={e => setForm(f => ({ ...f, temples: e.target.value }))} />
+          </Field>
+        </div>
+        <ModalFooter onClose={closeModal} onSubmit={handleEdit} submitLabel="Save Changes" saving={saving} />
       </Modal>
     </div>
   );
 }
-
