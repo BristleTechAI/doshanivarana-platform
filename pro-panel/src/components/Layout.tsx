@@ -161,8 +161,8 @@ export function Layout({ unreadNotifications: legacyUnread, setUnreadNotificatio
       <nav className="w-[240px] h-screen fixed left-0 top-0 overflow-y-auto bg-surface border-r border-outline-variant shadow-sm z-50 flex flex-col justify-between">
         <div>
           <div className="p-6 border-b border-outline-variant flex flex-col items-start gap-3">
-            <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary border border-outline-variant">
-              <span className="material-symbols-outlined text-[28px]">account_balance</span>
+            <div className="w-12 h-12 rounded-full overflow-hidden border border-outline-variant flex items-center justify-center">
+              <img src="/logo.jpg" alt="Doshanivarana Logo" className="w-full h-full object-cover" />
             </div>
             <div>
               <div className="font-display text-headline-md font-bold text-primary">Doshanivarana</div>

@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { db } from '../lib/db';
 
 export function ProfileSettings() {
@@ -7,27 +6,53 @@ export function ProfileSettings() {
 
   // Personal Info States
   const [fullName, setFullName] = useState(profile.fullName);
-  const [mobile, setMobile] = useState(profile.mobile);
-  const [email] = useState(profile.email);
+  const [mobile, setMobile] = useState(profile.mobile ?? profile.phone ?? '');
+  const [email, setEmail] = useState(profile.email);
 
   // Password Change States
   const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('Saffron123');
-  const [confirmPassword, setConfirmPassword] = useState('Saffron123');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
 
   // Notification Preference States
-  const [prefEmail1, setPrefEmail1] = useState(profile.prefEmail1);
-  const [prefEmail2, setPrefEmail2] = useState(profile.prefEmail2);
-  const [prefEmail3, setPrefEmail3] = useState(profile.prefEmail3);
-  const [prefSMS1, setPrefSMS1] = useState(profile.prefSMS1);
-  const [prefSMS2, setPrefSMS2] = useState(profile.prefSMS2);
-  const [prefPush1, setPrefPush1] = useState(profile.prefPush1);
-  const [prefPush2, setPrefPush2] = useState(profile.prefPush2);
+  const [prefEmail1, setPrefEmail1] = useState(profile.prefEmail1 ?? true);
+  const [prefEmail2, setPrefEmail2] = useState(profile.prefEmail2 ?? true);
+  const [prefEmail3, setPrefEmail3] = useState(profile.prefEmail3 ?? false);
+  const [prefSMS1, setPrefSMS1] = useState(profile.prefSMS1 ?? true);
+  const [prefSMS2, setPrefSMS2] = useState(profile.prefSMS2 ?? true);
+  const [prefPush1, setPrefPush1] = useState(profile.prefPush1 ?? true);
+  const [prefPush2, setPrefPush2] = useState(profile.prefPush2 ?? true);
 
   // Success Toasts
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // Sync state dynamically with in-memory db changes
+  useEffect(() => {
+    const handleUpdate = () => {
+      const updatedProfile = db.getProfile();
+      setFullName(updatedProfile.fullName);
+      setMobile(updatedProfile.mobile ?? updatedProfile.phone ?? '');
+      setEmail(updatedProfile.email);
+      setPrefEmail1(updatedProfile.prefEmail1 ?? true);
+      setPrefEmail2(updatedProfile.prefEmail2 ?? true);
+      setPrefEmail3(updatedProfile.prefEmail3 ?? false);
+      setPrefSMS1(updatedProfile.prefSMS1 ?? true);
+      setPrefSMS2(updatedProfile.prefSMS2 ?? true);
+      setPrefPush1(updatedProfile.prefPush1 ?? true);
+      setPrefPush2(updatedProfile.prefPush2 ?? true);
+    };
+
+    window.addEventListener('focus', handleUpdate);
+    window.addEventListener('doshanivarana_profile_updated', handleUpdate);
+
+    return () => {
+      window.removeEventListener('focus', handleUpdate);
+      window.removeEventListener('doshanivarana_profile_updated', handleUpdate);
+    };
+  }, []);
 
   // Password requirements calculation
   const hasMinLen = newPassword.length >= 8;
@@ -59,33 +84,45 @@ export function ProfileSettings() {
 
   const handleSavePersonalInfo = (e: React.FormEvent) => {
     e.preventDefault();
+    const currentProfile = db.getProfile();
     db.saveProfile({
+      ...currentProfile,
       fullName,
       mobile,
-      email,
-      prefEmail1,
-      prefEmail2,
-      prefEmail3,
-      prefSMS1,
-      prefSMS2,
-      prefPush1,
-      prefPush2
+      email
     });
     triggerToast('Profile updated successfully!');
   };
 
   const handleUpdatePassword = (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordError(null);
+
+    const currentProfile = db.getProfile();
+    const currentStoredPassword = currentProfile.password || 'password';
+
+    if (currentPassword !== currentStoredPassword) {
+      setPasswordError('Incorrect current password.');
+      return;
+    }
+
     if (strengthPercent < 75 || !matched) return;
+
+    db.saveProfile({
+      ...currentProfile,
+      password: newPassword
+    });
+
     triggerToast('Password changed successfully! Please log in again with your new password.');
     setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
   };
 
   const handleSavePreferences = () => {
+    const currentProfile = db.getProfile();
     db.saveProfile({
-      fullName,
-      mobile,
-      email,
+      ...currentProfile,
       prefEmail1,
       prefEmail2,
       prefEmail3,
@@ -248,7 +285,10 @@ export function ProfileSettings() {
                 <div className="relative">
                   <input 
                     value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    onChange={(e) => {
+                      setCurrentPassword(e.target.value);
+                      if (passwordError) setPasswordError(null);
+                    }}
                     className="w-full bg-surface border border-outline-variant rounded-lg px-4 py-2.5 pr-10 font-medium focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors"
                     placeholder="••••••••" 
                     type={showCurrent ? 'text' : 'password'}
@@ -261,6 +301,11 @@ export function ProfileSettings() {
                     <span className="material-symbols-outlined text-[18px]">{showCurrent ? 'visibility_off' : 'visibility'}</span>
                   </button>
                 </div>
+                {passwordError && (
+                  <span className="text-[10px] text-red-600 flex items-center gap-1 mt-1 font-bold uppercase tracking-wide">
+                    <span className="material-symbols-outlined text-[14px]">close</span> {passwordError}
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5">
