@@ -27,17 +27,62 @@ export class MockTimestamp {
   }
 }
 
+import { poojaCatalog, getTempleKey } from '../old_app/constants/catalog';
+
 // --- IN-MEMORY DATABASE STATE ---
 const STORAGE_KEY = 'doshanivarana_mock_firestore';
 
-const initialSlots: Record<string, any> = {
-  'slot_1': { id: 'slot_1', poojaId: '1', templeId: 'rameshwaram', date: '2026-06-18', startTime: '09:00 AM', availableSeats: 10, status: 'AVAILABLE' },
-  'slot_2': { id: 'slot_2', poojaId: '2', templeId: 'tirumala', date: '2026-06-20', startTime: '08:00 AM', availableSeats: 5, status: 'AVAILABLE' },
-  'slot_3': { id: 'slot_3', poojaId: '3', templeId: 'madurai', date: '2026-06-22', startTime: '10:00 AM', availableSeats: 8, status: 'AVAILABLE' },
-  'slot_4': { id: 'slot_4', poojaId: '4', templeId: 'siddhiVinayak', date: '2026-06-18', startTime: '09:00 AM', availableSeats: 10, status: 'AVAILABLE' },
-  'slot_5': { id: 'slot_5', poojaId: '6', templeId: 'siddhiVinayak', date: '2026-06-18', startTime: '09:00 AM', availableSeats: 10, status: 'AVAILABLE' },
-  'slot_6': { id: 'slot_6', poojaId: '7', templeId: 'tirumala', date: '2026-06-18', startTime: '09:00 AM', availableSeats: 10, status: 'AVAILABLE' },
+const initialTemples: Record<string, any> = {
+  'rameshwaram': { id: 'rameshwaram', name: 'Rameshwaram Temple', city: 'Tamil Nadu', imageUrl: 'https://images.unsplash.com/photo-1772787429537-77ba39d3f855?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZW1wbGUlMjBmbG93ZXIlMjBvZmZlcmluZ3MlMjBpbmNlbnNlfGVufDF8fHx8MTc3MzgyNTQ1Nnww&ixlib=rb-4.1.0&q=80&w=1080' },
+  'tirumala': { id: 'tirumala', name: 'Tirumala Temple', city: 'Tirupati', imageUrl: 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080' },
+  'madurai': { id: 'madurai', name: 'Madurai Temple', city: 'Tamil Nadu', imageUrl: 'https://images.unsplash.com/photo-1598089842456-ac3c6ef91f43?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMGRlaXR5JTIwc2hyaW5lJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080' },
+  'siddhiVinayak': { id: 'siddhiVinayak', name: 'Siddhi Vinayak Temple', city: 'Mumbai', imageUrl: 'https://images.unsplash.com/photo-1772787429537-77ba39d3f855?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZW1wbGUlMjBmbG93ZXIlMjBvZmZlcmluZ3MlMjBpbmNlbnNlfGVufDF8fHx8MTc3MzgyNTQ1Nnww&ixlib=rb-4.1.0&q=80&w=1080' },
+  'varanasi': { id: 'varanasi', name: 'Varanasi Temple', city: 'Uttar Pradesh', imageUrl: 'https://images.unsplash.com/photo-1598089842456-ac3c6ef91f43?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMGRlaXR5JTIwc2hyaW5lJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080' }
 };
+
+const initialPoojas: Record<string, any> = {};
+const initialSlots: Record<string, any> = {};
+
+poojaCatalog.forEach((p) => {
+  const pId = p.id.toString();
+  const tKey = getTempleKey(p.temple);
+  
+  initialPoojas[pId] = {
+    id: pId,
+    name: p.title,
+    templeId: tKey,
+    deity: p.deity,
+    price: parseInt(p.price.replace(/[^0-9]/g, '')) || 1000,
+    prasad: true,
+    imageUrl: p.imageUrl,
+    duration: p.duration,
+    purpose: p.purpose,
+    category: p.category
+  };
+
+  // Seed 2 available slots for every single pooja dynamically
+  initialSlots[`slot_${pId}_1`] = {
+    id: `slot_${pId}_1`,
+    poojaId: pId,
+    templeId: tKey,
+    date: '2026-06-18',
+    startTime: '09:00 AM',
+    availableSeats: 10,
+    status: 'AVAILABLE',
+    isDeleted: false
+  };
+
+  initialSlots[`slot_${pId}_2`] = {
+    id: `slot_${pId}_2`,
+    poojaId: pId,
+    templeId: tKey,
+    date: '2026-06-19',
+    startTime: '11:00 AM',
+    availableSeats: 5,
+    status: 'AVAILABLE',
+    isDeleted: false
+  };
+});
 
 const initialBookings: Record<string, any> = {
   'BK-1007': {
@@ -95,6 +140,8 @@ const initialNotifications: Record<string, any> = {
 };
 
 let dbState: Record<string, Record<string, any>> = {
+  poojas: initialPoojas,
+  temples: initialTemples,
   slots: initialSlots,
   bookings: initialBookings,
   notifications: initialNotifications,
