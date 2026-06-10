@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Pooja, Slot } from '@devaseva/core';
 import { SlotStatus } from '@devaseva/core';
+import { PageHeader } from '../components/PageHeader';
 
 interface AddEditSlotProps {
   isEdit: boolean;
@@ -152,11 +153,17 @@ export function AddEditSlot({ isEdit }: AddEditSlotProps) {
   const canSave = pooja && date && !dateError && selectedTime !== '' && maxBookings !== '' && maxBookings > 0;
 
   if (loading) {
-    return <div className="p-10 text-center text-on-surface-variant">Loading Form...</div>;
+    return (
+      <>
+        <PageHeader title={isEdit ? 'Edit Pooja Slot' : 'Add Pooja Slot'} backTo="/schedule" />
+        <div className="p-10 text-center text-on-surface-variant">Loading Form...</div>
+      </>
+    );
   }
 
   return (
     <div className="max-w-[720px] mx-auto pb-12 font-sans relative">
+      <PageHeader title={isEdit ? 'Edit Pooja Slot' : 'Add Pooja Slot'} backTo="/schedule" />
       
       {/* Success Toast Notification */}
       {showToast && (
@@ -182,20 +189,7 @@ export function AddEditSlot({ isEdit }: AddEditSlotProps) {
 
       {/* Breadcrumbs & Header */}
       <div className="max-w-[700px] mx-auto mb-6">
-        <nav className="flex items-center gap-2 text-on-surface-variant mb-4 font-sans text-body-sm font-semibold">
-          <Link to="/schedule" className="hover:text-primary transition-colors">
-            Pooja Schedule
-          </Link>
-          <span className="material-symbols-outlined text-[16px] flex items-center justify-center">chevron_right</span>
-          <span className="text-on-surface font-medium">
-            {isEdit ? 'Edit Slot' : 'Add New Slot'}
-          </span>
-        </nav>
-        
         <div>
-          <h2 className="font-display text-headline-lg text-on-surface font-semibold mb-1">
-            {isEdit ? 'Edit Slot' : 'Add New Slot'}
-          </h2>
           <p className="font-sans text-body-md text-on-surface-variant">
             {isEdit ? 'Modify slot scheduling or maximum devotee bookings' : 'Create a new available date and time slot for a pooja'}
           </p>

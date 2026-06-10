@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/db';
+import { PageHeader } from '../components/PageHeader';
 
 export function ProfileSettings() {
   const profile = db.getProfile();
@@ -8,6 +9,7 @@ export function ProfileSettings() {
   const [fullName, setFullName] = useState(profile.fullName);
   const [mobile, setMobile] = useState(profile.mobile ?? profile.phone ?? '');
   const [email, setEmail] = useState(profile.email);
+  const [photoUrl, setPhotoUrl] = useState(profile.photoUrl);
 
   // Password Change States
   const [currentPassword, setCurrentPassword] = useState('');
@@ -36,6 +38,7 @@ export function ProfileSettings() {
       setFullName(updatedProfile.fullName);
       setMobile(updatedProfile.mobile ?? updatedProfile.phone ?? '');
       setEmail(updatedProfile.email);
+      setPhotoUrl(updatedProfile.photoUrl);
       setPrefEmail1(updatedProfile.prefEmail1 ?? true);
       setPrefEmail2(updatedProfile.prefEmail2 ?? true);
       setPrefEmail3(updatedProfile.prefEmail3 ?? false);
@@ -141,6 +144,7 @@ export function ProfileSettings() {
 
   return (
     <div className="max-w-[1440px] mx-auto pb-16 font-sans relative">
+      <PageHeader title="Profile & Settings" />
       
       {/* Toast Notification */}
       {toastMessage && (
@@ -160,22 +164,47 @@ export function ProfileSettings() {
 
       {/* Page Header */}
       <div className="mb-8">
-        <h1 className="font-display text-headline-lg text-on-background font-semibold">Profile &amp; Settings</h1>
         <p className="text-body-lg text-on-surface-variant font-medium mt-1">Manage your account and notification preferences</p>
       </div>
 
       {/* Profile Overview Card */}
       <section className="bg-surface-container-lowest rounded-xl shadow-sm border border-[#F0E6D2] p-6 mb-8 flex flex-col md:flex-row items-center md:items-start gap-8">
         <div className="flex flex-col items-center gap-2">
-          <div className="w-[80px] h-[80px] rounded-full bg-primary flex items-center justify-center text-on-primary font-display text-headline-lg font-bold shadow-sm">
-            {initials || 'RK'}
+          <div className="w-[80px] h-[80px] rounded-full bg-primary flex items-center justify-center text-on-primary font-display text-headline-lg font-bold shadow-sm relative overflow-hidden group border border-outline-variant">
+            {photoUrl ? (
+              <img src={photoUrl} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              initials || 'RK'
+            )}
+            <label htmlFor="profile-photo-upload" className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+              <span className="material-symbols-outlined text-white text-xl">photo_camera</span>
+            </label>
+            <input 
+              type="file" 
+              accept="image/*" 
+              className="hidden" 
+              id="profile-photo-upload"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    const dataUrl = reader.result as string;
+                    const currentProfile = db.getProfile();
+                    db.saveProfile({ ...currentProfile, photoUrl: dataUrl });
+                    triggerToast('Profile photo updated successfully!');
+                  };
+                  reader.readAsDataURL(file);
+                }
+              }}
+            />
           </div>
-          <button 
-            onClick={() => triggerToast('Photo upload simulation started...')}
+          <label 
+            htmlFor="profile-photo-upload"
             className="font-button text-button text-primary hover:text-[#b04b00] transition-colors cursor-pointer font-bold"
           >
             Change Photo
-          </button>
+          </label>
         </div>
         
         <div className="flex-1 flex flex-col items-center md:items-start gap-3 w-full">

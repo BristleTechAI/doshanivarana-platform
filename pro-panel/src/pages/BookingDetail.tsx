@@ -4,6 +4,7 @@ import { useParams, Link } from 'react-router';
 import { doc, getDoc, updateDoc, setDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Booking } from '@devaseva/core';
+import { PageHeader } from '../components/PageHeader';
 
 export function BookingDetail() {
   const { id } = useParams<{ id: string }>();
@@ -121,32 +122,30 @@ export function BookingDetail() {
     }
   };
 
-  if (loading) return <div className="p-xl text-center">Loading...</div>;
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Booking Detail" backTo="/bookings" />
+        <div className="p-xl text-center">Loading...</div>
+      </>
+    );
+  }
 
   if (!booking) {
     return (
-      <div className="p-xl text-center font-sans">
-        <h2 className="text-headline-md font-bold text-on-surface">Booking not found</h2>
-        <Link to="/bookings" className="text-primary hover:underline font-bold mt-4 inline-block">Back to Bookings</Link>
-      </div>
+      <>
+        <PageHeader title="Booking Detail" backTo="/bookings" />
+        <div className="p-xl text-center font-sans">
+          <h2 className="text-headline-md font-bold text-on-surface">Booking not found</h2>
+          <Link to="/bookings" className="text-primary hover:underline font-bold mt-4 inline-block">Back to Bookings</Link>
+        </div>
+      </>
     );
   }
 
   return (
     <div className="max-w-[1440px] mx-auto pb-24 relative">
-      {/* Breadcrumbs & Back */}
-      <div className="mb-6 font-sans">
-        <Link 
-          to="/bookings" 
-          className="text-on-surface-variant font-body-sm hover:text-primary transition-colors inline-flex items-center gap-1 font-bold"
-        >
-          <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-          Back to Bookings
-        </Link>
-        <p className="text-on-surface-variant text-body-sm mt-2 font-medium">
-          Bookings &gt; <span className="text-on-surface">{booking.id} Detail</span>
-        </p>
-      </div>
+      <PageHeader title={`Booking Detail — ${booking.id}`} backTo="/bookings" />
 
       {/* Notification Banner */}
       {notification && (
@@ -159,7 +158,6 @@ export function BookingDetail() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 font-display">
         <div className="flex items-center gap-4">
-          <h1 className="text-headline-lg text-on-background font-bold">Booking Detail — {booking.id}</h1>
           <span className={`font-label-md text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider border ${
             booking.paymentStatus === 'PAID' 
               ? 'bg-green-100 text-green-800 border-green-200' 

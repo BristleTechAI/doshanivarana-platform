@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { db, type ChecklistItem } from '../lib/db';
+import { PageHeader } from '../components/PageHeader';
 
 const getDaysToGo = (dateTimeStr: string) => {
   try {
@@ -108,14 +109,10 @@ export function PoojaReadiness() {
         </div>
       )}
 
+      <PageHeader title="Pooja Readiness Checklist" backTo="/schedule" />
+
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-4">
-        <div>
-          <h1 className="font-display text-headline-lg text-on-surface font-semibold">Pooja Readiness Checklist</h1>
-          <p className="text-body-md text-on-surface-variant font-medium">
-            Verify pujari materials list submission and confirm all pooja items are ready for {id || 'BK-1001'}
-          </p>
-        </div>
+      <div className="flex flex-col md:flex-row justify-end mb-6 gap-4">
         <div className={`px-4 py-2 rounded-xl flex items-center gap-2 border font-semibold ${
           isFullyReady 
             ? 'bg-green-50 border-green-200 text-green-800'

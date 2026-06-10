@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useState } from 'react';
 import { db, type DevoteeQuery, type ChatMessage } from '../lib/db';
+import { PageHeader } from '../components/PageHeader';
 
 export function Queries() {
   const [queries, setQueries] = useState<DevoteeQuery[]>(() => db.getQueries());
@@ -71,6 +72,7 @@ export function Queries() {
 
   return (
     <div className="max-w-[1440px] mx-auto pb-6 font-sans relative">
+      <PageHeader title="Devotee Query Inbox" />
       
       {/* Toast Notification */}
       {notification && (
@@ -82,7 +84,6 @@ export function Queries() {
 
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="font-display text-headline-lg text-on-surface font-semibold">Devotee Query Inbox</h1>
         <p className="text-body-lg text-on-surface-variant font-medium">Respond to devotee questions about bookings, delivery, and schedules</p>
       </div>
 

@@ -118,6 +118,7 @@ export interface ProProfile {
   email: string;
   phone: string;
   mobile?: string;
+  photoUrl?: string;
   role: string;
   templeId: string;
   templeName: string;

@@ -4,6 +4,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Booking } from '@devaseva/core';
+import { PageHeader } from '../components/PageHeader';
 
 export function Bookings() {
   const navigate = useNavigate();
@@ -63,10 +64,10 @@ export function Bookings() {
 
   return (
     <div className="max-w-[1440px] mx-auto relative">
+      <PageHeader title="Bookings Manager" />
       
       {/* Page Header */}
       <div className="mb-8">
-        <h1 className="font-display text-headline-lg text-on-surface font-semibold mb-2">Bookings Manager</h1>
         <p className="font-sans text-body-lg text-on-surface-variant font-medium">View and manage all devotee bookings for your temple</p>
       </div>
 
@@ -109,9 +110,9 @@ export function Bookings() {
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-surface-container-lowest rounded-xl soft-shadow p-6 mb-8 border border-outline-variant/30 font-sans">
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
-          <div className="flex flex-col gap-1.5">
+      <div className="bg-surface-container-lowest rounded-xl soft-shadow p-6 mb-8 border border-outline-variant/30 font-sans flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap gap-4 items-end flex-1 min-w-[280px]">
+          <div className="flex flex-col gap-1.5 min-w-[180px] flex-1">
             <label className="text-label-md text-on-surface-variant font-semibold">Pooja Type</label>
             <select 
               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-body-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors font-semibold"
@@ -126,16 +127,7 @@ export function Bookings() {
               <option>Rudra Abhishekam</option>
             </select>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-label-md text-on-surface-variant font-semibold">Date Range</label>
-            <input 
-              className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-body-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors font-semibold" 
-              placeholder="From - To" 
-              type="text"
-              readOnly
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 min-w-[130px] flex-1">
             <label className="text-label-md text-on-surface-variant font-semibold">Pujari Assigned</label>
             <select 
               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-body-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors font-semibold"
@@ -147,7 +139,7 @@ export function Bookings() {
               <option>No</option>
             </select>
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 min-w-[100px] flex-1">
             <label className="text-label-md text-on-surface-variant font-semibold">Delivery</label>
             <select 
               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-body-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors font-semibold"
@@ -159,7 +151,7 @@ export function Bookings() {
               <option>No</option>
             </select>
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 min-w-[140px] flex-1">
             <label className="text-label-md text-on-surface-variant font-semibold">Payment Status</label>
             <select 
               className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-body-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors font-semibold"
@@ -173,7 +165,7 @@ export function Bookings() {
           </div>
         </div>
         
-        <div className="flex gap-4 mt-6 pt-6 border-t border-outline-variant/30 justify-end">
+        <div className="flex gap-3 items-center shrink-0">
           <button 
             className="px-6 py-2 rounded-full font-button text-button text-on-surface-variant hover:bg-surface-container-low transition-colors cursor-pointer font-bold"
             onClick={() => {
@@ -185,7 +177,7 @@ export function Bookings() {
           >
             Reset
           </button>
-          <button className="px-6 py-2 rounded-full font-button text-button text-primary border-2 border-primary hover:bg-primary-container/20 transition-colors cursor-pointer font-bold">
+          <button className="px-6 py-2 rounded-full font-button text-button text-primary border-2 border-primary hover:bg-primary-container/20 transition-colors cursor-pointer font-bold whitespace-nowrap">
             Apply Filters
           </button>
         </div>

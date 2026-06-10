@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { collection, query, where, onSnapshot, getDocs, documentId } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { PageHeader } from '../components/PageHeader';
 
 interface DeliveryRecord {
   id: string;
@@ -36,7 +37,6 @@ export function Deliveries() {
       }
 
       // Fetch the corresponding bookings
-      const bookingIds = [...new Set(deliveryDocs.map(d => d.bookingId))];
       const bookingsQuery = query(collection(db, 'bookings'), where('templeId', '==', templeId));
       const bookingsSnap = await getDocs(bookingsQuery);
       
@@ -103,10 +103,10 @@ export function Deliveries() {
 
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
+      <PageHeader title="Delivery Manager" />
       
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="font-display text-headline-lg text-on-surface font-semibold">Delivery Manager</h1>
         <p className="text-body-lg text-on-surface-variant font-medium">Pack and dispatch prasad parcels to devotees</p>
       </div>
 

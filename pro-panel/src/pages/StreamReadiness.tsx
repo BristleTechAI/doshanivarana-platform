@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { db } from '../lib/db';
+import { PageHeader } from '../components/PageHeader';
 
 interface Stage3Checklist {
   videoClear: boolean;
@@ -111,16 +112,14 @@ export function StreamReadiness() {
         </div>
       )}
 
-      {/* Page Header */}
-      <div className="flex justify-between items-start mb-8">
+      <PageHeader title="Stream Readiness Checklist" backTo="/live-stream" />
+
+      {/* Page Actions */}
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="font-display text-headline-lg text-on-surface font-semibold mb-2">Stream Readiness Checklist</h1>
-          <p className="text-body-md text-on-surface-variant flex items-center gap-2">
-            Complete all 4 stages before going live for {id || 'BK-1001'}
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-container-high text-primary font-bold text-[10px]">
-              VERIFICATION REQUIRED
-            </span>
-          </p>
+          <span className="inline-flex items-center px-3 py-1 rounded-full bg-surface-container-high text-primary font-bold text-[11px] uppercase tracking-wide border border-primary/10">
+            Verification Required
+          </span>
         </div>
         
         {currentStage === 5 ? (

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { PageHeader } from '../components/PageHeader';
 
 export function LiveStream() {
   const { templeId } = useAuth();
@@ -230,6 +231,7 @@ export function LiveStream() {
 
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
+      <PageHeader title="Live Stream Control" />
       
       {/* Toast Notification */}
       {notification && (
@@ -241,7 +243,6 @@ export function LiveStream() {
 
       {/* Page Header */}
       <div className="mb-6">
-        <h1 className="font-display text-headline-lg text-on-surface font-semibold">Live Stream Control</h1>
         <p className="text-body-md text-on-surface-variant font-medium">Manage live pooja broadcasts and equipment statuses</p>
       </div>
 

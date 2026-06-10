@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, type Review } from '../lib/db';
+import { PageHeader } from '../components/PageHeader';
 
 export function Feedback() {
   const [reviews, setReviews] = useState<Review[]>(() => db.getFeedback());
@@ -59,11 +60,11 @@ export function Feedback() {
 
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
+      <PageHeader title="Feedback & Reviews" />
       
       {/* Page Header */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between mt-4 gap-4">
         <div>
-          <h1 className="font-display text-headline-lg text-on-surface font-semibold mb-2">Devotee Feedback</h1>
           <p className="text-body-lg text-on-surface-variant font-medium">Read-only view — feedback for your Temple</p>
         </div>
         <div className="bg-surface-container py-2 px-4 rounded-full border border-outline-variant/30 flex items-center gap-2 text-on-surface-variant w-fit font-semibold text-xs">

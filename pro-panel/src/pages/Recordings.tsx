@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { v4 as uuidv4 } from 'uuid';
+import { PageHeader } from '../components/PageHeader';
+import { useAuth } from '../contexts/AuthContext';
 
 export function Recordings() {
+  const { templeId } = useAuth();
   const [recordings, setRecordings] = useState<any[]>([]);
   const [notification, setNotification] = useState<string | null>(null);
   
@@ -17,6 +20,37 @@ export function Recordings() {
   // Video play state simulation
   const [isPlaying, setIsPlaying] = useState(false);
 
+  // Add recording modal state
+  const [isAddingRecording, setIsAddingRecording] = useState(false);
+  const [newRecPoojaName, setNewRecPoojaName] = useState('');
+  const [newRecSlotDate, setNewRecSlotDate] = useState('');
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
+
+  const handleAddRecording = async () => {
+    if (!newRecPoojaName.trim() || !newRecSlotDate) return;
+    setIsSubmittingAdd(true);
+    try {
+      const recId = uuidv4();
+      await setDoc(doc(db, 'recordings', recId), {
+        templeId: templeId || 'temple-1', // Mock temple ID
+        status: 'PROCESSING',
+        poojaName: newRecPoojaName.trim(),
+        slotDate: newRecSlotDate,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      setIsAddingRecording(false);
+      setNewRecPoojaName('');
+      setNewRecSlotDate('');
+      setNotification(`Recording for ${newRecPoojaName.trim()} added successfully.`);
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err) {
+      console.error("Error adding recording", err);
+    } finally {
+      setIsSubmittingAdd(false);
+    }
+  };
+
   useEffect(() => {
     // For demo purposes, we will fetch all recordings and try to augment with booking info.
     // In a real app, you would query by templeId.
@@ -24,8 +58,8 @@ export function Recordings() {
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const promises = snapshot.docs.map(async (d) => {
         const data = d.data();
-        let poojaName = "Unknown Pooja";
-        let slotDate = "Unknown Date";
+        let poojaName = data.poojaName || "Unknown Pooja";
+        let slotDate = data.slotDate || "Unknown Date";
 
         if (data.bookingId) {
           const bDoc = await getDoc(doc(db, 'bookings', data.bookingId));
@@ -209,6 +243,7 @@ export function Recordings() {
 
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
+      <PageHeader title="Recording Manager" />
       
       {/* Toast Notification */}
       {notification && !notification.includes('published!') && (
@@ -230,9 +265,17 @@ export function Recordings() {
       )}
 
       {/* Page Header */}
-      <div className="flex flex-col gap-2 mb-6">
-        <h1 className="font-display text-headline-lg text-on-surface font-semibold">Recording Manager</h1>
-        <p className="text-body-lg text-on-surface-variant font-medium">Verify and publish pooja recordings to devotees.</p>
+      <div className="flex justify-between items-start mb-6 mt-4">
+        <div className="flex flex-col gap-2">
+          <p className="text-body-lg text-on-surface-variant font-medium">Verify and publish pooja recordings to devotees.</p>
+        </div>
+        <button 
+          onClick={() => setIsAddingRecording(true)}
+          className="bg-primary text-on-primary font-sans text-button px-6 py-3 rounded-full hover:bg-primary/90 transition-colors flex items-center gap-2 font-bold cursor-pointer shadow-sm"
+        >
+          <span className="material-symbols-outlined flex items-center justify-center">add</span>
+          Upload Recording
+        </button>
       </div>
 
       {/* Summary Stats Row */}
@@ -490,6 +533,52 @@ export function Recordings() {
         </div>
       )}
 
+      {/* Add Recording Modal */}
+      {isAddingRecording && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-surface-container-lowest rounded-xl shadow-2xl max-w-md w-full p-6 border border-[#F0E6D2] font-sans">
+            <h3 className="font-display text-headline-sm text-on-surface font-bold mb-4">Upload New Recording</h3>
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-label-md text-on-surface-variant mb-1 font-semibold">Pooja Name</label>
+                <input 
+                  type="text" 
+                  value={newRecPoojaName}
+                  onChange={(e) => setNewRecPoojaName(e.target.value)}
+                  className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors"
+                  placeholder="e.g., Rudrabhishekam"
+                />
+              </div>
+              <div>
+                <label className="block text-label-md text-on-surface-variant mb-1 font-semibold">Date</label>
+                <input 
+                  type="date" 
+                  value={newRecSlotDate}
+                  onChange={(e) => setNewRecSlotDate(e.target.value)}
+                  className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors"
+                />
+              </div>
+              
+              <div className="flex justify-end gap-3 mt-4">
+                <button 
+                  onClick={() => setIsAddingRecording(false)}
+                  className="px-6 py-2 border border-outline-variant text-on-surface hover:bg-surface-container rounded-full font-semibold cursor-pointer"
+                  disabled={isSubmittingAdd}
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleAddRecording}
+                  disabled={!newRecPoojaName.trim() || !newRecSlotDate || isSubmittingAdd}
+                  className="px-6 py-2 bg-primary text-on-primary hover:bg-[#b04b00] rounded-full font-bold shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmittingAdd ? 'Saving...' : 'Create'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

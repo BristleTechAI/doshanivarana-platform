@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { db, type Pujari, AVAILABLE_SPECIALIZATIONS, AVAILABLE_LANGUAGES } from '../lib/db';
+import { PageHeader } from '../components/PageHeader';
 
 interface AddEditPujariProps {
   isEdit: boolean;
@@ -189,15 +190,7 @@ export function AddEditPujari({ isEdit }: AddEditPujariProps) {
 
   return (
     <div className="pb-12 font-sans">
-      <div className="mb-6">
-        <Link
-          to="/pujaris"
-          className="text-on-surface-variant font-body-sm hover:text-primary transition-colors inline-flex items-center gap-1 font-bold"
-        >
-          <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-          Back to Pujari Management
-        </Link>
-      </div>
+      <PageHeader title={isEdit ? 'Edit Pujari Profile' : 'Add Pujari Profile'} backTo="/pujaris" />
 
       <div className="max-w-[720px] mx-auto">
 

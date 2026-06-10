@@ -3,18 +3,22 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router';
 import { collection, query, where, orderBy, limit, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { db as localDb } from '../lib/db';
 import { useAuth } from '../contexts/AuthContext';
+import { HeaderProvider, useHeaderContext } from './PageHeader';
 
 interface LayoutProps {
   unreadNotifications?: number;
   setUnreadNotifications?: (count: number) => void;
 }
 
-export function Layout({ unreadNotifications: legacyUnread, setUnreadNotifications }: LayoutProps) {
+function LayoutContent({ unreadNotifications: legacyUnread, setUnreadNotifications }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { templeId } = useAuth();
+  const { title, backTo } = useHeaderContext();
   
+  const [profile, setProfile] = useState(() => localDb.getProfile());
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -46,6 +50,16 @@ export function Layout({ unreadNotifications: legacyUnread, setUnreadNotificatio
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setProfile(localDb.getProfile());
+    };
+    window.addEventListener('doshanivarana_profile_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('doshanivarana_profile_updated', handleUpdate);
+    };
   }, []);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -82,8 +96,23 @@ export function Layout({ unreadNotifications: legacyUnread, setUnreadNotificatio
       
       {/* TopAppBar Medium */}
       <header className="h-16 w-[calc(100%-240px)] fixed top-0 right-0 z-40 bg-surface border-b border-outline-variant shadow-sm flex justify-between items-center px-gutter ml-[240px]">
-        <div className="font-display text-headline-sm font-semibold text-on-surface">
-          Doshanivarana
+        <div className="font-display text-headline-sm font-semibold text-on-surface flex items-center gap-3">
+          {backTo && (
+            <button
+              onClick={() => {
+                if (backTo === -1) {
+                  navigate(-1);
+                } else {
+                  navigate(backTo);
+                }
+              }}
+              className="p-1 hover:bg-surface-container-highest rounded-full transition-colors cursor-pointer flex items-center justify-center text-on-surface-variant mr-1"
+              title="Back"
+            >
+              <span className="material-symbols-outlined flex items-center justify-center">arrow_back</span>
+            </button>
+          )}
+          <span>{title || 'Doshanivarana'}</span>
         </div>
         <div className="flex items-center gap-4">
           <nav className="hidden md:flex gap-6 mr-6">
@@ -129,11 +158,15 @@ export function Layout({ unreadNotifications: legacyUnread, setUnreadNotificatio
               </div>
             )}
             
-            <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold overflow-hidden border border-outline-variant">
+            <div 
+              className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold overflow-hidden border border-outline-variant cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => navigate('/profile')}
+              title="Profile & Settings"
+            >
               <img 
-                alt="Ravi" 
+                alt="Profile" 
                 className="w-full h-full object-cover" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQt4Zty_Yhgfp3V5PbaeQu19XiDkNsQjIkHmoV-eLOMipGZMy9N798LURF6hkO4wvoi842jdTzA5DGidB45engunywTEi5FStUUMn7P3PgTlI1jcMZacpQCM4JNoGX5B2fHk9TsT861sLv-3xO0ipE23BRHi1nXnGakpKnx8KcfhuKxhynE2XC_wLXdaXAEYngPO_BMcbs6XS_6inJNpIvkHcuZXgEVbCtpz49t38Iih2_GKkzwfArnlk-YILE6AjqPokbj_wdLe9s"
+                src={profile?.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.fullName || 'User')}&background=4A2B0F&color=fff`}
               />
             </div>
             <button 
@@ -210,5 +243,13 @@ export function Layout({ unreadNotifications: legacyUnread, setUnreadNotificatio
       </div>
 
     </div>
+  );
+}
+
+export function Layout(props: LayoutProps) {
+  return (
+    <HeaderProvider>
+      <LayoutContent {...props} />
+    </HeaderProvider>
   );
 }

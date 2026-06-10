@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { db, type Booking, type PoojaSlot, type DevoteeQuery } from '../lib/db';
+import { PageHeader } from '../components/PageHeader';
 
 export function Home() {
   const navigate = useNavigate();
@@ -41,13 +42,13 @@ export function Home() {
 
   // Stats calculation
   const todaysPoojasCount = slots.filter(s => s.status && s.date === todayDateStr).length;
-  const pendingPujariCount = bookings.filter(b => (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'upcoming' && (b.priestName || 'Not Assigned') === 'Not Assigned').length;
-  const pendingDeliveriesCount = bookings.filter(b => b.hasPrasadDelivery).length;
+  const pendingPujariCount = bookings.filter(b => (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'upcoming' && b.pujari === 'Not Assigned').length;
+  const pendingDeliveriesCount = bookings.filter(b => b.delivery === 'Yes' && b.deliveryStatus !== 'Delivered' && b.deliveryStatus !== 'Not Applicable').length;
   const unreadQueriesCount = queries.filter(q => q.status === 'Open').length;
 
   // Filter bookings for today and tomorrow
   const activePoojas = bookings.filter(b => {
-    const datePart = b.scheduledDate.split(',')[0].trim();
+    const datePart = b.dateTime.split(',')[0].trim();
     return (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'upcoming' && (datePart === todayLabel || datePart === tomorrowLabel);
   });
 
@@ -65,12 +66,10 @@ export function Home() {
 
   return (
     <div className="p-xl min-h-[calc(100vh-104px)] relative mandala-watermark">
+      <PageHeader title={`Good Morning, ${profileName} 👋`} />
       
       {/* Page Header */}
       <div className="mb-8">
-        <h1 className="font-display text-headline-lg text-on-surface font-semibold mb-2">
-          Good Morning, {profileName} 👋
-        </h1>
         <p className="font-sans text-body-lg text-on-surface-variant font-medium">
           {today}
         </p>

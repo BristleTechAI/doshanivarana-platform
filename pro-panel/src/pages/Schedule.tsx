@@ -11,62 +11,57 @@ type UISlot = Slot & {
   poojaName: string;
 };
 
-function parseDateToYYYYMMDD(dateStr: string): string | null {
-  if (!dateStr) return null;
-  const clean = dateStr.trim();
-  
-  // YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
-  
-  // YYYY/MM/DD
-  if (/^\d{4}\/\d{2}\/\d{2}$/.test(clean)) return clean.replace(/\//g, '-');
-  
-  // DD-MM-YYYY
-  if (/^\d{2}-\d{2}-\d{4}$/.test(clean)) {
-    const [d, m, y] = clean.split('-');
-    return `${y}-${m}-${d}`;
-  }
-  
-  // DD/MM/YYYY
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
-    const [d, m, y] = clean.split('/');
-    return `${y}-${m}-${d}`;
-  }
-  
-  return null;
-}
 
 export function Schedule() {
   const { templeId } = useAuth();
   const [selectedPooja, setSelectedPooja] = useState('All Poojas');
   const [selectedStatus, setSelectedStatus] = useState('All Status');
-  const [dateRange, setDateRange] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [isPastExpanded, setIsPastExpanded] = useState(false);
   const [deactivatingSlot, setDeactivatingSlot] = useState<UISlot | null>(null);
 
-  const [slots, setSlots] = useState<UISlot[]>([]);
-  const [poojas, setPoojas] = useState<Record<string, Pooja>>({});
-  const [loading, setLoading] = useState(true);
+  const CACHE_KEY = `schedule_cache_${templeId}`;
+  const POOJA_CACHE_KEY = `pooja_cache_${templeId}`;
 
-  const fetchScheduleData = async () => {
+  // Load from localStorage cache immediately (sync - no delay)
+  const [slots, setSlots] = useState<UISlot[]>(() => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      return cached ? JSON.parse(cached) : [];
+    } catch { return []; }
+  });
+  const [poojas, setPoojas] = useState<Record<string, Pooja>>(() => {
+    try {
+      const cached = localStorage.getItem(POOJA_CACHE_KEY);
+      return cached ? JSON.parse(cached) : {};
+    } catch { return {}; }
+  });
+  // Only show loading skeleton if there is NO cached data at all
+  const [loading, setLoading] = useState<boolean>(() => {
+    return !localStorage.getItem(CACHE_KEY);
+  });
+
+  const fetchScheduleData = async (background = false) => {
     if (!templeId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!background) setLoading(true);
     try {
-      // Fetch Poojas for this temple
-      const pQuery = query(collection(db, "poojas"), where("templeId", "==", templeId), where("isDeleted", "==", false));
-      const pSnap = await getDocs(pQuery);
+      // Fetch Poojas and Slots in parallel for speed
+      const [pSnap, sSnap] = await Promise.all([
+        getDocs(query(collection(db, "poojas"), where("templeId", "==", templeId), where("isDeleted", "==", false))),
+        getDocs(query(collection(db, "slots"), where("templeId", "==", templeId), where("isDeleted", "==", false))),
+      ]);
+
       const pMap: Record<string, Pooja> = {};
       pSnap.docs.forEach(d => {
         pMap[d.id] = { id: d.id, ...d.data() } as Pooja;
       });
       setPoojas(pMap);
+      localStorage.setItem(POOJA_CACHE_KEY, JSON.stringify(pMap));
 
-      // Fetch Slots for this temple
-      const sQuery = query(collection(db, "slots"), where("templeId", "==", templeId), where("isDeleted", "==", false));
-      const sSnap = await getDocs(sQuery);
       const sData: UISlot[] = sSnap.docs.map(doc => {
         const data = doc.data();
         return {
@@ -83,6 +78,7 @@ export function Schedule() {
       });
       
       setSlots(sData);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(sData));
     } catch (error) {
       console.error("Failed to fetch schedule data:", error);
     } finally {
@@ -91,7 +87,13 @@ export function Schedule() {
   };
 
   useEffect(() => {
-    fetchScheduleData();
+    const hasCached = !!localStorage.getItem(CACHE_KEY);
+    if (hasCached) {
+      // Show cached data immediately, refresh in background
+      fetchScheduleData(true);
+    } else {
+      fetchScheduleData(false);
+    }
   }, [templeId]);
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -144,23 +146,11 @@ export function Schedule() {
       (selectedStatus === 'Inactive' && slot.status !== SlotStatus.AVAILABLE);
     
     let dateMatch = true;
-    if (dateRange) {
-      const dateRegex = /(\d{4}[-/]\d{2}[-/]\d{2})|(\d{2}[-/]\d{2}[-/]\d{4})/g;
-      const matches = dateRange.match(dateRegex);
-      if (matches && matches.length >= 2) {
-        const from = parseDateToYYYYMMDD(matches[0]);
-        const to = parseDateToYYYYMMDD(matches[1]);
-        if (from) dateMatch = dateMatch && slot.date >= from;
-        if (to) dateMatch = dateMatch && slot.date <= to;
-      } else if (matches && matches.length === 1) {
-        const exact = parseDateToYYYYMMDD(matches[0]);
-        if (exact) dateMatch = dateMatch && slot.date === exact;
-      } else {
-        const cleanQuery = dateRange.trim();
-        if (cleanQuery) {
-          dateMatch = slot.date.includes(cleanQuery);
-        }
-      }
+    if (startDate) {
+      dateMatch = dateMatch && slot.date >= startDate;
+    }
+    if (endDate) {
+      dateMatch = dateMatch && slot.date <= endDate;
     }
 
     return poojaMatch && statusMatch && dateMatch;
@@ -179,7 +169,44 @@ export function Schedule() {
     return (
       <>
         <PageHeader title="Pooja Schedule" />
-        <div className="p-10 text-center text-on-surface-variant">Loading Schedule...</div>
+        <div className="max-w-[1440px] mx-auto animate-pulse">
+          {/* Header skeleton */}
+          <div className="flex justify-between items-start mb-8 mt-4">
+            <div className="h-4 bg-surface-container-highest rounded-full w-80 opacity-60"></div>
+            <div className="h-10 bg-surface-container-highest rounded-full w-36 opacity-60"></div>
+          </div>
+          {/* Filter bar skeleton */}
+          <div className="bg-surface-container-lowest rounded-xl p-6 mb-8 border border-outline-variant/30 flex flex-wrap gap-6">
+            <div className="flex-1 min-w-[200px] h-10 bg-surface-container-highest rounded-lg opacity-60"></div>
+            <div className="flex-1 min-w-[320px] h-10 bg-surface-container-highest rounded-lg opacity-60"></div>
+            <div className="flex-1 min-w-[200px] h-10 bg-surface-container-highest rounded-lg opacity-60"></div>
+            <div className="flex gap-3">
+              <div className="w-24 h-10 bg-surface-container-highest rounded-lg opacity-60"></div>
+              <div className="w-24 h-10 bg-surface-container-highest rounded-lg opacity-60"></div>
+            </div>
+          </div>
+          {/* Stats skeleton */}
+          <div className="grid grid-cols-3 gap-4 mb-8">
+            {[1,2,3].map(i => (
+              <div key={i} className="bg-surface-container-lowest rounded-xl p-5 border border-outline-variant/30">
+                <div className="h-3 bg-surface-container-highest rounded w-24 mb-3 opacity-60"></div>
+                <div className="h-7 bg-surface-container-highest rounded w-10 opacity-60"></div>
+              </div>
+            ))}
+          </div>
+          {/* Table skeleton */}
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/30 overflow-hidden">
+            <div className="h-12 bg-surface-container-low border-b border-outline-variant/30 opacity-60"></div>
+            {[1,2,3,4,5].map(i => (
+              <div key={i} className="flex items-center gap-4 px-6 py-4 border-b border-outline-variant/20">
+                <div className="h-4 bg-surface-container-highest rounded w-32 opacity-50"></div>
+                <div className="h-4 bg-surface-container-highest rounded w-24 opacity-50"></div>
+                <div className="h-4 bg-surface-container-highest rounded flex-1 opacity-50"></div>
+                <div className="h-6 bg-surface-container-highest rounded-full w-20 opacity-50"></div>
+              </div>
+            ))}
+          </div>
+        </div>
       </>
     );
   }
@@ -189,7 +216,7 @@ export function Schedule() {
       <PageHeader title="Pooja Schedule" />
       
       {/* Page Header */}
-      <div className="flex justify-between items-start mb-8">
+      <div className="flex justify-between items-start mb-8 mt-4">
         <div>
           <p className="font-sans text-on-surface-variant mt-1">Manage available dates and time slots for your temple's poojas</p>
         </div>
@@ -217,16 +244,31 @@ export function Schedule() {
             ))}
           </select>
         </div>
-        <div className="flex-1 min-w-[220px]">
+        <div className="flex-1 min-w-[320px]">
           <label className="block font-sans text-label-md text-on-surface-variant mb-2 font-semibold">Date Range</label>
-          <div className="relative">
+          <div className="flex items-center bg-surface border border-outline-variant/30 rounded-lg focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-colors px-2 h-[42px]">
             <input 
-              className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-2 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors font-semibold" 
-              type="text"
-              placeholder="YYYY-MM-DD - YYYY-MM-DD"
-              value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
+              className="w-full bg-transparent px-2 py-1 text-on-surface outline-none font-semibold text-sm" 
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
             />
+            <span className="text-on-surface-variant mx-1 font-semibold text-sm">to</span>
+            <input 
+              className="w-full bg-transparent px-2 py-1 text-on-surface outline-none font-semibold text-sm" 
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+            {(startDate || endDate) && (
+              <button 
+                onClick={() => { setStartDate(''); setEndDate(''); }}
+                className="material-symbols-outlined text-on-surface-variant hover:text-on-surface ml-1 p-1 rounded-full hover:bg-surface-variant/20 text-[18px] cursor-pointer"
+                title="Clear dates"
+              >
+                close
+              </button>
+            )}
           </div>
         </div>
         <div className="flex-1 min-w-[150px]">
@@ -253,7 +295,8 @@ export function Schedule() {
             onClick={() => {
               setSelectedPooja('All Poojas');
               setSelectedStatus('All Status');
-              setDateRange('');
+              setStartDate('');
+              setEndDate('');
             }}
           >
             Reset

@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router';
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp, onSnapshot, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { PageHeader } from '../components/PageHeader';
 
 interface DeliveryDetailData {
   id: string;
@@ -211,33 +212,19 @@ export function DeliveryDetail() {
         </div>
       )}
 
-      {/* Breadcrumb & Header */}
-      <div className="mb-6">
-        <nav className="flex text-sm text-on-surface-variant mb-4 items-center gap-2 font-medium">
-          <Link to="/deliveries" className="hover:text-primary transition-colors flex items-center gap-1 font-bold">
-            <span className="material-symbols-outlined text-sm">arrow_back</span>
-            Back to Deliveries
-          </Link>
-          <span className="mx-1">•</span>
-          <span>Deliveries</span>
-          <span className="mx-1">&gt;</span>
-          <span className="text-on-surface font-bold">{delivery.bookingId} — {delivery.devoteeName}</span>
-        </nav>
-        
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h1 className="font-display text-headline-lg text-on-surface font-semibold">
-            Delivery Detail — {delivery.bookingId}
-          </h1>
-          <span className={`px-4 py-1.5 rounded-full font-label-md text-label-md uppercase tracking-wider font-bold border ${
-            isBooked 
-              ? 'bg-yellow-50 text-yellow-800 border-yellow-200' 
-              : isPacked 
-                ? 'bg-blue-50 text-blue-800 border-blue-200' 
-                : 'bg-green-50 text-green-800 border-green-200'
-          }`}>
-            {delivery.status || 'BOOKED'}
-          </span>
-        </div>
+      <PageHeader title={`Delivery Detail — ${delivery.bookingId}`} backTo="/deliveries" />
+
+      {/* Page Actions / Status */}
+      <div className="flex justify-end mb-6">
+        <span className={`px-4 py-1.5 rounded-full font-label-md text-label-md uppercase tracking-wider font-bold border ${
+          isBooked 
+            ? 'bg-yellow-50 text-yellow-800 border-yellow-200' 
+            : isPacked 
+              ? 'bg-blue-50 text-blue-800 border-blue-200' 
+              : 'bg-green-50 text-green-800 border-green-200'
+        }`}>
+          {delivery.status || 'BOOKED'}
+        </span>
       </div>
 
       {/* Two Column Layout */}

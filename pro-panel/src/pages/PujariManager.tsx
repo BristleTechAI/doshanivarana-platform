@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { db, type Pujari, AVAILABLE_SPECIALIZATIONS } from '../lib/db';
+import { PageHeader } from '../components/PageHeader';
 
 export function PujariManager() {
   const navigate = useNavigate();
@@ -85,11 +86,11 @@ export function PujariManager() {
 
   return (
     <div className="max-w-[1440px] mx-auto pb-12 relative font-sans">
+      <PageHeader title="Pujari Management" />
       
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 mt-4 gap-4">
         <div>
-          <h1 className="font-display text-headline-lg text-on-surface font-semibold">Pujari Management</h1>
           <p className="text-body-md text-on-surface-variant mt-1 font-medium">Manage priests assigned to Sri Venkateswara Temple</p>
         </div>
         <button 
