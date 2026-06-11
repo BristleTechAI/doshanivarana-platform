@@ -23,6 +23,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   currentUser: DemoUser | null;
   role: UserRole | null;
+  templeId: string | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<UserRole>;
   logout: () => void;
@@ -33,6 +34,7 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   currentUser: null,
   role: null,
+  templeId: null,
   loading: true,
   login: async () => { throw new Error('AuthProvider not mounted'); },
   logout: () => {},
@@ -105,6 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated: !!currentUser,
       currentUser,
       role: currentUser?.role ?? null,
+      templeId: currentUser ? 'SVT_01' : null,
       loading,
       login,
       logout,

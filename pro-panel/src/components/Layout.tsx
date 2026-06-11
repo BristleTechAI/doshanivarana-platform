@@ -2,13 +2,20 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
+import { useHeaderContext } from './PageHeader';
 
 interface LayoutProps {
   unreadNotifications?: number;
   setUnreadNotifications?: (count: number) => void;
+  title?: string;
+  backTo?: string | number;
 }
 
-export function Layout({ unreadNotifications: legacyUnread, setUnreadNotifications }: LayoutProps) {
+export function Layout({ unreadNotifications: legacyUnread, setUnreadNotifications, title: propTitle, backTo: propBackTo }: LayoutProps) {
+  const { title: contextTitle, backTo: contextBackTo } = useHeaderContext();
+  const title = propTitle || contextTitle;
+  const backTo = propBackTo !== undefined ? propBackTo : contextBackTo;
+
   const location = useLocation();
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
@@ -247,61 +254,10 @@ export function Layout({ unreadNotifications: legacyUnread, setUnreadNotificatio
         </div>
       )}
 
-<<<<<<< Updated upstream
-      {/* SideNavBar */}
-      <nav className="w-[240px] h-screen fixed left-0 top-0 overflow-y-auto bg-surface border-r border-outline-variant shadow-sm z-50 flex flex-col justify-between">
-        <div>
-          <div className="p-6 border-b border-outline-variant flex flex-col items-start gap-3">
-            <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary border border-outline-variant">
-              <span className="material-symbols-outlined text-[28px]">account_balance</span>
-            </div>
-            <div>
-              <div className="font-display text-headline-md font-bold text-primary">Doshanivarana</div>
-              <div className="font-sans text-body-sm text-on-surface-variant">Temple Management</div>
-            </div>
-          </div>
-          
-          <div className="flex flex-col gap-1 py-4">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.name}
-                  to={item.path}
-                  className={`flex items-center gap-3 px-4 py-3 transition-all duration-200 ${
-                    isActive 
-                      ? 'text-primary border-l-4 border-primary bg-gradient-to-r from-surface-container to-surface font-bold scale-[0.99]' 
-                      : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'
-                  }`}
-                >
-                  <span 
-                    className="material-symbols-outlined flex items-center justify-center"
-                    style={{ fontVariationSettings: isActive ? "'FILL' 1" : undefined }}
-                  >
-                    {item.icon}
-                  </span>
-                  <span className="text-sm font-medium">{item.name}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-        
-        {/* Footer Watermark */}
-        <div className="h-32 mandala-watermark opacity-40 mt-auto"></div>
-      </nav>
-
-      {/* Page Content Viewport */}
-      <div className={`ml-[240px] ${location.pathname === '/' ? 'pt-[104px]' : 'pt-[64px]'}`}>
-        {/* Main Content Render */}
-        <div className={`p-xl ${location.pathname === '/' ? 'min-h-[calc(100vh-104px)]' : 'min-h-[calc(100vh-64px)]'} relative mandala-watermark`}>
-          {/* Children components injected here */}
-=======
       {/* ── Page Content Viewport ── */}
       {/* Desktop: offset by sidebar; Mobile: no offset */}
       <div className={`lg:ml-[240px] ${location.pathname === '/' ? 'pt-[104px]' : 'pt-[64px]'}`}>
         <div className={`p-4 sm:p-6 lg:p-xl ${location.pathname === '/' ? 'min-h-[calc(100vh-104px)]' : 'min-h-[calc(100vh-64px)]'} relative mandala-watermark`}>
->>>>>>> Stashed changes
           <Outlet />
         </div>
       </div>
