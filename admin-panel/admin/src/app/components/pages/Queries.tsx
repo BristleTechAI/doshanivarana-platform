@@ -1,23 +1,7 @@
 import { useState, useEffect } from "react";
-import { Modal, Field, ModalFooter, inputCls, inputStyle, selectStyle } from "../Modal";
-import {
-  Radio, Eye, Users, Clock, Wifi, WifiOff, Video, Play, Download,
-  Package, MapPin, CheckCircle, AlertCircle, Truck, MessageCircle,
-  Flag, Star, ChevronDown, Search, Plus, Edit, XCircle, Filter,
-  Briefcase, Building2, UserCircle, TrendingUp, IndianRupee,
-  Flame, Tag, Globe, RefreshCcw, BarChart2, ArrowUpRight,
-  ClipboardList, PowerOff, Send, CheckCircle2, HardDrive, LayoutGrid,
-  List, Calendar, ChevronRight, Reply, MoreVertical, Phone, Mail,
-  TriangleAlert, Inbox, Timer, ArrowLeft
-} from "lucide-react";
-import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, PieChart, Pie, Cell
-} from "recharts";
+import { ArrowLeft, CheckCircle, Send } from "lucide-react";
 
-
-
-const queries = [
+const defaultQueries = [
   {
     id: "QR-1284", devotee: "Rajesh Kumar", avatar: "RK", email: "rajesh@gmail.com", phone: "+91 98421 84210",
     subject: "Request to reschedule Rudrabhishek booking", category: "Booking", priority: "High",
@@ -92,92 +76,64 @@ const queries = [
   },
 ];
 
-const qPriorityCfg: Record<string, { bg: string; color: string; dot: string }> = {
-  High: { bg: "#FFF1F2", color: "#DC2626", dot: "#EF4444" },
-  Medium: { bg: "#FFFBEB", color: "#D97706", dot: "#F59E0B" },
-  Low: { bg: "#F0FDF4", color: "#16A34A", dot: "#22C55E" },
-};
-const qStatusCfg: Record<string, { bg: string; color: string }> = {
-  Open: { bg: "#EFF6FF", color: "#2563EB" },
-  "In Progress": { bg: "#FFF0E6", color: "#C76A00" },
-  Escalated: { bg: "#FFF1F2", color: "#DC2626" },
-  Resolved: { bg: "#F0FDF4", color: "#16A34A" },
-};
+const LS_KEY = "demo_queries";
 
-const mapBackendQueryToAdminQuery = (q: any) => {
-  let mappedStatus = "Open";
-  if (q.status === "Closed") {
-    mappedStatus = "Resolved";
-  } else if (q.status === "Replied") {
-    mappedStatus = "In Progress";
-  }
+function loadQueries() {
+  try {
+    const stored = localStorage.getItem(LS_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return defaultQueries;
+}
 
-  return {
-    id: q.id,
-    devotee: q.devoteeName,
-    avatar: q.devoteeName ? q.devoteeName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) : "DV",
-    email: `${q.devoteeName ? q.devoteeName.toLowerCase().replace(/\s+/g, '') : 'devotee'}@example.com`,
-    phone: "+91 98765 43216",
-    subject: q.subject,
-    category: q.temple || "General",
-    priority: q.status === "Open" ? "High" : "Medium",
-    status: mappedStatus,
-    assigned: q.temple || "Support Team",
-    created: q.timeAgo || "Just now",
-    preview: q.snippet || "",
-    thread: q.thread ? q.thread.map((t: any) => ({
-      from: t.senderName,
-      time: t.time.includes(",") ? t.time.split(",")[1].trim() : t.time,
-      text: t.text,
-      isAdmin: t.sender === 'admin'
-    })) : []
-  };
+function saveQueries(data: any) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+}
+
+const statusDot: Record<string, string> = {
+  Open: "#3B82F6",
+  "In Progress": "#C76A00",
+  Escalated: "#EF4444",
+  Resolved: "#22C55E",
 };
 
 export function QueriesPage() {
-  const [queriesList, setQueriesList] = useState<any[]>(queries);
-  const [selected, setSelected] = useState<string>(queries[0].id);
+  const [queriesList, setQueriesList] = useState<any[]>(loadQueries);
+  const [selected, setSelected] = useState<string>(queriesList[0]?.id || "");
   const [statusFilter, setStatusFilter] = useState("All");
   const [reply, setReply] = useState("");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
+  useEffect(() => {
+    saveQueries(queriesList);
+  }, [queriesList]);
+
   const activeQuery = queriesList.find((q: any) => q.id === selected) || queriesList[0];
   const filtered = statusFilter === "All" ? queriesList : queriesList.filter((q: any) => q.status === statusFilter);
-
-  const fetchQueries = async () => {
-    try {
-      const res = await fetch('http://localhost:3001/api/queries');
-      if (res.ok) {
-        const data = await res.json();
-        const mapped = data.map(mapBackendQueryToAdminQuery);
-        setQueriesList(mapped);
-        if (mapped.length > 0 && (!selected || !mapped.some((q: any) => q.id === selected))) {
-          setSelected(mapped[0].id);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch queries from backend:", err);
-    }
-  };
-
-  useEffect(() => {
-    fetchQueries();
-    const interval = setInterval(() => {
-      fetchQueries();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [selected]);
-
-  const statusDot: Record<string, string> = {
-    Open: "#3B82F6",
-    "In Progress": "#C76A00",
-    Escalated: "#EF4444",
-    Resolved: "#22C55E",
-  };
 
   function selectQuery(id: string) {
     setSelected(id);
     setMobilePanelOpen(true);
+  }
+
+  function handleResolve() {
+    setQueriesList(prev => prev.map(q => q.id === activeQuery.id ? { ...q, status: "Resolved" } : q));
+  }
+
+  function handleReply() {
+    if (!reply.trim()) return;
+    const newMsg = {
+      from: "Super Admin",
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: reply.trim(),
+      isAdmin: true
+    };
+    setQueriesList(prev => prev.map(q => q.id === activeQuery.id ? {
+      ...q,
+      status: q.status === "Open" ? "In Progress" : q.status,
+      thread: [...q.thread, newMsg]
+    } : q));
+    setReply("");
   }
 
   return (
@@ -246,36 +202,29 @@ export function QueriesPage() {
             >
               <ArrowLeft size={13} /> Back
             </button>
-            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: statusDot[activeQuery.status] }} />
-            <div className="flex-1 min-w-0">
-              <span className="text-sm line-clamp-1" style={{ color: "#1F1F1F", fontWeight: 600 }}>{activeQuery.subject}</span>
-            </div>
-            <span className="text-xs flex-shrink-0 hidden sm:block" style={{ color: "#9CA3AF" }}>{activeQuery.category} · {activeQuery.assigned}</span>
-            {activeQuery.status !== "Resolved" && (
-              <button 
-                onClick={async () => {
-                  try {
-                    const res = await fetch(`http://localhost:3001/api/queries/${activeQuery.id}/close`, {
-                      method: 'POST'
-                    });
-                    if (res.ok) {
-                      fetchQueries();
-                    }
-                  } catch (err) {
-                    console.error("Failed to resolve query:", err);
-                  }
-                }}
-                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer"
-                style={{ backgroundColor: "#F0FDF4", color: "#16A34A", fontWeight: 600, minHeight: "36px" }}
-              >
-                <CheckCircle size={11} /> Resolve
-              </button>
+            {activeQuery && (
+              <>
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: statusDot[activeQuery.status] }} />
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm line-clamp-1" style={{ color: "#1F1F1F", fontWeight: 600 }}>{activeQuery.subject}</span>
+                </div>
+                <span className="text-xs flex-shrink-0 hidden sm:block" style={{ color: "#9CA3AF" }}>{activeQuery.category} · {activeQuery.assigned}</span>
+                {activeQuery.status !== "Resolved" && (
+                  <button 
+                    onClick={handleResolve}
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer"
+                    style={{ backgroundColor: "#F0FDF4", color: "#16A34A", fontWeight: 600, minHeight: "36px" }}
+                  >
+                    <CheckCircle size={11} /> Resolve
+                  </button>
+                )}
+              </>
             )}
           </div>
 
           {/* Thread messages */}
           <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 md:py-5 space-y-4 md:space-y-5">
-            {activeQuery.thread.map((msg: any, i: number) => (
+            {activeQuery?.thread.map((msg: any, i: number) => (
               <div key={i} className={`flex gap-3 ${msg.isAdmin ? "flex-row-reverse" : ""}`}>
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0 mt-0.5"
                   style={{ backgroundColor: msg.isAdmin ? "#4A1259" : "#C76A00", fontSize: 9, fontWeight: 700 }}>
@@ -309,31 +258,10 @@ export function QueriesPage() {
                 style={{ color: "#1F1F1F" }}
               />
               <button
-                onClick={async () => {
-                  if (!reply.trim()) return;
-                  const replyText = reply.trim();
-                  setReply("");
-                  try {
-                    const res = await fetch(`http://localhost:3001/api/queries/${activeQuery.id}/reply`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        sender: 'admin',
-                        senderName: 'Super Admin',
-                        avatarText: 'SA',
-                        text: replyText
-                      })
-                    });
-                    if (res.ok) {
-                      fetchQueries();
-                    }
-                  } catch (err) {
-                    console.error("Failed to send reply:", err);
-                  }
-                }}
-                disabled={!reply.trim()}
+                onClick={handleReply}
+                disabled={!reply.trim() || !activeQuery || activeQuery.status === "Resolved"}
                 className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs transition-all cursor-pointer"
-                style={{ backgroundColor: reply.trim() ? "#C76A00" : "rgba(199,106,0,0.12)", color: reply.trim() ? "#FFFFFF" : "#C76A00", fontWeight: 600, minHeight: "44px" }}
+                style={{ backgroundColor: reply.trim() && activeQuery?.status !== "Resolved" ? "#C76A00" : "rgba(199,106,0,0.12)", color: reply.trim() && activeQuery?.status !== "Resolved" ? "#FFFFFF" : "#C76A00", fontWeight: 600, minHeight: "44px" }}
               >
                 <Send size={11} /> Send
               </button>
@@ -344,4 +272,3 @@ export function QueriesPage() {
     </div>
   );
 }
-

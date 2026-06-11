@@ -173,7 +173,7 @@ export function Dashboard() {
             🙏 Namaste, Super Admin
           </div>
           <h1 className="text-white text-xl md:text-2xl mb-1" style={{ fontWeight: 700 }}>
-            Welcome to Devaseva Control Center
+            Welcome to Dosha Nivarana Control Center
           </h1>
           <p className="hidden sm:block" style={{ color: "rgba(255,255,255,0.65)", fontSize: "13px" }}>
             Monday, 8 June 2026 · Platform is healthy · 284 Temples Online

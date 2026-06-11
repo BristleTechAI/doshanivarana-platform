@@ -1,8 +1,7 @@
-import { Bell, Search, ChevronDown, AlertCircle, CheckCircle, Clock, Menu } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Bell, Search, ChevronDown, Clock, Menu } from "lucide-react";
+import { useState } from "react";
 import { useLocation } from "react-router";
-import { collection, query, where, orderBy, limit, onSnapshot, updateDoc, doc } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { useAuth } from "../../contexts/AuthContext";
 
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
@@ -38,36 +37,16 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const location = useLocation();
+  const { currentUser } = useAuth();
   const [showNotifs, setShowNotifs] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const title = pageTitles[location.pathname] ?? "Devaseva Admin";
-
-  useEffect(() => {
-    const q = query(
-      collection(db, "notifications"),
-      where("recipientType", "==", "ADMIN"),
-      orderBy("createdAt", "desc"),
-      limit(20)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const notifs = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setNotifications(notifs);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
+  // Demo static notifications
+  const notifications = [
+    { id: '1', title: 'New temple request', message: 'Kashi Vishwanath Temple submitted an onboarding request.', isRead: false },
+    { id: '2', title: 'Booking spike detected', message: '1,284 bookings today — 34% above daily average.', isRead: false },
+    { id: '3', title: 'Prasad delivery completed', message: '24 deliveries dispatched from Shirdi Temple.', isRead: true },
+  ];
+  const title = pageTitles[location.pathname] ?? "Dosha Nivarana Admin Dashboard";
   const unreadCount = notifications.filter(n => !n.isRead).length;
-
-  const handleNotificationClick = async (notif: any) => {
-    if (!notif.isRead) {
-      await updateDoc(doc(db, "notifications", notif.id), { isRead: true });
-    }
-  };
 
   return (
     <header
@@ -152,14 +131,12 @@ export function Header({ onMenuClick }: HeaderProps) {
                 notifications.map((n) => (
                   <div 
                     key={n.id} 
-                    onClick={() => handleNotificationClick(n)}
                     className={`px-4 py-3 flex gap-3 items-start hover:bg-orange-50 cursor-pointer transition-colors ${!n.isRead ? 'bg-orange-50/50' : ''}`}
                   >
                     <Clock size={15} className="mt-0.5 flex-shrink-0" style={{ color: "#C76A00" }} />
                     <div>
                       <p className="text-sm" style={{ color: "#1F1F1F", fontWeight: n.isRead ? 400 : 600 }}>{n.title}</p>
                       <p className="text-xs mt-0.5" style={{ color: "#1F1F1F" }}>{n.message}</p>
-                      <p className="text-[10px] mt-1" style={{ color: "#9CA3AF" }}>{new Date(n.createdAt?.toDate() || Date.now()).toLocaleString()}</p>
                     </div>
                   </div>
                 ))
@@ -178,11 +155,11 @@ export function Header({ onMenuClick }: HeaderProps) {
           className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs"
           style={{ backgroundColor: "#C76A00", fontWeight: 700 }}
         >
-          SA
+          {currentUser?.name?.slice(0, 2).toUpperCase() ?? 'SA'}
         </div>
         <div className="hidden md:block text-left">
-          <div className="text-xs" style={{ color: "#1F1F1F", fontWeight: 600 }}>Super Admin</div>
-          <div className="text-xs" style={{ color: "#9CA3AF" }}>Platform Owner</div>
+          <div className="text-xs" style={{ color: "#1F1F1F", fontWeight: 600 }}>{currentUser?.name ?? 'Super Admin'}</div>
+          <div className="text-xs" style={{ color: "#9CA3AF" }}>{currentUser?.email ?? 'admin@doshanivarana.com'}</div>
         </div>
         <ChevronDown size={13} style={{ color: "#9CA3AF" }} />
       </button>

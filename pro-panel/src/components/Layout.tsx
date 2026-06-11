@@ -1,8 +1,6 @@
 // @ts-nocheck
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router';
-import { collection, query, where, orderBy, limit, onSnapshot, updateDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 interface LayoutProps {
@@ -13,30 +11,16 @@ interface LayoutProps {
 export function Layout({ unreadNotifications: legacyUnread, setUnreadNotifications }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { templeId } = useAuth();
+  const { currentUser, logout } = useAuth();
   
-  const [notifications, setNotifications] = useState<any[]>([]);
+  // Demo static notifications
+  const [notifications] = useState([
+    { id: '1', title: 'New booking confirmed', message: 'Abhishek Pooja booked for tomorrow 6:00 AM.', isRead: false },
+    { id: '2', title: 'Pujari assigned', message: 'Pt. Ramesh Kumar assigned to Sahasranama at 8:00 AM.', isRead: false },
+    { id: '3', title: 'Delivery dispatched', message: '12 prasad packages dispatched to devotees.', isRead: true },
+  ]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!templeId) return;
-
-    const q = query(
-      collection(db, 'notifications'),
-      where('recipientId', '==', templeId),
-      where('recipientType', '==', 'TEMPLE_ADMIN'),
-      orderBy('createdAt', 'desc'),
-      limit(20)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setNotifications(notifs);
-    });
-
-    return () => unsubscribe();
-  }, [templeId]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -44,24 +28,15 @@ export function Layout({ unreadNotifications: legacyUnread, setUnreadNotificatio
         setIsDropdownOpen(false);
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
-  const handleNotificationClick = async (notif: any) => {
-    if (!notif.isRead) {
-      await updateDoc(doc(db, 'notifications', notif.id), { isRead: true });
-    }
-    if (notif.actionUrl) {
-      navigate(notif.actionUrl);
-    }
-    setIsDropdownOpen(false);
-  };
-
   const handleLogout = () => {
-    navigate('/login');
+    logout();
+    navigate('/login', { replace: true });
   };
 
   const navItems = [
@@ -117,11 +92,9 @@ export function Layout({ unreadNotifications: legacyUnread, setUnreadNotificatio
                       <div 
                         key={n.id} 
                         className={`p-4 hover:bg-surface-container-lowest cursor-pointer transition-colors ${!n.isRead ? 'bg-primary/5' : ''}`}
-                        onClick={() => handleNotificationClick(n)}
                       >
                         <p className={`text-sm ${!n.isRead ? 'font-bold text-on-surface' : 'text-on-surface-variant'}`}>{n.title}</p>
                         <p className="text-xs text-on-surface-variant mt-1">{n.message}</p>
-                        <p className="text-[10px] text-primary mt-2">{new Date(n.createdAt?.toDate() || Date.now()).toLocaleString()}</p>
                       </div>
                     ))}
                   </div>

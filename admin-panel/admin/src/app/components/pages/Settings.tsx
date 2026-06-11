@@ -56,8 +56,8 @@ export function Settings() {
               <h3 className="mb-5" style={{ color: "#1F1F1F", fontWeight: 600 }}>Platform Settings</h3>
               <div className="space-y-4">
                 {[
-                  { label: "Platform Name", value: "Devaseva", placeholder: "Enter platform name" },
-                  { label: "Support Email", value: "support@devaseva.com", placeholder: "support@example.com" },
+                  { label: "Platform Name", value: "Dosha Nivarana", placeholder: "Enter platform name" },
+                  { label: "Support Email", value: "support@doshanivarana.com", placeholder: "support@example.com" },
                   { label: "Support Phone", value: "+91 80 4840 2840", placeholder: "+91..." },
                   { label: "Platform Tagline", value: "Divine Darshan, Delivered", placeholder: "Enter tagline" },
                 ].map((f) => (

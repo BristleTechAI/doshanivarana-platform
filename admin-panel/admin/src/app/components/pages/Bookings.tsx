@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { Search, Filter, Download, Eye, Edit, RefreshCcw, ChevronDown, Calendar, Building2, Package, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { Modal, ModalFooter } from "../Modal";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
 
 const statusConfig: Record<string, { bg: string; color: string; icon: typeof CheckCircle }> = {
   Confirmed: { bg: "#EFF6FF", color: "#2563EB", icon: CheckCircle },
@@ -26,51 +24,43 @@ const paymentConfig: Record<string, { bg: string; color: string }> = {
   Refunded: { bg: "#FFF1F2", color: "#DC2626" },
 };
 
+const defaultBookings = [
+  { id: "BK-8421", devotee: "Rajesh Kumar", temple: "Kashi Vishwanath", pooja: "Rudrabhishek", date: "15 Jun 2026", amount: "₹2,100", delivery: "Pending", status: "Confirmed", payment: "Paid", lang: "Sanskrit" },
+  { id: "BK-8420", devotee: "Priya Menon", temple: "Meenakshi Amman", pooja: "Archana", date: "12 Jun 2026", amount: "₹501", delivery: "Not Required", status: "Completed", payment: "Paid", lang: "Tamil" },
+  { id: "BK-8419", devotee: "Ankit Sharma", temple: "Somnath", pooja: "Maha Abhishek", date: "16 Jun 2026", amount: "₹5,100", delivery: "Pending", status: "Confirmed", payment: "Pending", lang: "Hindi" },
+  { id: "BK-8418", devotee: "Sushma Reddy", temple: "Tirumala Tirupati", pooja: "Kalyanotsavam", date: "14 Jun 2026", amount: "₹1,500", delivery: "Dispatched", status: "Completed", payment: "Paid", lang: "Telugu" },
+  { id: "BK-8417", devotee: "Deepak Joshi", temple: "Sabarimala", pooja: "Mandala Pooja", date: "20 Jun 2026", amount: "₹3,500", delivery: "Pending", status: "Confirmed", payment: "Paid", lang: "Malayalam" },
+  { id: "BK-8416", devotee: "Kavitha N", temple: "Kedarnath", pooja: "Abhishek", date: "11 Jun 2026", amount: "₹1,100", delivery: "Not Required", status: "Cancelled", payment: "Refunded", lang: "Hindi" },
+  { id: "BK-8415", devotee: "Suresh Pillai", temple: "Padmanabhaswamy", pooja: "Navakabhishekam", date: "18 Jun 2026", amount: "₹2,500", delivery: "Pending", status: "Pending", payment: "Pending", lang: "Malayalam" },
+  { id: "BK-8414", devotee: "Neha Gupta", temple: "Vaishno Devi", pooja: "Aarti Seva", date: "19 Jun 2026", amount: "₹1,100", delivery: "Not Required", status: "Confirmed", payment: "Paid", lang: "Hindi" },
+];
+
+const LS_KEY = "demo_bookings";
+
+function loadBookings() {
+  try {
+    const stored = localStorage.getItem(LS_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return defaultBookings;
+}
+
+function saveBookings(data: any) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+}
+
 export function Bookings() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(1);
-  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookings, setBookings] = useState(loadBookings);
   const [selectedBooking, setSelectedBooking] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchBookings = async () => {
-      try {
-        setLoading(true);
-        const q = query(collection(db, "bookings"), where("isDeleted", "==", false));
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => {
-          const d = doc.data();
-          return {
-            id: doc.id,
-            devotee: d.devoteeDetails?.name || "Unknown",
-            temple: d.templeName || "Temple",
-            pooja: d.poojaName || "Pooja",
-            date: d.scheduledDate || "",
-            amount: `₹${d.amountPaid || 0}`,
-            delivery: d.hasPrasadDelivery ? "Pending" : "Not Required",
-            status: d.status === "COMPLETED" ? "Completed" : "Confirmed",
-            payment: d.paymentStatus === "PAID" ? "Paid" : "Pending",
-            lang: "Sanskrit", // Hardcoded for now
-          };
-        });
+    saveBookings(bookings);
+  }, [bookings]);
 
-        // Sort by date descending
-        data.sort((a, b) => b.date.localeCompare(a.date));
-        
-        setBookings(data);
-      } catch (err) {
-        console.error("Failed to fetch bookings:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchBookings();
-  }, []);
-
-  const filtered = bookings.filter((b) => {
+  const filtered = bookings.filter((b: any) => {
     const matchSearch =
       b.id.toLowerCase().includes(search.toLowerCase()) ||
       b.devotee.toLowerCase().includes(search.toLowerCase()) ||
@@ -86,10 +76,10 @@ export function Bookings() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
           { label: "Total Bookings", value: bookings.length.toString(), color: "#C76A00", bg: "#FFF0E6" },
-          { label: "Confirmed", value: bookings.filter(b => b.status === "Confirmed").length.toString(), color: "#2563EB", bg: "#EFF6FF" },
-          { label: "Completed", value: bookings.filter(b => b.status === "Completed").length.toString(), color: "#16A34A", bg: "#F0FDF4" },
-          { label: "Pending", value: bookings.filter(b => b.status === "Pending").length.toString(), color: "#D97706", bg: "#FFFBEB" },
-          { label: "Cancelled", value: bookings.filter(b => b.status === "Cancelled").length.toString(), color: "#DC2626", bg: "#FFF1F2" },
+          { label: "Confirmed", value: bookings.filter((b: any) => b.status === "Confirmed").length.toString(), color: "#2563EB", bg: "#EFF6FF" },
+          { label: "Completed", value: bookings.filter((b: any) => b.status === "Completed").length.toString(), color: "#16A34A", bg: "#F0FDF4" },
+          { label: "Pending", value: bookings.filter((b: any) => b.status === "Pending").length.toString(), color: "#D97706", bg: "#FFFBEB" },
+          { label: "Cancelled", value: bookings.filter((b: any) => b.status === "Cancelled").length.toString(), color: "#DC2626", bg: "#FFF1F2" },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-4 border" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
             <div className="text-xl" style={{ color: s.color, fontWeight: 700 }}>{s.value}</div>
@@ -162,7 +152,7 @@ export function Bookings() {
       <div className="bg-white rounded-xl border overflow-hidden" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
         {/* Mobile cards */}
         <div className="md:hidden divide-y" style={{ borderColor: "rgba(199,106,0,0.06)" }}>
-          {filtered.map((b) => {
+          {filtered.map((b: any) => {
             const sc = statusConfig[b.status] || statusConfig.Confirmed;
             const dc = deliveryConfig[b.delivery] || deliveryConfig["Not Required"];
             const pc = paymentConfig[b.payment] || paymentConfig.Pending;
@@ -213,7 +203,7 @@ export function Bookings() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((b) => {
+              {filtered.map((b: any) => {
                 const sc = statusConfig[b.status] || statusConfig.Confirmed;
                 const dc = deliveryConfig[b.delivery] || deliveryConfig["Not Required"];
                 const pc = paymentConfig[b.payment] || paymentConfig.Pending;

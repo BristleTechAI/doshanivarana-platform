@@ -1,17 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  Radio, Eye, Users, Clock, Wifi, WifiOff, Video, Play, Download,
-  Package, MapPin, CheckCircle, AlertCircle, Truck, MessageCircle,
-  Flag, Star, ChevronDown, Search, Plus, Edit, XCircle, Filter,
-  Briefcase, Building2, UserCircle, TrendingUp, IndianRupee,
-  Flame, Tag, Globe, RefreshCcw, BarChart2, ArrowUpRight,
-  ClipboardList, PowerOff, Send, CheckCircle2, HardDrive, LayoutGrid,
-  List, Calendar, ChevronRight, Reply, MoreVertical, Phone, Mail,
-  TriangleAlert, Inbox, Timer, ArrowLeft, Archive
-} from "lucide-react";
-import { collection, query, onSnapshot, doc, getDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
-import { v4 as uuidv4 } from "uuid";
+import { Search, Calendar, LayoutGrid, List, Play, CheckCircle, XCircle, Archive, HardDrive, Eye } from "lucide-react";
 
 const recStatusCfg: Record<string, { bg: string; color: string }> = {
   PUBLISHED: { bg: "#F0FDF4", color: "#16A34A" },
@@ -21,139 +9,56 @@ const recStatusCfg: Record<string, { bg: string; color: string }> = {
   ARCHIVED: { bg: "#F3F4F6", color: "#4B5563" },
 };
 
+const defaultRecordings = [
+  { id: "r1", title: "Maha Rudrabhishek", temple: "Kashi Vishwanath", duration: "1h 30m", views: 420, status: "READY", quality: "HD 1080p", gradient: "linear-gradient(135deg,#1E0A3C,#4A1259)", dateStr: "10 Jun 2026", timestamp: 6 },
+  { id: "r2", title: "Sahasranama Archana", temple: "Meenakshi Amman", duration: "45m", views: 1820, status: "PUBLISHED", quality: "HD 1080p", gradient: "linear-gradient(135deg,#1E0A3C,#4A1259)", dateStr: "10 Jun 2026", timestamp: 5 },
+  { id: "r3", title: "Kalyanotsavam", temple: "Tirumala", duration: "2h 15m", views: 0, status: "PROCESSING", quality: "HD 1080p", gradient: "linear-gradient(135deg,#1E0A3C,#4A1259)", dateStr: "09 Jun 2026", timestamp: 4 },
+  { id: "r4", title: "Daily Aarti Seva", temple: "Somnath", duration: "30m", views: 24, status: "PUBLISHED", quality: "HD 1080p", gradient: "linear-gradient(135deg,#1E0A3C,#4A1259)", dateStr: "09 Jun 2026", timestamp: 3 },
+  { id: "r5", title: "Satyanarayan Katha", temple: "Shirdi", duration: "2h", views: 0, status: "READY", quality: "HD 1080p", gradient: "linear-gradient(135deg,#1E0A3C,#4A1259)", dateStr: "08 Jun 2026", timestamp: 2 },
+  { id: "r6", title: "Navagraha Homam", temple: "Sabarimala", duration: "1h 45m", views: 8, status: "ARCHIVED", quality: "HD 1080p", gradient: "linear-gradient(135deg,#1E0A3C,#4A1259)", dateStr: "08 Jun 2026", timestamp: 1 },
+];
+
+const LS_KEY = "demo_recordings";
+
+function loadRecordings() {
+  try {
+    const stored = localStorage.getItem(LS_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return defaultRecordings;
+}
+
+function saveRecordings(data: any) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+}
+
 export function RecordingsPage() {
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
-  const [recordings, setRecordings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [recordings, setRecordings] = useState(loadRecordings);
 
   useEffect(() => {
-    const q = query(collection(db, "recordings"));
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const promises = snapshot.docs.map(async (d) => {
-        const data = d.data();
-        let poojaName = "Unknown Pooja";
-        let templeName = "Unknown Temple";
-        let slotDate = "Unknown Date";
+    saveRecordings(recordings);
+  }, [recordings]);
 
-        if (data.bookingId) {
-          const bDoc = await getDoc(doc(db, "bookings", data.bookingId));
-          if (bDoc.exists()) {
-            const bData = bDoc.data();
-            poojaName = bData.poojaName || poojaName;
-            templeName = bData.templeName || templeName;
-            slotDate = bData.dateTime || slotDate;
-          }
-        }
-
-        const dateStr = data.createdAt ? data.createdAt.toDate().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : "Unknown";
-
-        return {
-          id: d.id,
-          ...data,
-          title: poojaName,
-          temple: templeName,
-          duration: data.duration || "—",
-          views: data.status === "PUBLISHED" ? 12 : 0,
-          size: "2.1 GB",
-          status: data.status || "PROCESSING",
-          quality: "HD 1080p",
-          gradient: "linear-gradient(135deg,#1E0A3C,#4A1259)",
-          dateStr,
-          timestamp: data.createdAt ? data.createdAt.toMillis() : 0
-        };
-      });
-
-      const resolved = await Promise.all(promises);
-      resolved.sort((a, b) => b.timestamp - a.timestamp);
-      setRecordings(resolved);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const generateSystemEvent = async (type: string, payload: any) => {
-    try {
-      const eventId = uuidv4();
-      await setDoc(doc(db, "systemEvents", eventId), {
-        eventId,
-        eventType: type,
-        payload,
-        status: "PENDING",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      console.error("Error generating event:", error);
-    }
+  const updateRecordingStatus = (rec: any, newStatus: string) => {
+    setRecordings((prev: any) => prev.map((r: any) => r.id === rec.id ? { ...r, status: newStatus } : r));
   };
 
-  const generateAuditLog = async (action: string, entityId: string, details: string) => {
-    try {
-      const logId = uuidv4();
-      await setDoc(doc(db, "auditLogs", logId), {
-        logId,
-        action,
-        entityType: "recording",
-        entityId,
-        userId: "ADMIN_USER",
-        details,
-        timestamp: serverTimestamp()
-      });
-    } catch (error) {
-      console.error("Error generating audit log:", error);
-    }
-  };
-
-  const updateRecordingStatus = async (rec: any, newStatus: string, eventType: string, action: string) => {
-    try {
-      const recRef = doc(db, "recordings", rec.id);
-      await updateDoc(recRef, {
-        status: newStatus,
-        updatedAt: serverTimestamp()
-      });
-
-      if (rec.bookingId && (newStatus === "ARCHIVED" || newStatus === "REJECTED")) {
-        const bookingRef = doc(db, "bookings", rec.bookingId);
-        await updateDoc(bookingRef, {
-          recordingStatus: "Unavailable",
-          updatedAt: serverTimestamp()
-        });
-      } else if (rec.bookingId && newStatus === "PUBLISHED") {
-        const bookingRef = doc(db, "bookings", rec.bookingId);
-        await updateDoc(bookingRef, {
-          recordingStatus: "Available",
-          updatedAt: serverTimestamp()
-        });
-      }
-
-      await generateSystemEvent(eventType, {
-        recordingId: rec.id,
-        bookingId: rec.bookingId,
-        templeId: rec.templeId,
-        userId: rec.userId || "USER",
-        status: newStatus
-      });
-
-      await generateAuditLog(action, rec.id, `Admin ${action.toLowerCase()} recording for booking ${rec.bookingId}`);
-    } catch (error) {
-      console.error("Error updating recording status:", error);
-    }
-  };
-
-  const filtered = recordings.filter(r =>
+  const filtered = recordings.filter((r: any) =>
     r.title.toLowerCase().includes(search.toLowerCase()) ||
     r.temple.toLowerCase().includes(search.toLowerCase())
   );
 
-  const groupedByDate = filtered.reduce((acc, curr) => {
+  const groupedByDate = filtered.reduce((acc: any, curr: any) => {
     if (!acc[curr.dateStr]) acc[curr.dateStr] = [];
     acc[curr.dateStr].push(curr);
     return acc;
   }, {} as Record<string, any[]>);
 
-  const groupedArray = Object.entries(groupedByDate).map(([date, items]) => ({ date, items }));
+  const groupedArray = Object.entries(groupedByDate)
+    .map(([date, items]) => ({ date, items: items as any[] }))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const storageUsed = 14.2;
   const storageCap = 20;
@@ -187,8 +92,8 @@ export function RecordingsPage() {
         {/* Stats */}
         {[
           { label: "Total Recordings", value: recordings.length, color: "#C76A00", bg: "#FFF0E6" },
-          { label: "Pending Review", value: recordings.filter(r => r.status === "READY").length, color: "#D97706", bg: "#FFFBEB" },
-          { label: "Published", value: recordings.filter(r => r.status === "PUBLISHED").length, color: "#22C55E", bg: "#F0FDF4" },
+          { label: "Pending Review", value: recordings.filter((r: any) => r.status === "READY").length, color: "#D97706", bg: "#FFFBEB" },
+          { label: "Published", value: recordings.filter((r: any) => r.status === "PUBLISHED").length, color: "#22C55E", bg: "#F0FDF4" },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl p-5 border flex flex-col justify-between" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
             <div className="text-xs" style={{ color: "#9CA3AF" }}>{s.label}</div>
@@ -217,9 +122,7 @@ export function RecordingsPage() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="p-8 text-center text-gray-500">Loading recordings...</div>
-      ) : groupedArray.length === 0 ? (
+      {groupedArray.length === 0 ? (
         <div className="p-8 text-center text-gray-500">No recordings found.</div>
       ) : (
         groupedArray.map(group => (
@@ -268,16 +171,16 @@ export function RecordingsPage() {
                         <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2.5 border-t" style={{ borderColor: "rgba(199,106,0,0.08)" }}>
                           {r.status === "READY" && (
                             <>
-                              <button onClick={() => updateRecordingStatus(r, "PUBLISHED", "recording.approved", "APPROVE")} className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#F0FDF4", color: "#16A34A", fontWeight: 600 }}>
+                              <button onClick={() => updateRecordingStatus(r, "PUBLISHED")} className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#F0FDF4", color: "#16A34A", fontWeight: 600 }}>
                                 <CheckCircle size={11} /> Approve
                               </button>
-                              <button onClick={() => updateRecordingStatus(r, "REJECTED", "recording.rejected", "REJECT")} className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#FFF1F2", color: "#DC2626", fontWeight: 600 }}>
+                              <button onClick={() => updateRecordingStatus(r, "REJECTED")} className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#FFF1F2", color: "#DC2626", fontWeight: 600 }}>
                                 <XCircle size={11} /> Reject
                               </button>
                             </>
                           )}
                           {r.status !== "ARCHIVED" && r.status !== "PROCESSING" && (
-                            <button onClick={() => updateRecordingStatus(r, "ARCHIVED", "recording.archived", "ARCHIVE")} className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs" style={{ backgroundColor: "#F3F4F6", color: "#4B5563", fontWeight: 600 }}>
+                            <button onClick={() => updateRecordingStatus(r, "ARCHIVED")} className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs" style={{ backgroundColor: "#F3F4F6", color: "#4B5563", fontWeight: 600 }}>
                               <Archive size={11} /> Archive
                             </button>
                           )}
@@ -305,16 +208,16 @@ export function RecordingsPage() {
                       <div className="flex items-center gap-1 flex-shrink-0">
                         {r.status === "READY" && (
                           <>
-                            <button onClick={() => updateRecordingStatus(r, "PUBLISHED", "recording.approved", "APPROVE")} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#F0FDF4", color: "#16A34A", fontWeight: 600 }}>
+                            <button onClick={() => updateRecordingStatus(r, "PUBLISHED")} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#F0FDF4", color: "#16A34A", fontWeight: 600 }}>
                               <CheckCircle size={11} />
                             </button>
-                            <button onClick={() => updateRecordingStatus(r, "REJECTED", "recording.rejected", "REJECT")} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#FFF1F2", color: "#DC2626", fontWeight: 600 }}>
+                            <button onClick={() => updateRecordingStatus(r, "REJECTED")} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "#FFF1F2", color: "#DC2626", fontWeight: 600 }}>
                               <XCircle size={11} />
                             </button>
                           </>
                         )}
                         {r.status !== "ARCHIVED" && r.status !== "PROCESSING" && (
-                          <button onClick={() => updateRecordingStatus(r, "ARCHIVED", "recording.archived", "ARCHIVE")} className="p-1.5 rounded-lg hover:bg-gray-100" title="Archive">
+                          <button onClick={() => updateRecordingStatus(r, "ARCHIVED")} className="p-1.5 rounded-lg hover:bg-gray-100" title="Archive">
                             <Archive size={13} style={{ color: "#6B7280" }} />
                           </button>
                         )}

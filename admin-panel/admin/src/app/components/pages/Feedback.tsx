@@ -1,8 +1,5 @@
 import { useState, useEffect } from "react";
-import { Star, TrendingUp, MessageSquare, ThumbsUp, ThumbsDown, Eye, CheckCircle, AlertCircle, XCircle } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { collection, query, onSnapshot, doc, getDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
+import { Star, MessageSquare, ThumbsUp, ThumbsDown, Eye, CheckCircle, XCircle } from "lucide-react";
 
 const sentimentConfig: Record<string, { bg: string; color: string; icon: typeof ThumbsUp }> = {
   Positive: { bg: "#F0FDF4", color: "#16A34A", icon: ThumbsUp },
@@ -20,105 +17,41 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
+const defaultFeedback = [
+  { id: "fb1", devotee: "Ramesh P.", temple: "Kashi Vishwanath", service: "Rudrabhishek", rating: 5, comment: "Very blissful experience. The live stream was very clear and prasad was delivered on time.", sentiment: "Positive", date: "10 Jun 2026", status: "PENDING", avatar: "RP" },
+  { id: "fb2", devotee: "Anjali S.", temple: "Meenakshi Amman", service: "Archana", rating: 4, comment: "Good service but the notification for stream start was delayed.", sentiment: "Positive", date: "09 Jun 2026", status: "PENDING", avatar: "AS" },
+  { id: "fb3", devotee: "Vikas K.", temple: "Somnath", service: "Abhishek", rating: 2, comment: "I could not hear the mantras properly due to background noise.", sentiment: "Negative", date: "08 Jun 2026", status: "PENDING", avatar: "VK" },
+  { id: "fb4", devotee: "Sushma R.", temple: "Tirumala", service: "Kalyanotsavam", rating: 5, comment: "Excellent darshan. Felt very divine.", sentiment: "Positive", date: "07 Jun 2026", status: "APPROVED", avatar: "SR" },
+  { id: "fb5", devotee: "Deepak J.", temple: "Sabarimala", service: "Mandala Pooja", rating: 5, comment: "Prasad packaging was top notch.", sentiment: "Positive", date: "06 Jun 2026", status: "APPROVED", avatar: "DJ" },
+  { id: "fb6", devotee: "Kavitha N.", temple: "Kedarnath", service: "Abhishek", rating: 3, comment: "Video was buffering a lot, please improve the stream quality.", sentiment: "Neutral", date: "06 Jun 2026", status: "PENDING", avatar: "KN" },
+];
+
+const LS_KEY = "demo_feedback";
+
+function loadFeedback() {
+  try {
+    const stored = localStorage.getItem(LS_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return defaultFeedback;
+}
+
+function saveFeedback(data: any) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+}
+
 export function Feedback() {
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [reviews, setReviews] = useState(loadFeedback);
 
   useEffect(() => {
-    const q = query(collection(db, "feedback"));
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const fbPromises = snapshot.docs.map(async (d) => {
-        const data = d.data();
-        let poojaName = "Pooja";
-        let devoteeName = "Devotee";
-        let templeName = "Temple";
+    saveFeedback(reviews);
+  }, [reviews]);
 
-        try {
-          if (data.bookingId) {
-            const bookingSnap = await getDoc(doc(db, "bookings", data.bookingId));
-            if (bookingSnap.exists()) {
-              const bData = bookingSnap.data();
-              poojaName = bData.poojaName || poojaName;
-              devoteeName = bData.devoteeDetails?.name || bData.devoteeName || devoteeName;
-              templeName = bData.templeName || templeName;
-            }
-          }
-        } catch (e) { console.error(e); }
-
-        const dateObj = data.createdAt ? data.createdAt.toDate() : new Date();
-        const date = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-        
-        let sentiment = "Neutral";
-        if (data.rating >= 4) sentiment = "Positive";
-        else if (data.rating <= 2) sentiment = "Negative";
-
-        return {
-          id: d.id,
-          devotee: devoteeName,
-          temple: templeName,
-          service: poojaName,
-          rating: data.rating || 0,
-          comment: data.review || "",
-          sentiment,
-          date,
-          status: data.status || "PENDING",
-          avatar: devoteeName.substring(0, 2).toUpperCase(),
-          bookingId: data.bookingId,
-        };
-      });
-
-      const resolved = await Promise.all(fbPromises);
-      resolved.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setReviews(resolved);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleAction = async (id: string, newStatus: "APPROVED" | "REJECTED" | "HIDDEN") => {
-    try {
-      const fbRef = doc(db, "feedback", id);
-      await updateDoc(fbRef, { status: newStatus });
-
-      // Generate System Event
-      const fbDoc = await getDoc(fbRef);
-      if (fbDoc.exists()) {
-        const data = fbDoc.data();
-        await setDoc(doc(collection(db, "systemEvents")), {
-          eventType: newStatus === "APPROVED" ? "feedback.approved" : "feedback.rejected",
-          entityId: id,
-          entityType: "feedback",
-          payload: {
-            feedbackId: id,
-            bookingId: data.bookingId,
-            userId: data.userId,
-            templeId: data.templeId,
-            status: newStatus
-          },
-          status: "PENDING",
-          createdAt: serverTimestamp()
-        });
-
-        await setDoc(doc(collection(db, "auditLogs")), {
-          action: `FEEDBACK_${newStatus}`,
-          entityId: id,
-          entityType: "feedback",
-          performedBy: "admin",
-          timestamp: serverTimestamp(),
-          details: `Feedback ${id} ${newStatus.toLowerCase()} by admin.`
-        });
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Failed to update feedback status");
-    }
+  const handleAction = (id: string, newStatus: "APPROVED" | "REJECTED" | "HIDDEN") => {
+    setReviews((prev: any) => prev.map((r: any) => r.id === id ? { ...r, status: newStatus } : r));
   };
 
-  const pendingCount = reviews.filter(r => r.status === "PENDING").length;
-
-  if (loading) {
-    return <div className="p-8 text-center text-gray-500">Loading Feedback...</div>;
-  }
+  const pendingCount = reviews.filter((r: any) => r.status === "PENDING").length;
 
   return (
     <div className="space-y-5">
@@ -134,8 +67,8 @@ export function Feedback() {
           </div>
         </div>
         <div className="divide-y" style={{ divideColor: "rgba(199,106,0,0.06)" }}>
-          {reviews.map((r) => {
-            const sc = sentimentConfig[r.sentiment];
+          {reviews.map((r: any) => {
+            const sc = sentimentConfig[r.sentiment] || sentimentConfig.Neutral;
             const SIcon = sc.icon;
             return (
               <div key={r.id} className={`px-5 py-4 transition-colors ${r.status === 'PENDING' ? 'bg-orange-50/50' : ''}`}>

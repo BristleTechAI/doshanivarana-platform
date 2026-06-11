@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router";
 import { Layout } from "./components/Layout";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Dashboard } from "./components/pages/Dashboard";
 import { Temples } from "./components/pages/Temples";
 import { Priests } from "./components/pages/Priests";
@@ -34,7 +35,11 @@ export const router = createBrowserRouter([
   },
   {
     path: "/",
-    Component: Layout,
+    element: (
+      <ProtectedRoute requiredRole="admin">
+        <Layout />
+      </ProtectedRoute>
+    ),
     children: [
       { index: true, Component: Dashboard },
       { path: "bookings", Component: Bookings },

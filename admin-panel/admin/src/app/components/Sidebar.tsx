@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   LayoutDashboard, CalendarCheck, Radio, Video, Package, MessageCircle,
   Star, Building2, ClipboardList, Briefcase, UserCircle, Flame,
@@ -7,6 +7,7 @@ import {
   CalendarDays, BarChart2, FileText
 } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "../../contexts/AuthContext";
 
 const navSections = [
   {
@@ -74,6 +75,13 @@ interface SidebarContentProps {
 
 function SidebarContent({ collapsed, onClose, isMobile = false }: SidebarContentProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout, currentUser } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
 
   const isActive = (path: string) => {
     if (path === "/") return location.pathname === "/";
@@ -103,7 +111,7 @@ function SidebarContent({ collapsed, onClose, isMobile = false }: SidebarContent
         </div>
         {showLabels && (
           <div className="flex-1 min-w-0">
-            <div className="text-white" style={{ fontWeight: 800, fontSize: "13px", letterSpacing: "0.08em" }}>DEVASEVA</div>
+            <div className="text-white" style={{ fontWeight: 800, fontSize: "13px", letterSpacing: "0.08em" }}>DOSHA NIVARANA</div>
             <div style={{ color: "rgba(196,181,212,0.6)", fontSize: "9.5px", letterSpacing: "0.18em", fontWeight: 500 }}>ADMIN CONTROL</div>
           </div>
         )}
@@ -276,10 +284,11 @@ function SidebarContent({ collapsed, onClose, isMobile = false }: SidebarContent
         {showLabels && (
           <>
             <div className="flex-1 min-w-0">
-              <div className="text-white truncate" style={{ fontWeight: 600, fontSize: "12px" }}>Super Admin</div>
-              <div className="truncate" style={{ color: "rgba(196,181,212,0.55)", fontSize: "10.5px" }}>admin@devaseva.com</div>
+              <div className="text-white truncate" style={{ fontWeight: 600, fontSize: "12px" }}>{currentUser?.name ?? 'Super Admin'}</div>
+              <div className="truncate" style={{ color: "rgba(196,181,212,0.55)", fontSize: "10.5px" }}>{currentUser?.email ?? 'admin@doshanivarana.com'}</div>
             </div>
             <button
+              onClick={handleLogout}
               className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
               style={{ color: "rgba(196,181,212,0.4)", backgroundColor: "rgba(255,255,255,0.04)" }}
               title="Sign out"

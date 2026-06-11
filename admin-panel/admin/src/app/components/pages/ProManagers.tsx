@@ -3,12 +3,12 @@ import { Modal, Field, ModalFooter, inputCls, inputStyle } from "../Modal";
 import { MapPin, Search, Plus, Edit, Eye, Star } from "lucide-react";
 
 const proManagers = [
-  { id: "PRO001", name: "Ravi Shankar K.", avatar: "RS", temples: 4, location: "Tirupati, AP", email: "ravi@devaseva.com", phone: "+91 98421 84210", revenue: "₹28.4L", bookings: 4820, rating: 4.9, status: "Active", since: "Jan 2024", color: "#C76A00" },
-  { id: "PRO002", name: "Suresh Menon", avatar: "SM", temples: 3, location: "Kochi, Kerala", email: "suresh@devaseva.com", phone: "+91 98432 18240", revenue: "₹22.1L", bookings: 3960, rating: 4.8, status: "Active", since: "Feb 2024", color: "#4A1259" },
-  { id: "PRO003", name: "Priya Joshi", avatar: "PJ", temples: 2, location: "Nashik, MH", email: "priya@devaseva.com", phone: "+91 97302 84210", revenue: "₹19.5L", bookings: 3540, rating: 4.7, status: "Active", since: "Mar 2024", color: "#D4A017" },
-  { id: "PRO004", name: "Amit Sharma", avatar: "AS", temples: 5, location: "Jammu, J&K", email: "amit@devaseva.com", phone: "+91 94428 18420", revenue: "₹17.2L", bookings: 2980, rating: 4.8, status: "Active", since: "Apr 2024", color: "#22C55E" },
-  { id: "PRO005", name: "Rajeev Nair", avatar: "RN", temples: 2, location: "Dehradun, UK", email: "rajeev@devaseva.com", phone: "+91 98201 84210", revenue: "₹15.8L", bookings: 2640, rating: 4.9, status: "Active", since: "May 2024", color: "#6366F1" },
-  { id: "PRO006", name: "Deepak Patel", avatar: "DP", temples: 3, location: "Veraval, GJ", email: "deepak@devaseva.com", phone: "+91 97421 84210", revenue: "₹13.1L", bookings: 2180, rating: 4.6, status: "Active", since: "Jun 2024", color: "#EF4444" },
+  { id: "PRO001", name: "Ravi Shankar K.", avatar: "RS", temples: 4, location: "Tirupati, AP", email: "ravi@doshanivarana.com", phone: "+91 98421 84210", revenue: "₹28.4L", bookings: 4820, rating: 4.9, status: "Active", since: "Jan 2024", color: "#C76A00" },
+  { id: "PRO002", name: "Suresh Menon", avatar: "SM", temples: 3, location: "Kochi, Kerala", email: "suresh@doshanivarana.com", phone: "+91 98432 18240", revenue: "₹22.1L", bookings: 3960, rating: 4.8, status: "Active", since: "Feb 2024", color: "#4A1259" },
+  { id: "PRO003", name: "Priya Joshi", avatar: "PJ", temples: 2, location: "Nashik, MH", email: "priya@doshanivarana.com", phone: "+91 97302 84210", revenue: "₹19.5L", bookings: 3540, rating: 4.7, status: "Active", since: "Mar 2024", color: "#D4A017" },
+  { id: "PRO004", name: "Amit Sharma", avatar: "AS", temples: 5, location: "Jammu, J&K", email: "amit@doshanivarana.com", phone: "+91 94428 18420", revenue: "₹17.2L", bookings: 2980, rating: 4.8, status: "Active", since: "Apr 2024", color: "#22C55E" },
+  { id: "PRO005", name: "Rajeev Nair", avatar: "RN", temples: 2, location: "Dehradun, UK", email: "rajeev@doshanivarana.com", phone: "+91 98201 84210", revenue: "₹15.8L", bookings: 2640, rating: 4.9, status: "Active", since: "May 2024", color: "#6366F1" },
+  { id: "PRO006", name: "Deepak Patel", avatar: "DP", temples: 3, location: "Veraval, GJ", email: "deepak@doshanivarana.com", phone: "+91 97421 84210", revenue: "₹13.1L", bookings: 2180, rating: 4.6, status: "Active", since: "Jun 2024", color: "#EF4444" },
 ];
 
 const proColors = ["#C76A00", "#4A1259", "#D4A017", "#22C55E", "#6366F1", "#EF4444", "#2563EB", "#0891B2"];
@@ -157,7 +157,7 @@ export function PROManagersPage() {
             <input className={inputCls} style={inputStyle} placeholder="e.g. Tirupati, AP" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
           </Field>
           <Field label="Email">
-            <input className={inputCls} style={inputStyle} type="email" placeholder="email@devaseva.com" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+            <input className={inputCls} style={inputStyle} type="email" placeholder="email@doshanivarana.com" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
           </Field>
           <Field label="Phone">
             <input className={inputCls} style={inputStyle} placeholder="+91 98XXX XXXXX" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />

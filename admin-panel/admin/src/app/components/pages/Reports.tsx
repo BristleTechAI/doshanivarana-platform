@@ -140,9 +140,9 @@ export function Reports() {
         </div>
         <div className="space-y-3">
           {[
-            { name: "Daily Booking Summary", freq: "Every day at 11:59 PM", email: "admin@devaseva.com", status: "Active", color: "#22C55E" },
-            { name: "Weekly Revenue Report", freq: "Every Monday at 7:00 AM", email: "admin@devaseva.com", status: "Active", color: "#22C55E" },
-            { name: "Monthly Platform Analytics", freq: "1st of each month at 8:00 AM", email: "admin@devaseva.com", status: "Active", color: "#22C55E" },
+            { name: "Daily Booking Summary", freq: "Every day at 11:59 PM", email: "admin@doshanivarana.com", status: "Active", color: "#22C55E" },
+            { name: "Weekly Revenue Report", freq: "Every Monday at 7:00 AM", email: "admin@doshanivarana.com", status: "Active", color: "#22C55E" },
+            { name: "Monthly Platform Analytics", freq: "1st of each month at 8:00 AM", email: "admin@doshanivarana.com", status: "Active", color: "#22C55E" },
           ].map(r => (
             <div key={r.name} className="flex items-center gap-4 p-3.5 rounded-xl" style={{ backgroundColor: "#FAF6F2" }}>
               <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
