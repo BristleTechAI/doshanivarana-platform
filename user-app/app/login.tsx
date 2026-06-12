@@ -45,13 +45,38 @@ export default function LoginScreen() {
     // Simulate API call
     setTimeout(() => {
       setLoading(false);
-      // Save logged in user session
-      safeStorage.setItem('doshanivarana_logged_in_user', JSON.stringify({ mobile: `+91 ${mobileNumber}` }));
-      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
-        window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+      
+      // Check if user profile already exists
+      const savedProfile = safeStorage.getItem('doshanivarana_user_profile');
+      if (savedProfile) {
+        try {
+          const profile = JSON.parse(savedProfile);
+          // Save logged in user session
+          safeStorage.setItem(
+            'doshanivarana_logged_in_user',
+            JSON.stringify({ 
+              mobile: `+91 ${mobileNumber}`, 
+              name: profile.name || 'Devotee', 
+              id: 'anonymous_user' 
+            })
+          );
+        } catch (e) {
+          safeStorage.setItem('doshanivarana_logged_in_user', JSON.stringify({ mobile: `+91 ${mobileNumber}` }));
+        }
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+          window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+        }
+        // Go straight to Home Dashboard
+        router.replace('/(tabs)');
+      } else {
+        // Save logged in user session
+        safeStorage.setItem('doshanivarana_logged_in_user', JSON.stringify({ mobile: `+91 ${mobileNumber}` }));
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+          window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+        }
+        // Go to setup screen (Deity Selection)
+        router.replace('/setup');
       }
-      // Go to setup screen (Deity Selection)
-      router.replace('/setup');
     }, 1000);
   };
 

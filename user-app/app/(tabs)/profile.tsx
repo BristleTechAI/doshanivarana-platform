@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Modal, Switch } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, Switch, Image } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { ChevronRight, User, Star, Calendar, Settings, Bell, HelpCircle, LogOut, Sparkles, Edit2, X, MapPin, Phone, Mail, Languages, Check, Moon, MessageSquare } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,14 +9,14 @@ import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { safeStorage } from '../../src/old_app/lib/storage';
 
 const deitiesList = [
-  { id: 'ganesha', name: 'Ganesha', emoji: '🐘' },
-  { id: 'lakshmi', name: 'Lakshmi', emoji: '💰' },
-  { id: 'shiva', name: 'Shiva', emoji: '🔱' },
-  { id: 'vishnu', name: 'Vishnu', emoji: '🦅' },
-  { id: 'durga', name: 'Durga', emoji: '🦁' },
-  { id: 'saraswati', name: 'Saraswati', emoji: '📿' },
-  { id: 'hanuman', name: 'Hanuman', emoji: '🐵' },
-  { id: 'murugan', name: 'Murugan', emoji: '🦚' },
+  { id: 'ganesha', name: 'Ganesha', image: require('../../assets/deities/ganesha.png') },
+  { id: 'lakshmi', name: 'Lakshmi', image: require('../../assets/deities/lakshmi.png') },
+  { id: 'shiva', name: 'Shiva', image: require('../../assets/deities/shiva.png') },
+  { id: 'vishnu', name: 'Vishnu', image: require('../../assets/deities/vishnu.png') },
+  { id: 'durga', name: 'Durga', image: require('../../assets/deities/durga.png') },
+  { id: 'saraswati', name: 'Saraswati', image: require('../../assets/deities/saraswati.png') },
+  { id: 'hanuman', name: 'Hanuman', image: require('../../assets/deities/hanuman.png') },
+  { id: 'murugan', name: 'Murugan', image: require('../../assets/deities/murugan.png') },
 ];
 
 const termTranslations: Record<string, Record<string, string>> = {
@@ -113,10 +113,28 @@ export default function Profile() {
   const [showHelp, setShowHelp] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   
-  const [selectedDeities, setSelectedDeities] = useState<string[]>(['shiva', 'lakshmi']);
-  const [tempSelectedDeities, setTempSelectedDeities] = useState<string[]>(['shiva', 'lakshmi']);
+  const [selectedDeities, setSelectedDeities] = useState<string[]>(() => {
+    const savedProfile = safeStorage.getItem('doshanivarana_user_profile');
+    if (savedProfile) {
+      try {
+        const parsed = JSON.parse(savedProfile);
+        if (Array.isArray(parsed.ishtaDevatas)) {
+          return parsed.ishtaDevatas;
+        }
+      } catch (e) {}
+    }
+    return ['shiva', 'lakshmi'];
+  });
+  const [tempSelectedDeities, setTempSelectedDeities] = useState<string[]>(selectedDeities);
   
   const [profile, setProfile] = useState<UserProfile>(() => {
+    const savedProfile = safeStorage.getItem('doshanivarana_user_profile');
+    if (savedProfile) {
+      try {
+        return JSON.parse(savedProfile);
+      } catch (e) {}
+    }
+
     const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
     const mobile = userSession ? JSON.parse(userSession).mobile : '+91 98765 43216';
     
@@ -168,6 +186,17 @@ export default function Profile() {
 
   useEffect(() => {
     const fetchProfile = () => {
+      const savedProfile = safeStorage.getItem('doshanivarana_user_profile');
+      if (savedProfile) {
+        try {
+          const parsed = JSON.parse(savedProfile);
+          setProfile(parsed);
+          if (Array.isArray(parsed.ishtaDevatas)) {
+            setSelectedDeities(parsed.ishtaDevatas);
+          }
+        } catch (e) {}
+      }
+
       const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
       const mobile = userSession ? JSON.parse(userSession).mobile : '+91 98765 43216'; // default Suresh Raina for demo
       
@@ -185,28 +214,30 @@ export default function Profile() {
         devotionScore: userBookings.length > 0 ? 5.0 : 0.0,
       });
 
-      if (userBooking) {
-        setProfile({
-          name: userBooking.devoteeName,
-          email: userBooking.email || 'devotee@doshanivarana.in',
-          phone: userBooking.mobile,
-          location: userBooking.deliveryAddress && userBooking.deliveryAddress !== 'N/A' ? userBooking.deliveryAddress : 'Bangalore, Karnataka',
-          nakshatra: userBooking.nakshatra || 'Shravana',
-          rashi: 'Makara (Capricorn)',
-          dateOfBirth: 'Jan 15, 1990',
-          gothram: userBooking.gotra || 'Bharadwaja',
-        });
-      } else {
-        setProfile({
-          name: mobile.includes('9876543216') || mobile.includes('98765 43216') ? 'Suresh Raina' : 'Raghavan Iyer',
-          email: 'suresh.raina@example.com',
-          phone: mobile,
-          location: 'Delhi, India',
-          nakshatra: 'Swati',
-          rashi: 'Thula (Libra)',
-          dateOfBirth: 'Nov 27, 1986',
-          gothram: 'Bharadwaja',
-        });
+      if (!savedProfile) {
+        if (userBooking) {
+          setProfile({
+            name: userBooking.devoteeName,
+            email: userBooking.email || 'devotee@doshanivarana.in',
+            phone: userBooking.mobile,
+            location: userBooking.deliveryAddress && userBooking.deliveryAddress !== 'N/A' ? userBooking.deliveryAddress : 'Bangalore, Karnataka',
+            nakshatra: userBooking.nakshatra || 'Shravana',
+            rashi: 'Makara (Capricorn)',
+            dateOfBirth: 'Jan 15, 1990',
+            gothram: userBooking.gotra || 'Bharadwaja',
+          });
+        } else {
+          setProfile({
+            name: mobile.includes('9876543216') || mobile.includes('98765 43216') ? 'Suresh Raina' : 'Raghavan Iyer',
+            email: 'suresh.raina@example.com',
+            phone: mobile,
+            location: 'Delhi, India',
+            nakshatra: 'Swati',
+            rashi: 'Thula (Libra)',
+            dateOfBirth: 'Nov 27, 1986',
+            gothram: 'Bharadwaja',
+          });
+        }
       }
     };
 
@@ -350,8 +381,8 @@ export default function Profile() {
                 selectedDeities.map((id) => {
                   const deity = deitiesList.find((d) => d.id === id);
                   return deity ? (
-                    <View key={id} className="flex-row items-center gap-1 bg-primary/5 border border-primary/20 px-3 py-1.5 rounded-full">
-                      <Text className="text-base">{deity.emoji}</Text>
+                    <View key={id} className="flex-row items-center gap-1.5 bg-primary/5 border border-primary/20 px-3 py-1.5 rounded-full">
+                      <Image source={deity.image} className="w-5 h-5" style={{ width: 20, height: 20 }} resizeMode="contain" />
                       <Text className="text-xs text-primary font-medium">{t('deity.' + deity.id)}</Text>
                     </View>
                   ) : null;
@@ -500,7 +531,10 @@ export default function Profile() {
                 />
               </View>
               <Pressable
-                onPress={() => setIsEditingProfile(false)}
+                onPress={() => {
+                  safeStorage.setItem('doshanivarana_user_profile', JSON.stringify(profile));
+                  setIsEditingProfile(false);
+                }}
                 className="w-full py-4 bg-primary rounded-xl items-center justify-center mt-6"
               >
                 <Text className="text-[#1A0A00] font-semibold">{t('profile.saveChanges')}</Text>
@@ -549,7 +583,10 @@ export default function Profile() {
                 />
               </View>
               <Pressable
-                onPress={() => setIsEditingPersonal(false)}
+                onPress={() => {
+                  safeStorage.setItem('doshanivarana_user_profile', JSON.stringify(profile));
+                  setIsEditingPersonal(false);
+                }}
                 className="w-full py-4 bg-primary rounded-xl items-center justify-center mt-6"
               >
                 <Text className="text-[#1A0A00] font-semibold">{t('profile.saveChanges')}</Text>
@@ -705,7 +742,7 @@ export default function Profile() {
                           <Check size={12} color="#1A0A00" />
                         </View>
                       )}
-                      <Text className="text-3xl mb-2">{deity.emoji}</Text>
+                      <Image source={deity.image} className="w-14 h-14 mb-2" style={{ width: 56, height: 56 }} resizeMode="contain" />
                       <Text className="text-sm font-semibold text-foreground">{t('deity.' + deity.id)}</Text>
                     </Pressable>
                   );
@@ -715,6 +752,9 @@ export default function Profile() {
             <Pressable
               onPress={() => {
                 setSelectedDeities(tempSelectedDeities);
+                const updatedProfile = { ...profile, ishtaDevatas: tempSelectedDeities };
+                setProfile(updatedProfile);
+                safeStorage.setItem('doshanivarana_user_profile', JSON.stringify(updatedProfile));
                 setIsEditingDeities(false);
               }}
               className="w-full py-4 bg-primary rounded-xl items-center justify-center active:bg-[#E05C10]"
