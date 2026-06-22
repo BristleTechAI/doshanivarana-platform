@@ -53,9 +53,9 @@ export default function LoginScreen() {
   };
 
   const handleVerifyOtp = async () => {
-    const requiredOtpLength = AUTH_MODE === 'DEMO' ? 4 : 6;
+    const requiredOtpLength = 6;
     if (otp.length !== requiredOtpLength) {
-      setError(AUTH_MODE === 'DEMO' ? 'OTP must be 4 digits' : t('login.errorOtp'));
+      setError(t('login.errorOtp'));
       return;
     }
     setError('');
@@ -80,67 +80,117 @@ export default function LoginScreen() {
         }
       }
 
-      // Check if user profile already exists in Firestore using AuthService
-      let profile = await AuthService.getUserProfile(uid);
-      
       if (AUTH_MODE === 'DEMO') {
-        // Create user document if it doesn't exist
-        if (!profile) {
-          await firestore().collection('users').doc(uid).set({
-            id: uid,
-            phoneNumber: `+91${mobileNumber}`,
-            phone: `+91 ${mobileNumber}`, // Compatibility
-            profileName: 'Devotee',
-            name: 'Devotee', // Compatibility
-            role: 'USER',
-            isDemoUser: true,
-            createdAt: firestore.FieldValue.serverTimestamp(),
-            updatedAt: firestore.FieldValue.serverTimestamp(),
-            isDeleted: false
-          });
-          // Re-fetch profile
-          profile = await AuthService.getUserProfile(uid);
+        // Retrieve local profile if any (instant local check, no network wait)
+        let profile = null;
+        const savedProfile = safeStorage.getItem('doshanivarana_user_profile');
+        if (savedProfile) {
+          try {
+            profile = JSON.parse(savedProfile);
+          } catch (e) {}
         }
 
-        // Create session in userSessions
-        await firestore().collection('userSessions').add({
-          userId: uid,
-          phoneNumber: `+91${mobileNumber}`,
-          loginAt: firestore.FieldValue.serverTimestamp(),
-          deviceInfo: `${Platform.OS.toUpperCase()} Device`,
-          isActive: true
-        });
+        // Run Firestore profile & session updates in the background (fire-and-forget)
+        // This ensures the login flow completes instantly without waiting for offline timeouts
+        (async () => {
+          try {
+            let dbProfile = await AuthService.getUserProfile(uid);
+            if (!dbProfile) {
+              await firestore().collection('users').doc(uid).set({
+                id: uid,
+                phoneNumber: `+91${mobileNumber}`,
+                phone: `+91 ${mobileNumber}`, // Compatibility
+                profileName: 'Devotee',
+                name: 'Devotee', // Compatibility
+                role: 'USER',
+                isDemoUser: true,
+                createdAt: firestore.FieldValue.serverTimestamp(),
+                updatedAt: firestore.FieldValue.serverTimestamp(),
+                isDeleted: false
+              });
+            }
+            await firestore().collection('userSessions').add({
+              userId: uid,
+              phoneNumber: `+91${mobileNumber}`,
+              loginAt: firestore.FieldValue.serverTimestamp(),
+              deviceInfo: `${Platform.OS.toUpperCase()} Device`,
+              isActive: true
+            });
+          } catch (e) {
+            console.warn('[Login Screen Background] Background Firestore operation failed:', e);
+          }
+        })();
+
+        if (profile && profile.name && profile.name !== 'Devotee') {
+          // Save logged in user session locally
+          safeStorage.setItem('doshanivarana_user_profile', JSON.stringify(profile));
+          safeStorage.setItem(
+            'doshanivarana_logged_in_user',
+            JSON.stringify({ 
+              mobile: phone, 
+              name: profile.name || 'Devotee', 
+              id: uid 
+            })
+          );
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+            window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+          }
+          // Go straight to Home Dashboard
+          router.replace('/(tabs)');
+        } else {
+          // Save logged in user session without profile
+          safeStorage.setItem('doshanivarana_logged_in_user', JSON.stringify({ mobile: phone, id: uid }));
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+            window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+          }
+          // Go to setup screen (Deity Selection)
+          router.replace('/setup');
+        }
       } else {
+        // Standard Firebase OTP Flow
+        if (confirm) {
+          const userCredential = await confirm.confirm(otp);
+          if (userCredential?.user) {
+            uid = userCredential.user.uid;
+            phone = userCredential.user.phoneNumber || phone;
+          }
+        } else {
+          console.log("Mock OTP verified");
+        }
+
+        // Check if user profile already exists in Firestore using AuthService
+        let profile = await AuthService.getUserProfile(uid);
+        
         // Update session/create if needed in standard OTP mode
         await AuthService.createSession(uid, 'mock-device-token');
-      }
 
-      if (profile && profile.name && profile.name !== 'Devotee') {
-        // Persist profile locally as well
-        safeStorage.setItem('doshanivarana_user_profile', JSON.stringify(profile));
-        
-        // Save logged in user session
-        safeStorage.setItem(
-          'doshanivarana_logged_in_user',
-          JSON.stringify({ 
-            mobile: phone, 
-            name: profile.name || 'Devotee', 
-            id: uid 
-          })
-        );
-        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
-          window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+        if (profile && profile.name && profile.name !== 'Devotee') {
+          // Persist profile locally as well
+          safeStorage.setItem('doshanivarana_user_profile', JSON.stringify(profile));
+          
+          // Save logged in user session
+          safeStorage.setItem(
+            'doshanivarana_logged_in_user',
+            JSON.stringify({ 
+              mobile: phone, 
+              name: profile.name || 'Devotee', 
+              id: uid 
+            })
+          );
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+            window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+          }
+          // Go straight to Home Dashboard
+          router.replace('/(tabs)');
+        } else {
+          // Save logged in user session without profile
+          safeStorage.setItem('doshanivarana_logged_in_user', JSON.stringify({ mobile: phone, id: uid }));
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+            window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+          }
+          // Go to setup screen (Deity Selection)
+          router.replace('/setup');
         }
-        // Go straight to Home Dashboard
-        router.replace('/(tabs)');
-      } else {
-        // Save logged in user session without profile
-        safeStorage.setItem('doshanivarana_logged_in_user', JSON.stringify({ mobile: phone, id: uid }));
-        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
-          window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
-        }
-        // Go to setup screen (Deity Selection)
-        router.replace('/setup');
       }
     } catch (err: any) {
       setError(err.message || t('login.errorOtp'));
@@ -255,7 +305,7 @@ export default function LoginScreen() {
                 <TextInput
                   ref={otpInputRef}
                   keyboardType="number-pad"
-                  maxLength={AUTH_MODE === 'DEMO' ? 4 : 6}
+                  maxLength={6}
                   placeholder={t('login.enterOtpPlaceholder')}
                   placeholderTextColor={placeholderColor}
                   value={otp}
@@ -290,18 +340,18 @@ export default function LoginScreen() {
             {/* Bottom CTA */}
             <Pressable
               onPress={handleVerifyOtp}
-              disabled={loading || otp.length !== (AUTH_MODE === 'DEMO' ? 4 : 6)}
+              disabled={loading || otp.length !== 6}
               className={`w-full py-4 rounded-xl items-center justify-center mt-8 ${
-                otp.length === (AUTH_MODE === 'DEMO' ? 4 : 6) && !loading
+                otp.length === 6 && !loading
                   ? 'bg-primary active:bg-[#E05C10]'
                   : 'bg-muted'
               }`}
             >
               <Text
                 className={`font-semibold text-base ${
-                  otp.length === (AUTH_MODE === 'DEMO' ? 4 : 6) && !loading ? 'text-primary-foreground' : ''
+                  otp.length === 6 && !loading ? 'text-primary-foreground' : ''
                 }`}
-                style={{ fontFamily: 'System', color: otp.length === (AUTH_MODE === 'DEMO' ? 4 : 6) && !loading ? undefined : (theme === 'dark' ? '#A8A29E' : '#78716C') }}
+                style={{ fontFamily: 'System', color: otp.length === 6 && !loading ? undefined : (theme === 'dark' ? '#A8A29E' : '#78716C') }}
               >
                 {loading ? t('login.verifying') : t('login.verifyLogin')}
               </Text>

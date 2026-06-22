@@ -7,6 +7,7 @@ import { useLanguage } from '../src/old_app/context/LanguageContext';
 import { useTheme } from '../src/old_app/context/ThemeContext';
 import { safeStorage } from '../src/old_app/lib/storage';
 import { AuthService } from '../src/services/firebase/auth';
+import { AUTH_MODE } from '../src/config/authConfig';
 
 const deities = [
   { id: 'ganesha', image: require('../assets/deities/ganesha.png') },
@@ -187,26 +188,28 @@ export default function ProfileSetup() {
     // Persist full profile locally
     safeStorage.setItem('doshanivarana_user_profile', JSON.stringify(userProfile));
 
-    // Save/update to Firestore
-    try {
-      await AuthService.createUser(uid, {
-        firstName: userProfile.firstName,
-        lastName: userProfile.lastName,
-        name: userProfile.name,
-        phoneNumber: userProfile.phone,
-        email: userProfile.email,
-        appUiLanguage: userProfile.appUiLanguage,
-        communicationLanguage: userProfile.communicationLanguage,
-        ishtaDevatas: userProfile.ishtaDevatas,
-        gothram: userProfile.gothram,
-        nakshatra: userProfile.nakshatra,
-        rashi: userProfile.rashi,
-      });
-      // create/update session on Firestore
-      await AuthService.createSession(uid, 'mock-device-token');
-    } catch (e) {
-      console.error("Failed to save profile to Firestore:", e);
-    }
+    // Save/update to Firestore in the background so it doesn't block the UI
+    (async () => {
+      try {
+        await AuthService.createUser(uid, {
+          firstName: userProfile.firstName,
+          lastName: userProfile.lastName,
+          name: userProfile.name,
+          phoneNumber: userProfile.phone,
+          email: userProfile.email,
+          appUiLanguage: userProfile.appUiLanguage,
+          communicationLanguage: userProfile.communicationLanguage,
+          ishtaDevatas: userProfile.ishtaDevatas,
+          gothram: userProfile.gothram,
+          nakshatra: userProfile.nakshatra,
+          rashi: userProfile.rashi,
+        });
+        // create/update session on Firestore
+        await AuthService.createSession(uid, 'mock-device-token');
+      } catch (e) {
+        console.warn("Failed to save profile to Firestore in background:", e);
+      }
+    })();
 
     // Update logged in user session summary locally
     safeStorage.setItem(

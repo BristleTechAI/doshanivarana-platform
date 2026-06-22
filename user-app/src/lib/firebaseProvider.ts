@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { AUTH_MODE } from '../config/authConfig';
 import type { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
@@ -15,23 +16,36 @@ export const authProvider: () => FirebaseAuthTypes.Module = (() => {
 })();
 
 export const firestoreProvider: any = (() => {
+  let useNative = false;
+  const isExpoGo = Constants.appOwnership === 'expo';
+
+  if (Platform.OS !== 'web' && !isExpoGo) {
+    try {
+      require('@react-native-firebase/app');
+      require('@react-native-firebase/firestore');
+      useNative = true;
+    } catch (e) {
+      console.warn('[Firebase Provider] Native Firebase modules not available, falling back to Web SDK.');
+    }
+  }
+
   const fn = () => {
-    if (Platform.OS === 'web') {
+    if (useNative) {
+      return require('@react-native-firebase/firestore').default();
+    } else {
       // Use Firebase compat layer - same .collection().get() API as native SDK
       const { webFirestore } = require('../config/firebaseWebConfig');
       return webFirestore();
-    } else {
-      return require('@react-native-firebase/firestore').default();
     }
   };
 
   Object.defineProperty(fn, 'FieldValue', {
     get() {
-      if (Platform.OS === 'web') {
+      if (useNative) {
+        return require('@react-native-firebase/firestore').default.FieldValue;
+      } else {
         const firebase = require('firebase/compat/app').default;
         return firebase.firestore.FieldValue;
-      } else {
-        return require('@react-native-firebase/firestore').default.FieldValue;
       }
     },
     configurable: true,
@@ -40,11 +54,11 @@ export const firestoreProvider: any = (() => {
 
   Object.defineProperty(fn, 'Timestamp', {
     get() {
-      if (Platform.OS === 'web') {
+      if (useNative) {
+        return require('@react-native-firebase/firestore').default.Timestamp;
+      } else {
         const firebase = require('firebase/compat/app').default;
         return firebase.firestore.Timestamp;
-      } else {
-        return require('@react-native-firebase/firestore').default.Timestamp;
       }
     },
     configurable: true,
