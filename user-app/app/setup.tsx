@@ -92,7 +92,23 @@ const termTranslations: Record<string, Record<string, string>> = {
   'dhanu (sagittarius)': { en: 'Dhanu (Sagittarius)', te: 'ధనుస్సు (Dhanu)', hi: 'धनु (Sagittarius)', gu: 'ધનુ (Sagittarius)' },
   'makara (capricorn)': { en: 'Makara (Capricorn)', te: 'మకరం (మకర రాశి)', hi: 'मकर राशि (मकर)', gu: 'મકર (મકર राशि)' },
   'kumbha (aquarius)': { en: 'Kumbha (Aquarius)', te: 'కుంభం (Kumbha)', hi: 'कुंभ (Aquarius)', gu: 'કુંભ (Aquarius)' },
-  'meena (pisces)': { en: 'Meena (Pisces)', te: 'మీనం (Meena)', hi: 'मीन (Pisces)', gu: 'મીન (Pisces)' }
+  'meena (pisces)': { en: 'Meena (Pisces)', te: 'మీనం (Meena)', hi: 'मीन (Pisces)', gu: 'મીન (Pisces)' },
+
+  // Gothrams
+  bharadwaja: { en: 'Bharadwaja', te: 'భరద్వాజ', hi: 'भारद्वाज', gu: 'ભારદ્વાજ' },
+  kashyapa: { en: 'Kashyapa', te: 'కశ్యప', hi: 'कश्यप', gu: 'કશ્યપ' },
+  atreya: { en: 'Atreya', te: 'ఆత్రేయ', hi: 'आत्रेय', gu: 'ఆત્રેય' },
+  vashishta: { en: 'Vashishta', te: 'వశిష్ట', hi: 'वशिष्ठ', gu: 'વસિષ્ઠ' },
+  gautama: { en: 'Gautama', te: 'గౌతమ', hi: 'गौतम', gu: 'ગૌતમ' },
+  harita: { en: 'Harita', te: 'హరిత', hi: 'हरित', gu: 'హరిત' },
+  srivatsa: { en: 'Srivatsa', te: 'శ్రీవత్స', hi: 'श्रीवत्स', gu: 'શ્રીવત્સ' },
+  shandilya: { en: 'Shandilya', te: 'శాండిల్య', hi: 'शांडिल्य', gu: 'શાંડિલ્ય' },
+  jamadagni: { en: 'Jamadagni', te: 'జమదగ్ని', hi: 'जमदग्नि', gu: 'જమదగ్ని' },
+  vishwamitra: { en: 'Vishwamitra', te: 'విశ్వామిత్ర', hi: 'विश्वामित्र', gu: 'વિશ્વામિત્ર' },
+
+  // Names
+  sujith: { en: 'Sujith', te: 'సుజిత్', hi: 'सुजीत', gu: 'સુજીત' },
+  kasthuri: { en: 'Kasthuri', te: 'కస్తూరి', hi: 'कस्तूरी', gu: 'કસ્તૂરી' }
 };
 
 const getTranslation = (val: string, lang: string): string => {
@@ -159,13 +175,13 @@ export default function ProfileSetup() {
 
   const handleComplete = async () => {
     const userProfile = {
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      name: `${firstName} ${lastName}`.trim() || 'Devotee',
+      firstName: getTranslation(firstName.trim(), language),
+      lastName: getTranslation(lastName.trim(), language),
+      name: `${getTranslation(firstName.trim(), language)} ${getTranslation(lastName.trim(), language)}`.trim() || 'Devotee',
       appUiLanguage: language,
       communicationLanguage: motherTongue,
       ishtaDevatas: selectedDeities,
-      gothram: gothram.trim(),
+      gothram: getTranslation(gothram.trim(), language),
       nakshatra: nakshatra,
       rashi: rashi,
       email: 'devotee@doshanivarana.in', // Default placeholder
@@ -285,7 +301,7 @@ export default function ProfileSetup() {
                 </Text>
                 <TextInput
                   value={firstName}
-                  onChangeText={setFirstName}
+                  onChangeText={(val) => setFirstName(getTranslation(val, language))}
                   placeholder={t('setup.firstNamePlaceholder')}
                   placeholderTextColor={placeholderColor}
                   className="px-4 py-3 bg-card border border-border rounded-xl text-foreground text-base focus:border-primary"
@@ -298,7 +314,7 @@ export default function ProfileSetup() {
                 </Text>
                 <TextInput
                   value={lastName}
-                  onChangeText={setLastName}
+                  onChangeText={(val) => setLastName(getTranslation(val, language))}
                   placeholder={t('setup.lastNamePlaceholder')}
                   placeholderTextColor={placeholderColor}
                   className="px-4 py-3 bg-card border border-border rounded-xl text-foreground text-base focus:border-primary"
@@ -412,7 +428,7 @@ export default function ProfileSetup() {
               </Text>
               <TextInput
                 value={gothram}
-                onChangeText={setGothram}
+                onChangeText={(val) => setGothram(getTranslation(val, language))}
                 placeholder={t('setup.gothramPlaceholder')}
                 placeholderTextColor={placeholderColor}
                 className="px-4 py-3 bg-card border border-border rounded-xl text-foreground text-base focus:border-primary"
