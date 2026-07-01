@@ -31,3 +31,6 @@ export * from './status-machines/delivery.machine';
 
 // Events
 export * from './events/event.types';
+
+// Utils
+export * from './utils/maps.utils';

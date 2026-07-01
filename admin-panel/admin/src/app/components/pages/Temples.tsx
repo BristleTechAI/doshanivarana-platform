@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Building2, Search, Plus, MapPin, Star, CalendarCheck,
   IndianRupee, Radio, UserCircle, Edit, PowerOff,
   Eye, CheckCircle, AlertCircle, XCircle
 } from "lucide-react";
 import { Modal, Field, ModalFooter, inputCls, inputStyle, selectStyle } from "../Modal";
-
+// import Autocomplete from "react-google-autocomplete";
 const LS_KEY = "demo_temples";
 
 const statusConfig: Record<string, { bg: string; color: string; icon: typeof CheckCircle }> = {
@@ -15,7 +15,7 @@ const statusConfig: Record<string, { bg: string; color: string; icon: typeof Che
   Inactive: { bg: "#FFF1F2", color: "#DC2626", icon: XCircle },
 };
 
-const emptyTempleForm = { name: "", location: "", deity: "", type: "Shaiva", proManagerId: "", proManagerName: "Unassigned", status: "Active" };
+const emptyTempleForm = { name: "", location: "", formattedAddress: "", latitude: "", longitude: "", placeId: "", deity: "", type: "Shaiva", proManagerId: "", proManagerName: "Unassigned", status: "Active" };
 
 const COLORS = ["#C76A00", "#4A1259", "#D4A017", "#22C55E", "#6366F1", "#EF4444", "#2563EB", "#0891B2"];
 
@@ -48,6 +48,10 @@ export function Temples() {
   const [temples, setTemples] = useState<any[]>([]);
   const [pros, setPros] = useState<any[]>([]);
 
+  // TODO Phase 2:
+  // Replace manual coordinate entry with Google Places Autocomplete.
+  // Firestore schema remains unchanged.
+
   useEffect(() => {
     const unsubscribe = TemplesService.subscribeToTemples(setTemples);
     FirebaseUsersService.getPros().then(setPros).catch(console.error);
@@ -56,7 +60,7 @@ export function Temples() {
 
   function openTempleEdit(t: typeof defaultTemples[0]) {
     setEditTarget(t);
-    setTempleForm({ name: t.name, location: t.location, deity: t.deity, type: t.type, proManagerId: t.proManagerId, proManagerName: t.proManagerName, status: t.status });
+    setTempleForm({ name: t.name, location: t.location || "", formattedAddress: (t as any).formattedAddress || "", latitude: (t as any).latitude ?? "", longitude: (t as any).longitude ?? "", placeId: (t as any).placeId || "", deity: t.deity, type: t.type, proManagerId: t.proManagerId, proManagerName: t.proManagerName, status: t.status });
   }
 
   function openTempleAdd() {
@@ -75,11 +79,36 @@ export function Temples() {
       const selectedPro = pros.find(p => p.uid === templeForm.proManagerId);
       const updatedProName = selectedPro ? selectedPro.name : "Unassigned";
 
+      if (typeof templeForm.latitude !== "number" && (String(templeForm.latitude).trim() === "" || isNaN(Number(templeForm.latitude)))) {
+        alert("Latitude cannot be empty and must be a valid number.");
+        return;
+      }
+      if (typeof templeForm.longitude !== "number" && (String(templeForm.longitude).trim() === "" || isNaN(Number(templeForm.longitude)))) {
+        alert("Longitude cannot be empty and must be a valid number.");
+        return;
+      }
+
+      const lat = Number(templeForm.latitude);
+      const lng = Number(templeForm.longitude);
+
+      if (lat < -90 || lat > 90) {
+        alert("Latitude must be between -90 and +90.");
+        return;
+      }
+      if (lng < -180 || lng > 180) {
+        alert("Longitude must be between -180 and +180.");
+        return;
+      }
+
       if (editTarget) {
         // Edit
         await TemplesService.updateTemple(editTarget.id, {
           name: templeForm.name,
           location: templeForm.location,
+          formattedAddress: templeForm.formattedAddress || "",
+          latitude: lat,
+          longitude: lng,
+          placeId: templeForm.placeId || "",
           deity: templeForm.deity,
           type: templeForm.type,
           proManagerId: templeForm.proManagerId,
@@ -93,6 +122,10 @@ export function Temples() {
         await TemplesService.createTemple(newId, {
           name: templeForm.name,
           location: templeForm.location,
+          formattedAddress: templeForm.formattedAddress || "",
+          latitude: lat,
+          longitude: lng,
+          placeId: templeForm.placeId || "",
           deity: templeForm.deity,
           type: templeForm.type,
           proManagerId: templeForm.proManagerId,
@@ -394,12 +427,37 @@ export function Temples() {
           </Field>
           <Field label="Location">
             <input
-              className={inputCls} style={inputStyle}
+              className={inputCls}
+              style={inputStyle}
               value={templeForm.location}
-              onChange={e => setTempleForm(f => ({ ...f, location: e.target.value }))}
-              placeholder="City, State"
+              onChange={(e: any) => setTempleForm(f => ({ ...f, location: e.target.value }))}
+              placeholder="e.g. Varanasi, UP"
             />
           </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Latitude">
+              <input
+                className={inputCls}
+                style={inputStyle}
+                type="number"
+                step="any"
+                value={templeForm.latitude}
+                onChange={(e: any) => setTempleForm(f => ({ ...f, latitude: e.target.value }))}
+                placeholder="e.g. 17.6689"
+              />
+            </Field>
+            <Field label="Longitude">
+              <input
+                className={inputCls}
+                style={inputStyle}
+                type="number"
+                step="any"
+                value={templeForm.longitude}
+                onChange={(e: any) => setTempleForm(f => ({ ...f, longitude: e.target.value }))}
+                placeholder="e.g. 80.8881"
+              />
+            </Field>
+          </div>
           <Field label="Primary Deity">
             <input
               className={inputCls} style={inputStyle}

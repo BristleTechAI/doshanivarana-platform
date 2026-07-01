@@ -5,6 +5,10 @@ export interface Temple extends SoftDelete {
   name: string;
   description: string;
   location: string;
+  formattedAddress?: string;
+  latitude?: number;
+  longitude?: number;
+  placeId?: string;
   city: string;
   state: string;
   deity: string;

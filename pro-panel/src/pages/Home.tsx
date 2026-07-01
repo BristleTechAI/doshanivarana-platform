@@ -1,10 +1,11 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { PageHeader } from '../components/PageHeader';
+import { buildGoogleMapsDirectionsUrl } from '@devaseva/core';
 
 export function Home() {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ export function Home() {
 
   const [poojasMap, setPoojasMap] = useState<Record<string, string>>({});
   const [allBookings, setAllBookings] = useState<any[]>([]);
+  const [templeData, setTempleData] = useState<any>(null);
 
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -39,6 +41,11 @@ export function Home() {
 
   useEffect(() => {
     if (!templeId) return;
+
+    // Fetch Temple Data
+    getDoc(doc(db, 'temples', templeId)).then(d => {
+      if(d.exists()) setTempleData(d.data());
+    });
 
     // Fetch Poojas for mapping pooja names
     const poojasQuery = query(collection(db, 'poojas'), where('templeId', '==', templeId));
@@ -180,10 +187,36 @@ export function Home() {
       <PageHeader title={`Good Morning, ${profileName} 👋`} />
       
       {/* Page Header */}
-      <div className="mb-8">
+      <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
         <p className="font-sans text-body-lg text-on-surface-variant font-medium">
           {today}
         </p>
+        {(() => {
+          const lat = templeData?.latitude ?? 0;
+          const lng = templeData?.longitude ?? 0;
+          const hasLocation = !!(lat && lng);
+          
+          if (hasLocation) {
+            return (
+              <button 
+                onClick={() => window.open(buildGoogleMapsDirectionsUrl(lat, lng), '_blank')}
+                className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-full font-bold shadow hover:bg-[#b04b00] transition-colors"
+              >
+                <span className="material-symbols-outlined text-[18px]">directions</span>
+                Directions to Temple
+              </button>
+            );
+          }
+          return (
+            <button 
+              disabled
+              className="flex items-center gap-2 bg-surface-container-high text-on-surface-variant px-4 py-2 rounded-full font-bold shadow-sm opacity-60 cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-[18px]">location_off</span>
+              Location not available
+            </button>
+          );
+        })()}
       </div>
 
       {/* Alert Banner */}

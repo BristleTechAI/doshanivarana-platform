@@ -3,4 +3,13 @@ const { withNativeWind } = require("nativewind/metro");
 
 const config = getDefaultConfig(__dirname);
 
-module.exports = withNativeWind(config, { input: "./global.css" });
+try {
+  const { withNativeWind } = require("nativewind/metro");
+  module.exports = withNativeWind(config, { 
+    input: "./global.css",
+    configPath: "./tailwind.config.cjs"
+  });
+} catch (e) {
+  console.error("NATIVEWIND STILL CRASHING:", e.stack || e);
+  module.exports = config;
+}

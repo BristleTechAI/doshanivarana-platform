@@ -8,7 +8,7 @@ import { PageHeader } from '../components/PageHeader';
 
 export function PujariManager() {
   const navigate = useNavigate();
-  const { currentUser, templeId } = useAuth();
+  const { templeId } = useAuth();
 
   const [pujaris, setPujaris] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState('All');

@@ -3,15 +3,20 @@ import { useAuth } from '../contexts/AuthContext';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { PageHeader } from '../components/PageHeader';
+import { buildGoogleMapsDirectionsUrl } from '@devaseva/core';
 
 export function ProfileSettings() {
   const { currentUser } = useAuth();
   const [templeName, setTempleName] = useState('Loading...');
+  const [templeData, setTempleData] = useState<any>(null);
 
   useEffect(() => {
     if (currentUser?.templeId) {
       getDoc(doc(db, 'temples', currentUser.templeId)).then(tDoc => {
-        if (tDoc.exists()) setTempleName(tDoc.data().name);
+        if (tDoc.exists()) {
+          setTempleName(tDoc.data().name);
+          setTempleData(tDoc.data());
+        }
         else setTempleName('Unknown Temple');
       }).catch(() => setTempleName('Error loading'));
     }
@@ -174,6 +179,32 @@ export function ProfileSettings() {
             <div className="flex items-center gap-1.5">
               <span className="material-symbols-outlined text-[18px]">temple_hindu</span>
               <span>{templeName}</span>
+              {(() => {
+                const lat = templeData?.latitude ?? 0;
+                const lng = templeData?.longitude ?? 0;
+                const hasLocation = !!(lat && lng);
+
+                if (hasLocation) {
+                  return (
+                    <button 
+                      onClick={() => window.open(buildGoogleMapsDirectionsUrl(lat, lng), '_blank')}
+                      className="ml-2 text-primary font-bold hover:underline flex items-center gap-1 text-[11px] bg-primary/10 px-2 py-0.5 rounded-md"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">directions</span>
+                      Directions
+                    </button>
+                  );
+                }
+                return (
+                  <button 
+                    disabled
+                    className="ml-2 text-on-surface-variant font-bold flex items-center gap-1 text-[11px] bg-surface-container-high px-2 py-0.5 rounded-md opacity-60 cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">location_off</span>
+                    Location not available
+                  </button>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-1.5">
               <span className="material-symbols-outlined text-[18px]">calendar_month</span>

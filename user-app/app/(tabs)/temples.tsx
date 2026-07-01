@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Image, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image, ActivityIndicator, Linking } from 'react-native';
 import { Link } from 'expo-router';
 import { MapPin, Star, Flame } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { useTheme } from '../../src/old_app/context/ThemeContext';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
 import { TemplesService } from '../../src/services/firebase/temples';
 import { PoojasService } from '../../src/services/firebase/poojas';
+import { buildGoogleMapsDirectionsUrl, buildGoogleMapsSearchUrl } from '@devaseva/core';
 
 export default function Temples() {
   const insets = useSafeAreaInsets();
@@ -80,6 +81,11 @@ export default function Temples() {
           const location = t('templeDb.' + tKey + '.location') === 'templeDb.' + tKey + '.location' ? temple.location || temple.city : t('templeDb.' + tKey + '.location');
           const deity = t('templeDb.' + tKey + '.deity') === 'templeDb.' + tKey + '.deity' ? temple.deity : t('templeDb.' + tKey + '.deity');
           const description = t('templeDb.' + tKey + '.description') === 'templeDb.' + tKey + '.description' ? temple.description : t('templeDb.' + tKey + '.description');
+
+          // Fallback missing coordinates
+          const latitude = temple.latitude ?? 0;
+          const longitude = temple.longitude ?? 0;
+          const hasLocation = !!(latitude && longitude);
 
           return (
             <View key={temple.id} className="bg-card border border-border rounded-2xl overflow-hidden mb-6">
@@ -158,6 +164,43 @@ export default function Temples() {
                           </Link>
                         );
                       })}
+                    </View>
+                    
+                    <View className="pt-4 mt-2 border-t border-border">
+                      <Text className="text-sm font-semibold mb-3 text-foreground" style={{ fontFamily: 'System' }}>
+                        Location & Maps
+                      </Text>
+                      {hasLocation ? (
+                        <View className="flex-row gap-2">
+                          <Pressable
+                            onPress={() => Linking.openURL(buildGoogleMapsSearchUrl(latitude, longitude))}
+                            className="flex-1 px-3 py-2.5 rounded-xl border border-primary items-center"
+                          >
+                            <Text className="text-primary font-medium text-sm" style={{ fontFamily: 'System' }}>
+                              Open in Maps
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => Linking.openURL(buildGoogleMapsDirectionsUrl(latitude, longitude))}
+                            className="flex-1 px-3 py-2.5 rounded-xl bg-primary items-center active:bg-[#E05C10]"
+                          >
+                            <Text className="text-primary-foreground font-medium text-sm" style={{ fontFamily: 'System' }}>
+                              Directions
+                            </Text>
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <View className="flex-row gap-2">
+                          <Pressable
+                            disabled={true}
+                            className="flex-1 px-3 py-2.5 rounded-xl bg-muted items-center opacity-50"
+                          >
+                            <Text className="text-muted-foreground font-medium text-sm" style={{ fontFamily: 'System' }}>
+                              Location not available
+                            </Text>
+                          </Pressable>
+                        </View>
+                      )}
                     </View>
                   </View>
                 )}

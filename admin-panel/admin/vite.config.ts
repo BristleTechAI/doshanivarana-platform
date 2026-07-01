@@ -28,7 +28,10 @@ export default defineConfig({
     alias: {
       // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),
+      'react': path.resolve(__dirname, '../../pro-panel/node_modules/react'),
+      'react-dom': path.resolve(__dirname, '../../pro-panel/node_modules/react-dom'),
     },
+    dedupe: ['react', 'react-dom'],
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.

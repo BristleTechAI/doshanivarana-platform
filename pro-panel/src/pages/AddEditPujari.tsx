@@ -29,7 +29,7 @@ const parsePhone = (phoneStr: string) => {
 export function AddEditPujari({ isEdit }: AddEditPujariProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { currentUser, templeId: authTempleId } = useAuth();
+  const { templeId: authTempleId } = useAuth();
   
   const [loading, setLoading] = useState(isEdit);
   const [existingPujari, setExistingPujari] = useState<any>(null);

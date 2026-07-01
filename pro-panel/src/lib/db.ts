@@ -1,4 +1,4 @@
-import type { Booking as CoreBooking, Slot as CoreSlot, Priest as CorePriest, BookingStatus, PaymentStatus, SlotStatus } from '@devaseva/core';
+import type { Booking as CoreBooking, Slot as CoreSlot, BookingStatus, PaymentStatus, SlotStatus } from '@devaseva/core';
 
 export interface Booking extends CoreBooking {
   dateTime?: string;

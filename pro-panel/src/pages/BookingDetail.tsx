@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
 import { doc, getDoc, updateDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { Booking } from '@devaseva/core';
 import { PageHeader } from '../components/PageHeader';
+import { buildGoogleMapsDirectionsUrl } from '@devaseva/core';
 
 export function BookingDetail() {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +13,7 @@ export function BookingDetail() {
   const [notification, setNotification] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [priests, setPriests] = useState<any[]>([]);
+  const [templeData, setTempleData] = useState<any>(null);
   
   useEffect(() => {
     if (!id) return;
@@ -47,6 +48,10 @@ export function BookingDetail() {
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       // Only show priests that are eligible for assignment
       setPriests(docs.filter(p => p.status !== 'Inactive' && p.status !== 'On Leave'));
+    });
+
+    getDoc(doc(db, 'temples', booking.templeId)).then(d => {
+      if(d.exists()) setTempleData(d.data());
     });
 
     return () => unsubscribe();
@@ -261,7 +266,35 @@ export function BookingDetail() {
               </div>
               <div className="md:col-span-2">
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Temple ID</p>
-                <p className="text-body-lg text-on-background font-medium">{booking.templeId}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-body-lg text-on-background font-medium">{booking.templeId}</p>
+                  {(() => {
+                    const lat = templeData?.latitude ?? 0;
+                    const lng = templeData?.longitude ?? 0;
+                    const hasLocation = !!(lat && lng);
+
+                    if (hasLocation) {
+                      return (
+                        <button 
+                          onClick={() => window.open(buildGoogleMapsDirectionsUrl(lat, lng), '_blank')}
+                          className="text-primary font-bold hover:underline flex items-center gap-1 text-sm bg-primary/10 px-3 py-1.5 rounded-lg"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">directions</span>
+                          Directions
+                        </button>
+                      );
+                    }
+                    return (
+                      <button 
+                        disabled
+                        className="text-on-surface-variant font-bold flex items-center gap-1 text-sm bg-surface-container-high px-3 py-1.5 rounded-lg opacity-60 cursor-not-allowed"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">location_off</span>
+                        Location not available
+                      </button>
+                    );
+                  })()}
+                </div>
               </div>
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Slot Date &amp; Time</p>
