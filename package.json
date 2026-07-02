@@ -10,7 +10,8 @@
   ],
   "scripts": {
     "build:core": "npm run build --workspace=@devaseva/core",
-    "build:all": "npm run build --workspaces --if-present"
+    "build:all": "npm run build --workspaces --if-present",
+    "postinstall": "node -e \"const fs = require('fs'); const paths = ['node_modules/nativewind/node_modules/react', 'node_modules/nativewind/node_modules/react-dom', 'node_modules/nativewind/node_modules/react-native']; paths.forEach(p => { if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true }); });\""
   },
   "devDependencies": {
     "dotenv": "^17.4.2",
