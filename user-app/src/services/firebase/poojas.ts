@@ -10,10 +10,11 @@ export const PoojasService = {
 
   subscribeToPoojas(callback: (poojas: Pooja[]) => void) {
     return firestore().collection('poojas')
-      .where('isDeleted', '==', false)
       .onSnapshot((snapshot: any) => {
         if (snapshot) {
-          const list = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Pooja));
+          const list = snapshot.docs
+            .map((doc: any) => ({ id: doc.id, ...doc.data() } as Pooja))
+            .filter((p: Pooja) => p.isDeleted !== true);
           callback(list);
         }
       });

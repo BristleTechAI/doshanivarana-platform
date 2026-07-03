@@ -178,16 +178,18 @@ function OverviewTab({ poojaId, pooja }: { poojaId: string; pooja: any }) {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const tKey = getTempleKey(pooja.templeName || pooja.temple || '');
+  const title = t('poojaDb.' + poojaId + '.title') === 'poojaDb.' + poojaId + '.title' ? pooja.name : t('poojaDb.' + poojaId + '.title');
+  const purpose = t('poojaDb.' + poojaId + '.purpose') === 'poojaDb.' + poojaId + '.purpose' ? pooja.description : t('poojaDb.' + poojaId + '.purpose');
 
   return (
     <View>
       {/* Title */}
       <View className="mb-4">
         <Text className="text-3xl font-bold mb-2 text-foreground" style={{ fontFamily: 'System' }}>
-          {t('poojaDb.' + poojaId + '.title')}
+          {title}
         </Text>
         <Text className="text-sm" style={{ fontFamily: 'System', color: theme === 'dark' ? '#A8A29E' : '#78716C' }}>
-          {t('poojaDb.' + poojaId + '.purpose')}
+          {purpose}
         </Text>
       </View>
 
@@ -247,7 +249,7 @@ function OverviewTab({ poojaId, pooja }: { poojaId: string; pooja: any }) {
           {t('poojaDetail.overview')}
         </Text>
         <Text className="text-sm leading-relaxed" style={{ fontFamily: 'System', color: theme === 'dark' ? '#A8A29E' : '#44403C' }}>
-          {t('poojaDb.' + poojaId + '.purpose')}
+          {purpose}
         </Text>
       </View>
 
@@ -465,6 +467,7 @@ function WhyTab({ poojaId, pooja }: { poojaId: string; pooja: any }) {
   const { theme } = useTheme();
   const blessingKeys = getCategoryBlessings(pooja.categoryName || pooja.category);
   const rashis = getCategoryRashis(pooja.categoryName || pooja.category);
+  const purpose = t('poojaDb.' + poojaId + '.purpose') === 'poojaDb.' + poojaId + '.purpose' ? pooja.description : t('poojaDb.' + poojaId + '.purpose');
 
   const colors = [
     { bg: 'bg-green-500/10', text: 'text-green-500' },
@@ -479,7 +482,7 @@ function WhyTab({ poojaId, pooja }: { poojaId: string; pooja: any }) {
       </Text>
 
       <Text className="text-sm leading-relaxed mb-6" style={{ fontFamily: 'System', color: theme === 'dark' ? '#A8A29E' : '#44403C' }}>
-        {t('poojaDb.' + poojaId + '.purpose')}
+        {purpose}
       </Text>
 
       {/* Blessings / Benefits */}

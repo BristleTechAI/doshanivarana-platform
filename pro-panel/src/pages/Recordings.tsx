@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { v4 as uuidv4 } from 'uuid';
 import { PageHeader } from '../components/PageHeader';
@@ -16,7 +16,10 @@ export function Recordings() {
   const [uploadingRec, setUploadingRec] = useState<any | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
   // Video play state simulation
   const [isPlaying, setIsPlaying] = useState(false);
@@ -53,9 +56,15 @@ export function Recordings() {
   };
 
   useEffect(() => {
-    // For demo purposes, we will fetch all recordings and try to augment with booking info.
-    // In a real app, you would query by templeId.
-    const q = query(collection(db, 'recordings'));
+    // Scope to this PRO's templeId to prevent cross-temple data leakage
+    const constraints: any[] = [];
+    if (templeId) {
+      constraints.push(where('templeId', '==', templeId));
+    }
+    const q = constraints.length > 0
+      ? query(collection(db, 'recordings'), ...constraints)
+      : query(collection(db, 'recordings'));
+
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const promises = snapshot.docs.map(async (d) => {
         const data = d.data();
@@ -203,55 +212,100 @@ export function Recordings() {
     }
   };
 
-  const handleStartUpload = (rec: any) => {
+  /**
+   * handleStartUpload — uploads the recording to YouTube via the backend,
+   * saves the YouTube URL in Firestore, then auto-publishes the recording.
+   */
+  const handleStartUpload = async (rec: any) => {
+    if (!rec.videoUrl) {
+      setNotification('No video URL on this recording. Wait for cloud recording to be processed.');
+      setTimeout(() => setNotification(null), 4000);
+      return;
+    }
+
     setUploadingRec(rec);
     setIsUploading(true);
-    setUploadProgress(0);
-    
-    // Simulate upload progress
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(async () => {
-            try {
-              const recRef = doc(db, 'recordings', rec.id);
-              await updateDoc(recRef, {
-                status: 'READY',
-                duration: '1h 02m',
-                videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
-                updatedAt: serverTimestamp()
-              });
+    setUploadProgress(5);
+    setUploadError(null);
 
-              await generateSystemEvent('recording.uploaded', {
-                recordingId: rec.id,
-                bookingId: rec.bookingId,
-                templeId: rec.templeId,
-                userId: rec.userId || 'USER',
-                status: 'READY'
-              });
-
-              await generateAuditLog('UPLOAD_RECORDING', rec.id, `Uploaded recording for booking ${rec.bookingId}`);
-
-              localDb.addNotification(
-                'Recording Uploaded',
-                `Manual recording upload complete for ${rec.poojaName}. Ready to publish.`,
-                '/recordings'
-              );
-
-              setIsUploading(false);
-              setUploadingRec(null);
-              setNotification(`Recording for ${rec.poojaName} uploaded and is ready to publish.`);
-              setTimeout(() => setNotification(null), 4000);
-            } catch (error) {
-              console.error('Error uploading recording:', error);
-            }
-          }, 500);
-          return 100;
-        }
-        return prev + 10;
+    try {
+      // Step 1 — call backend YouTube upload endpoint
+      setUploadProgress(15);
+      const res = await fetch(`${BACKEND_URL}/api/youtube/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: rec.videoUrl,
+          poojaName: rec.poojaName,
+          templeName: rec.templeName,
+          recordingId: rec.id,
+        }),
       });
-    }, 150);
+
+      setUploadProgress(70);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Upload failed with status ${res.status}`);
+      }
+
+      const { youtubeVideoId, youtubeLiveUrl } = await res.json();
+      setUploadProgress(85);
+
+      // Step 2 — save YouTube URL in Firestore on the recording doc
+      const recRef = doc(db, 'recordings', rec.id);
+      await updateDoc(recRef, {
+        youtubeVideoId,
+        youtubeLiveUrl,
+        status: 'PUBLISHED',
+        videoUrl: youtubeLiveUrl, // point videoUrl to YouTube URL
+        updatedAt: serverTimestamp()
+      });
+
+      // Step 3 — update booking to notify devotees
+      if (rec.bookingId) {
+        await updateDoc(doc(db, 'bookings', rec.bookingId), {
+          recordingStatus: 'Available',
+          youtubeVideoId,
+          youtubeLiveUrl,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      setUploadProgress(100);
+
+      await generateSystemEvent('recording.youtube.uploaded', {
+        recordingId: rec.id,
+        bookingId: rec.bookingId,
+        templeId: rec.templeId,
+        youtubeVideoId,
+        youtubeLiveUrl,
+        status: 'PUBLISHED'
+      });
+
+      await generateAuditLog('YOUTUBE_UPLOAD', rec.id,
+        `Recording for ${rec.poojaName} uploaded to YouTube: ${youtubeLiveUrl}`);
+
+      localDb.addNotification(
+        'Uploaded to YouTube',
+        `Recording for ${rec.poojaName} is live on YouTube. Devotees can now watch it.`,
+        '/recordings'
+      );
+
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadingRec(null);
+        setUploadProgress(0);
+        setNotification(`YouTube upload complete for ${rec.poojaName}! Recording published.`);
+        setTimeout(() => setNotification(null), 5000);
+      }, 600);
+
+    } catch (e: any) {
+      console.error('[YouTube Upload]', e);
+      setUploadError(e.message || 'Upload failed. Check backend credentials.');
+      setUploadProgress(0);
+      setIsUploading(false);
+    }
   };
 
   // Dynamic status counters
@@ -342,6 +396,7 @@ export function Recordings() {
                   <th className="px-6 py-4">Slot Date</th>
                   <th className="px-6 py-4">Duration</th>
                   <th className="px-6 py-4">Recording Status</th>
+                  <th className="px-6 py-4">YouTube</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -385,15 +440,49 @@ export function Recordings() {
                           </span>
                         )}
                       </td>
+                      <td className="px-6 py-4 text-on-surface-variant">
+                        {rec.youtubeLiveUrl ? (
+                          <a 
+                            href={rec.youtubeLiveUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors"
+                          >
+                            <span className="material-symbols-outlined text-[13px]">play_circle</span>
+                            YouTube
+                          </a>
+                        ) : (
+                          <span className="text-on-surface-variant/40 text-xs">—</span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex gap-2 justify-end font-bold">
                           {isProcessing && (
                             <button 
                               onClick={() => handleStartUpload(rec)}
-                              className="px-4 py-1.5 rounded-full text-xs border-2 border-primary text-primary hover:bg-primary/10 transition-colors flex items-center gap-1 cursor-pointer"
+                              disabled
+                              className="px-4 py-1.5 rounded-full text-xs border-2 border-gray-300 text-gray-400 flex items-center gap-1 cursor-not-allowed"
+                              title="Waiting for recording to be ready"
                             >
-                              <span className="material-symbols-outlined text-[15px]">upload</span> Upload
+                              <span className="material-symbols-outlined text-[15px] animate-spin">sync</span> Processing...
                             </button>
+                          )}
+                          {isReady && (
+                            <>
+                              <button 
+                                onClick={() => handleStartUpload(rec)}
+                                className="px-4 py-1.5 rounded-full text-xs border-2 border-red-600 text-red-700 hover:bg-red-50 transition-colors flex items-center gap-1 cursor-pointer"
+                                title="Upload this recording to YouTube"
+                              >
+                                <span className="material-symbols-outlined text-[15px]">smart_display</span> YouTube
+                              </button>
+                              <button 
+                                onClick={() => handlePublish(rec)}
+                                className="px-4 py-1.5 rounded-full text-xs bg-primary text-on-primary hover:bg-[#b04b00] transition-colors flex items-center gap-1 cursor-pointer shadow-sm"
+                              >
+                                <span className="material-symbols-outlined text-[15px]">check</span> Publish
+                              </button>
+                            </>
                           )}
                           {(isReady || isPublished) && (
                             <button 
@@ -403,12 +492,13 @@ export function Recordings() {
                               <span className="material-symbols-outlined text-[15px]">play_arrow</span> Preview
                             </button>
                           )}
-                          {isReady && (
+                          {isPublished && !rec.youtubeLiveUrl && (
                             <button 
-                              onClick={() => handlePublish(rec)}
-                              className="px-4 py-1.5 rounded-full text-xs bg-primary text-on-primary hover:bg-[#b04b00] transition-colors flex items-center gap-1 cursor-pointer shadow-sm"
+                              onClick={() => handleStartUpload(rec)}
+                              className="px-4 py-1.5 rounded-full text-xs border-2 border-red-600 text-red-700 hover:bg-red-50 transition-colors flex items-center gap-1 cursor-pointer"
+                              title="Upload to YouTube"
                             >
-                              <span className="material-symbols-outlined text-[15px]">check</span> Publish
+                              <span className="material-symbols-outlined text-[15px]">smart_display</span> YouTube
                             </button>
                           )}
                           {isPublished && (
@@ -523,31 +613,70 @@ export function Recordings() {
         </div>
       )}
 
-      {/* Manual Uploading Loader Modal */}
+      {/* YouTube Upload Modal */}
       {isUploading && uploadingRec && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-surface-container-lowest rounded-xl shadow-2xl max-w-md w-full p-6 border border-[#F0E6D2] font-sans">
-            <h3 className="font-display text-headline-sm text-on-surface font-bold mb-4">
-              Uploading Recording — {uploadingRec.poojaName}
-            </h3>
-            
-            <div className="border-2 border-dashed border-outline-variant/60 rounded-xl p-8 flex flex-col items-center justify-center gap-4 bg-surface-bright mb-6">
-              <span className="material-symbols-outlined text-[48px] text-primary animate-bounce">cloud_upload</span>
-              <p className="text-body-md text-on-surface font-bold">Uploading video file...</p>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="material-symbols-outlined text-red-600 text-[28px]">smart_display</span>
+              <h3 className="font-display text-headline-sm text-on-surface font-bold">
+                Uploading to YouTube
+              </h3>
             </div>
 
-            <div className="flex flex-col gap-2 font-semibold">
-              <div className="flex justify-between text-body-sm text-on-surface-variant">
-                <span>Progress: {uploadProgress}%</span>
-                <span>{uploadProgress}%</span>
+            <p className="text-body-sm text-on-surface-variant font-medium mb-4">
+              <strong>{uploadingRec.poojaName}</strong> — {uploadingRec.slotDate}
+            </p>
+            
+            {uploadError ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-red-600 text-[20px]">error</span>
+                  <div>
+                    <p className="text-body-sm font-bold text-red-800">Upload Failed</p>
+                    <p className="text-body-sm text-red-700 mt-1">{uploadError}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setIsUploading(false); setUploadingRec(null); setUploadError(null); }}
+                  className="mt-3 w-full px-4 py-2 bg-red-600 text-white rounded-full text-sm font-bold cursor-pointer hover:bg-red-700"
+                >
+                  Dismiss
+                </button>
               </div>
-              <div className="h-2.5 w-full bg-surface-container-highest rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-primary transition-all duration-150" 
-                  style={{ width: `${uploadProgress}%` }}
-                ></div>
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="border-2 border-dashed border-outline-variant/60 rounded-xl p-6 flex flex-col items-center justify-center gap-3 bg-surface-bright mb-4">
+                  <span className="material-symbols-outlined text-[48px] text-red-600 animate-bounce">smart_display</span>
+                  <p className="text-body-md text-on-surface font-bold">
+                    {uploadProgress < 70 ? 'Uploading to YouTube...' 
+                     : uploadProgress < 90 ? 'YouTube is processing...' 
+                     : 'Saving to Firestore...'}
+                  </p>
+                  <p className="text-body-sm text-on-surface-variant font-medium text-center">
+                    This may take a few minutes for large recordings.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 font-semibold">
+                  <div className="flex justify-between text-body-sm text-on-surface-variant">
+                    <span>
+                      {uploadProgress < 15 ? 'Starting...' 
+                       : uploadProgress < 70 ? 'Uploading video...' 
+                       : uploadProgress < 85 ? 'Waiting for YouTube...' 
+                       : 'Saving URL...'}
+                    </span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="h-2.5 w-full bg-surface-container-highest rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-red-600 transition-all duration-300" 
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

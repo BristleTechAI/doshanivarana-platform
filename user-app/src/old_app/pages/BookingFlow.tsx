@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Calendar, Clock, User, Star, ChevronRight, X } from 'lucide-react';
-import { POOJAS } from '../lib/poojas';
+import { ArrowLeft, Calendar, Clock } from 'lucide-react';
+import { SlotsService } from '../../services/firebase/slots';
+import { BookingsService } from '../../services/firebase/bookings';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface BookingFormData {
+  selectedSlotId: string;
   selectedDate: string;
   selectedTime: string;
   devoteeNames: string;
@@ -14,96 +17,77 @@ interface BookingFormData {
 
 export function BookingFlow() {
   const navigate = useNavigate();
-  const { id } = useParams();
+  const { id: poojaId } = useParams();
+  const { user } = useAuth();
+
   const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Pooja info fetched from Firestore
+  const [poojaData, setPoojaData] = useState<any>(null);
+  // Slots from Firestore, real-time
+  const [slots, setSlots] = useState<any[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(true);
+
   const [formData, setFormData] = useState<BookingFormData>({
+    selectedSlotId: '',
     selectedDate: '',
     selectedTime: '',
     devoteeNames: '',
-    gothram: 'Bharadwaja',
+    gothram: '',
     nakshatra: 'Shravana',
     specialRequests: '',
   });
 
-  const poojaData = POOJAS.find((p) => p.id.toString() === id) || POOJAS[0];
-
-  // Helper to match pooja variations
-  const matchesPoojaName = (slotName: string, poojaTitle: string): boolean => {
-    const s = slotName.toLowerCase();
-    const p = poojaTitle.toLowerCase();
-    if (s === p) return true;
-    if (s.includes('satyanarayana') && p.includes('satyanarayana')) return true;
-    if (s.includes('rudra') && p.includes('rudra')) return true;
-    if (s.includes('ganapathi') && p.includes('ganapathi')) return true;
-    if (s.includes('lakshmi') && p.includes('lakshmi')) return true;
-    if (s.includes('navagraha') && p.includes('navagraha')) return true;
-    return false;
-  };
-
-  // Load and filter slots dynamically from localStorage
-  const [allSlots, setAllSlots] = useState<any[]>(() => {
-    const slotsData = localStorage.getItem('doshanivarana_slots');
-    return slotsData ? JSON.parse(slotsData) : [];
-  });
-
+  // Fetch Pooja details from Firestore
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'doshanivarana_slots') {
-        const data = localStorage.getItem('doshanivarana_slots');
-        setAllSlots(data ? JSON.parse(data) : []);
-      }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    const handleCustomUpdate = () => {
-      const data = localStorage.getItem('doshanivarana_slots');
-      setAllSlots(data ? JSON.parse(data) : []);
-    };
-    window.addEventListener('doshanivarana_slots_updated', handleCustomUpdate);
-    window.addEventListener('focus', handleCustomUpdate);
+    if (!poojaId) return;
+    import('../../services/firebase/poojas').then(({ PoojasService }) => {
+      PoojasService.getPoojaById(poojaId).then(p => {
+        if (p) setPoojaData(p);
+      });
+    });
+  }, [poojaId]);
 
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('doshanivarana_slots_updated', handleCustomUpdate);
-      window.removeEventListener('focus', handleCustomUpdate);
-    };
-  }, []);
+  // Real-time slots subscription
+  useEffect(() => {
+    if (!poojaId) return;
+    setSlotsLoading(true);
+    const unsubscribe = SlotsService.subscribeToSlotsByPooja(poojaId, (fetchedSlots) => {
+      setSlots(fetchedSlots);
+      setSlotsLoading(false);
+    });
+    return () => unsubscribe();
+  }, [poojaId]);
 
+  // Derive unique available dates from slots
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const activePoojaSlots = allSlots.filter((slot) => {
-    const matchesPooja = matchesPoojaName(slot.name, poojaData.title);
-    const isActive = slot.status === true;
-    const hasCapacity = slot.bookings < slot.maxBookings;
-    const isFuture = new Date(slot.date) >= today;
-    return matchesPooja && isActive && hasCapacity && isFuture;
+  const activeSlots = slots.filter(s => {
+    const slotDate = new Date(s.date);
+    return slotDate >= today && (s.availableSeats > 0);
   });
 
-  // Derive unique available dates from active slots
-  const uniqueDates = Array.from(new Set(activePoojaSlots.map((s) => s.date))).sort();
-  const availableDates = uniqueDates.map((dateStr) => {
+  const uniqueDates = Array.from(new Set(activeSlots.map(s => s.date))).sort();
+  const availableDates = uniqueDates.map(dateStr => {
     const d = new Date(dateStr);
-    const formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
-
-    // Check if it's tomorrow
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const isTomorrow = d.toDateString() === tomorrow.toDateString();
-
     return {
       date: dateStr,
-      label: isTomorrow ? 'Tomorrow' : formattedDate,
-      day: dayName,
+      label: isTomorrow
+        ? 'Tomorrow'
+        : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      day: d.toLocaleDateString('en-US', { weekday: 'long' }),
     };
   });
 
-  // Derive available times for selected date
-  const availableTimes = activePoojaSlots
-    .filter((s) => s.date === formData.selectedDate)
-    .map((s) => s.time);
+  // Times for selected date
+  const slotsForDate = activeSlots.filter(s => s.date === formData.selectedDate);
+  const availableTimes = slotsForDate.map(s => ({ id: s.id, time: s.startTime, seats: s.availableSeats }));
 
   const nakshatras = [
     'Ashwini', 'Bharani', 'Krittika', 'Rohini', 'Mrigashira', 'Ardra', 'Punarvasu', 'Pushya',
@@ -117,81 +101,67 @@ export function BookingFlow() {
     return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (step < 3) {
       setStep(step + 1);
-    } else {
-      // Find the matched slot in localStorage and update bookings
-      const updatedSlots = allSlots.map((slot) => {
-        if (
-          matchesPoojaName(slot.name, poojaData.title) &&
-          slot.date === formData.selectedDate &&
-          slot.time === formData.selectedTime
-        ) {
-          const newBookings = slot.bookings + 1;
-          const isFull = newBookings >= slot.maxBookings;
-          return {
-            ...slot,
-            bookings: newBookings,
-            availability: isFull ? 'Full' : 'Open',
-          };
-        }
-        return slot;
-      });
+      return;
+    }
 
-      localStorage.setItem('doshanivarana_slots', JSON.stringify(updatedSlots));
-      window.dispatchEvent(new Event('doshanivarana_slots_updated'));
+    // Step 3 — Submit Booking to Firestore
+    if (!user) {
+      setError('Please log in to book a pooja.');
+      return;
+    }
+    if (!formData.selectedSlotId) {
+      setError('No slot selected.');
+      return;
+    }
 
-      // Generate booking ID and write new booking to localStorage
-      const bookingId = `BK-${Date.now().toString().slice(-6)}`;
-      
-      const newBooking = {
-        id: bookingId,
+    setLoading(true);
+    setError(null);
+    try {
+      const bookingData = {
+        poojaId: poojaId || '',
+        poojaName: poojaData?.name || '',
+        templeId: poojaData?.templeId || '',
+        templeName: poojaData?.templeName || '',
         devoteeName: formData.devoteeNames,
-        gotra: formData.gothram,
-        nakshatra: formData.nakshatra || 'Shravana',
-        mobile: '+91 98765 43210',
-        email: 'devotee@email.com',
-        poojaName: poojaData.title,
-        temple: poojaData.temple,
-        dateTime: `${formatDateString(formData.selectedDate)}, ${formData.selectedTime}`,
-        paymentStatus: 'Confirmed',
-        amount: poojaData.price,
+        gothram: formData.gothram,
+        nakshatra: formData.nakshatra,
+        specialRequests: formData.specialRequests,
+        amountPaid: poojaData?.price || 0,
         paymentMethod: 'UPI',
-        orderId: `RZP-2026-${Date.now().toString().slice(-5)}`,
-        pujari: 'Not Assigned',
-        delivery: 'Yes',
-        deliveryAddress: '42 MG Road, Bangalore, Karnataka 560001',
-        deliveryStatus: 'Booked',
-        streamStatus: 'Not Started',
-        recordingStatus: 'Not Available',
-        feedback: null,
-        tab: 'upcoming'
+        hasPrasadDelivery: true,
+        isDeleted: false,
       };
 
-      // Fetch bookings list and append new booking
-      const bookingsData = localStorage.getItem('doshanivarana_bookings');
-      const bookings = bookingsData ? JSON.parse(bookingsData) : [];
-      bookings.unshift(newBooking);
-      localStorage.setItem('doshanivarana_bookings', JSON.stringify(bookings));
-      window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
+      const bookingId = await BookingsService.createBooking(
+        user.uid,
+        formData.selectedSlotId,
+        bookingData
+      );
 
       navigate(`/booking-confirmation/${bookingId}`);
+    } catch (e: any) {
+      setError(e.message || 'Booking failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   const canContinue = () => {
+    if (loading) return false;
     switch (step) {
-      case 1:
-        return formData.selectedDate !== '' && formData.selectedTime !== '';
-      case 2:
-        return formData.devoteeNames.trim() !== '' && formData.gothram.trim() !== '';
-      case 3:
-        return true;
-      default:
-        return false;
+      case 1: return formData.selectedDate !== '' && formData.selectedSlotId !== '';
+      case 2: return formData.devoteeNames.trim() !== '' && formData.gothram.trim() !== '';
+      case 3: return true;
+      default: return false;
     }
   };
+
+  const priceFmt = poojaData?.price
+    ? `₹${poojaData.price.toLocaleString()}`
+    : '₹—';
 
   return (
     <div className="min-h-screen bg-background">
@@ -215,13 +185,8 @@ export function BookingFlow() {
             </p>
           </div>
         </div>
-        
-        {/* Progress Bar */}
         <div className="h-1 bg-muted">
-          <div 
-            className="h-full bg-primary transition-all duration-300"
-            style={{ width: `${(step / 3) * 100}%` }}
-          />
+          <div className="h-full bg-primary transition-all duration-300" style={{ width: `${(step / 3) * 100}%` }} />
         </div>
       </header>
 
@@ -234,37 +199,46 @@ export function BookingFlow() {
             </div>
             <div className="flex-1">
               <h3 className="font-semibold mb-1" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-                {poojaData.title}
+                {poojaData?.name || 'Loading…'}
               </h3>
               <p className="text-sm text-muted-foreground mb-2" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                {poojaData.temple} • {poojaData.deity}
+                {poojaData?.templeName || poojaData?.templeId || '—'} • {poojaData?.deity || '—'}
               </p>
               <p className="text-primary font-semibold" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                {poojaData.price}
+                {priceFmt}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Step Content */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+            {error}
+          </div>
+        )}
+
+        {/* Step 1 — Date & Time */}
         {step === 1 && (
           <div className="space-y-6">
-            {/* Date Selection */}
             <div>
               <label className="block text-sm font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
                 Select Date
               </label>
-              {availableDates.length === 0 ? (
+              {slotsLoading ? (
+                <div className="p-6 border border-dashed border-border rounded-xl text-center text-sm text-muted-foreground">
+                  Loading available slots…
+                </div>
+              ) : availableDates.length === 0 ? (
                 <div className="p-6 border border-dashed border-border rounded-xl text-center text-sm text-muted-foreground italic">
-                  Currently no active slots are available for booking this pooja. Please check back later.
+                  No slots available for this pooja. Please check back later.
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  {availableDates.map((dateOption) => (
+                  {availableDates.map(dateOption => (
                     <button
                       key={dateOption.date}
                       type="button"
-                      onClick={() => setFormData({ ...formData, selectedDate: dateOption.date, selectedTime: '' })}
+                      onClick={() => setFormData({ ...formData, selectedDate: dateOption.date, selectedSlotId: '', selectedTime: '' })}
                       className={`p-4 rounded-xl border-2 transition-all text-left ${
                         formData.selectedDate === dateOption.date
                           ? 'border-primary bg-primary/5'
@@ -286,26 +260,29 @@ export function BookingFlow() {
               )}
             </div>
 
-            {/* Time Selection */}
             {formData.selectedDate && (
               <div>
                 <label className="block text-sm font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
                   Select Time
                 </label>
                 <div className="grid grid-cols-3 gap-2">
-                  {availableTimes.map((time) => (
+                  {availableTimes.map(slotOption => (
                     <button
-                      key={time}
+                      key={slotOption.id}
                       type="button"
-                      onClick={() => setFormData({ ...formData, selectedTime: time })}
-                      className={`p-3 rounded-xl border-2 transition-all ${
-                        formData.selectedTime === time
+                      onClick={() => setFormData({ ...formData, selectedSlotId: slotOption.id, selectedTime: slotOption.time })}
+                      className={`p-3 rounded-xl border-2 transition-all text-center ${
+                        formData.selectedSlotId === slotOption.id
                           ? 'border-primary bg-primary/5 text-primary font-semibold'
                           : 'border-border hover:border-primary/50'
                       }`}
                       style={{ fontFamily: "'Noto Sans', sans-serif" }}
                     >
-                      {time}
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <Clock className="w-3 h-3" />
+                        <span className="text-xs">{slotOption.time}</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">{slotOption.seats} seats left</p>
                     </button>
                   ))}
                 </div>
@@ -314,9 +291,9 @@ export function BookingFlow() {
           </div>
         )}
 
+        {/* Step 2 — Devotee Details */}
         {step === 2 && (
           <div className="space-y-6">
-            {/* Devotee Names */}
             <div>
               <label className="block text-sm font-semibold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
                 Devotee Name(s)
@@ -327,14 +304,13 @@ export function BookingFlow() {
               <input
                 type="text"
                 value={formData.devoteeNames}
-                onChange={(e) => setFormData({ ...formData, devoteeNames: e.target.value })}
+                onChange={e => setFormData({ ...formData, devoteeNames: e.target.value })}
                 placeholder="e.g., Raghavan Iyer, Lakshmi Iyer"
                 className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 style={{ fontFamily: "'Noto Sans', sans-serif" }}
               />
             </div>
 
-            {/* Gothram */}
             <div>
               <label className="block text-sm font-semibold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
                 Gothram
@@ -342,41 +318,36 @@ export function BookingFlow() {
               <input
                 type="text"
                 value={formData.gothram}
-                onChange={(e) => setFormData({ ...formData, gothram: e.target.value })}
+                onChange={e => setFormData({ ...formData, gothram: e.target.value })}
+                placeholder="e.g., Bharadwaja"
                 className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 style={{ fontFamily: "'Noto Sans', sans-serif" }}
               />
             </div>
 
-            {/* Nakshatra */}
             <div>
               <label className="block text-sm font-semibold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
                 Nakshatra (Optional)
               </label>
               <select
                 value={formData.nakshatra}
-                onChange={(e) => setFormData({ ...formData, nakshatra: e.target.value })}
+                onChange={e => setFormData({ ...formData, nakshatra: e.target.value })}
                 className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 style={{ fontFamily: "'Noto Sans', sans-serif" }}
               >
                 <option value="">Select Nakshatra</option>
-                {nakshatras.map((nakshatra) => (
-                  <option key={nakshatra} value={nakshatra}>
-                    {nakshatra}
-                  </option>
-                ))}
+                {nakshatras.map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
 
-            {/* Special Requests */}
             <div>
               <label className="block text-sm font-semibold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
                 Special Requests (Optional)
               </label>
               <textarea
                 value={formData.specialRequests}
-                onChange={(e) => setFormData({ ...formData, specialRequests: e.target.value })}
-                placeholder="Any specific prayers or intentions..."
+                onChange={e => setFormData({ ...formData, specialRequests: e.target.value })}
+                placeholder="Any specific prayers or intentions…"
                 rows={4}
                 className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
                 style={{ fontFamily: "'Noto Sans', sans-serif" }}
@@ -385,53 +356,47 @@ export function BookingFlow() {
           </div>
         )}
 
+        {/* Step 3 — Review */}
         {step === 3 && (
           <div className="space-y-6">
-            {/* Review Details */}
             <div className="bg-card border border-border rounded-2xl overflow-hidden">
               <div className="p-4 border-b border-border">
-                <h3 className="font-semibold" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-                  Pooja Details
-                </h3>
+                <h3 className="font-semibold" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Pooja Details</h3>
               </div>
-              <ReviewItem label="Date & Time" value={`${formData.selectedDate ? formatDateString(formData.selectedDate) : ''}, ${formData.selectedTime}`} />
+              <ReviewItem label="Date & Time" value={`${formatDateString(formData.selectedDate)}, ${formData.selectedTime}`} />
               <ReviewItem label="Devotee(s)" value={formData.devoteeNames} />
               <ReviewItem label="Gothram" value={formData.gothram} />
               {formData.nakshatra && <ReviewItem label="Nakshatra" value={formData.nakshatra} />}
               {formData.specialRequests && <ReviewItem label="Special Requests" value={formData.specialRequests} />}
             </div>
 
-            {/* Payment Summary */}
             <div className="bg-card border border-border rounded-2xl p-4">
-              <h3 className="font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-                Payment Summary
-              </h3>
+              <h3 className="font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Payment Summary</h3>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>Pooja Amount</span>
-                  <span style={{ fontFamily: "'Noto Sans', sans-serif" }}>{poojaData.price}</span>
+                  <span className="text-muted-foreground">Pooja Amount</span>
+                  <span>{priceFmt}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>Prasad Delivery</span>
-                  <span style={{ fontFamily: "'Noto Sans', sans-serif" }}>Free</span>
+                  <span className="text-muted-foreground">Prasad Delivery</span>
+                  <span>Free</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>Live Stream</span>
-                  <span style={{ fontFamily: "'Noto Sans', sans-serif" }}>Included</span>
+                  <span className="text-muted-foreground">Live Stream</span>
+                  <span>Included</span>
                 </div>
                 <div className="border-t border-border pt-2 mt-2">
                   <div className="flex justify-between font-semibold text-lg">
                     <span style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Total Amount</span>
-                    <span className="text-primary" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>{poojaData.price}</span>
+                    <span className="text-primary" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>{priceFmt}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Important Note */}
             <div className="bg-primary/10 border border-primary/30 rounded-xl p-4">
               <p className="text-sm text-primary" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                <strong>Note:</strong> You will receive a confirmation with booking details and live stream link once payment is complete.
+                <strong>Note:</strong> You will receive a confirmation with booking details and live stream link once the booking is placed.
               </p>
             </div>
           </div>
@@ -451,7 +416,7 @@ export function BookingFlow() {
             }`}
             style={{ fontFamily: "'Anek Devanagari', sans-serif" }}
           >
-            {step === 3 ? 'Proceed to Payment' : 'Continue'}
+            {loading ? 'Booking…' : step === 3 ? 'Confirm Booking' : 'Continue'}
           </button>
         </div>
       </div>
@@ -462,12 +427,8 @@ export function BookingFlow() {
 function ReviewItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="p-4 border-b border-border last:border-b-0">
-      <p className="text-xs text-muted-foreground mb-1" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-        {label}
-      </p>
-      <p className="font-medium" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-        {value}
-      </p>
+      <p className="text-xs text-muted-foreground mb-1" style={{ fontFamily: "'Noto Sans', sans-serif" }}>{label}</p>
+      <p className="font-medium" style={{ fontFamily: "'Noto Sans', sans-serif" }}>{value}</p>
     </div>
   );
 }

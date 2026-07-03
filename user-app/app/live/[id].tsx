@@ -1,13 +1,14 @@
 // @ts-nocheck
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, Pressable, ActivityIndicator, StatusBar, StyleSheet, Image } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Volume2, VolumeX, Lock, Play, Pause, RotateCcw } from 'lucide-react-native';
+import { ArrowLeft, Volume2, VolumeX, Lock, Play, Pause, RotateCcw, Radio } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
 import { safeStorage } from '../../src/old_app/lib/storage';
 import { firestoreProvider as firestore } from '../../src/lib/firebaseProvider';
+import { useAgoraViewer } from '../../hooks/useAgoraViewer';
 
 const DEMO_VIDEOS: Record<string, string> = {
   default:     'https://www.w3schools.com/html/mov_bbb.mp4',
@@ -50,9 +51,15 @@ export default function LiveStreamScreen() {
   const [stream, setStream] = useState<any>(null);
   const [recording, setRecording] = useState<any>(null);
   const [loadingData, setLoadingData] = useState(true);
-  const [isAuthorized, setIsAuthorized] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
-  // Auth lookup
+  // Agora live viewing state
+  const [agoraToken, setAgoraToken] = useState<string | null>(null);
+  const [agoraTokenLoading, setAgoraTokenLoading] = useState(false);
+  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+  const AGORA_APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID || '';
+
+  // Auth lookup — derive userId from stored session
   const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
   const userId = userSession ? JSON.parse(userSession).id : null;
 
@@ -116,17 +123,60 @@ export default function LiveStreamScreen() {
     };
   }, [id, userId]);
 
-  const isAvailable    =
-    booking &&
-    (booking.recordingStatus === 'Available' || booking.streamStatus === 'LIVE' || booking.streamStatus === 'In Progress' || recording?.status === 'PUBLISHED');
+  // ── Agora: fetch subscriber token when a live stream is detected ────────────
+  const isLive = booking?.streamStatus === 'LIVE' || booking?.streamStatus === 'IN_PROGRESS' || stream?.status === 'LIVE';
+  const agoraChannel = stream?.agoraChannelName || null;
 
+  useEffect(() => {
+    if (!isLive || !agoraChannel || agoraToken) return;
+    const fetchToken = async () => {
+      setAgoraTokenLoading(true);
+      try {
+        const res = await fetch(
+          `${BACKEND_URL}/api/agora/token?channelName=${encodeURIComponent(agoraChannel)}&uid=0&role=subscriber`
+        );
+        const data = await res.json();
+        if (data.token) {
+          setAgoraToken(data.token);
+        }
+      } catch (e) {
+        console.warn('[Agora Viewer] Token fetch failed:', e);
+      } finally {
+        setAgoraTokenLoading(false);
+      }
+    };
+    fetchToken();
+  }, [isLive, agoraChannel]);
+
+  // Use Agora SDK for live viewing, expo-video for recordings
+  const { remoteUid: agoraRemoteUid, isConnected: agoraConnected, error: agoraViewError } = useAgoraViewer({
+    channelName: isLive && agoraToken ? agoraChannel : null,
+    appId: AGORA_APP_ID,
+    token: agoraToken,
+    uid: 0,
+  });
+
+  const isAvailable =
+    booking &&
+    (
+      booking.recordingStatus === 'Available' ||
+      booking.streamStatus === 'LIVE' ||
+      booking.streamStatus === 'IN_PROGRESS' ||
+      stream?.status === 'LIVE' ||
+      recording?.status === 'PUBLISHED'
+    );
+
+  const isFinished = !isLive && duration > 0 && currentTime >= duration - 1;
+
+  // Only use video player for recordings (not live Agora streams)
   const videoSource = recording?.status === 'PUBLISHED' && recording?.videoUrl
     ? recording.videoUrl
-    : booking
-      ? getVideoUrl(booking.poojaName, stream?.streamUrl || booking.recordingUrl)
-      : DEMO_VIDEOS.default;
+    : booking && !isLive
+      ? getVideoUrl(booking.poojaName, booking.recordingUrl)
+      : null; // null = using Agora, not video player
 
-  const player = useVideoPlayer({ uri: videoSource }, (p) => {
+  const player = useVideoPlayer(videoSource ? { uri: videoSource } : null, (p) => {
+    if (!p) return;
     p.loop       = false;
     p.muted      = false;
     p.play();
@@ -176,6 +226,7 @@ export default function LiveStreamScreen() {
     player.muted = !player.muted;
     setIsMuted(player.muted);
   };
+
 
   if (loadingData) {
     return (
@@ -236,9 +287,17 @@ export default function LiveStreamScreen() {
     );
   }
 
-  const isLive       = booking.streamStatus === 'LIVE' || booking.streamStatus === 'In Progress' || (stream?.status === 'LIVE');
-  const isFinished   = !isLive && duration > 0 && currentTime >= duration - 1;
-  const progress     = duration > 0 ? Math.min(currentTime / duration, 1) : 0;
+  const progress = duration > 0 ? Math.min(currentTime / duration, 1) : 0;
+
+  // ── Live Agora path — import RtcSurfaceView at the top level is not possible
+  // because react-native-agora requires native modules. We use a lazy require.
+  // This renders as a black screen in Expo Go; use a dev build for full Agora video.
+  let AgoraSurfaceView: any = null;
+  try {
+    AgoraSurfaceView = require('react-native-agora').RtcSurfaceView;
+  } catch (_) {
+    // react-native-agora not available (Expo Go), will fallback to placeholder
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
@@ -248,16 +307,50 @@ export default function LiveStreamScreen() {
         style={{ flex: 1 }}
         onPress={() => setShowControls((c) => !c)}
       >
-        <VideoView
-          player={player}
-          style={StyleSheet.absoluteFill}
-          contentFit="contain"
-          nativeControls={false}
-          allowsFullscreen={false}
-          allowsPictureInPicture={false}
-        />
+        {/* ── Live stream: Agora RTC view ──────────────────────────────────── */}
+        {isLive && AgoraSurfaceView && agoraConnected && agoraRemoteUid !== null ? (
+          <AgoraSurfaceView
+            canvas={{ uid: agoraRemoteUid }}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : isLive && (agoraTokenLoading || !agoraConnected) ? (
+          <View style={[styles.overlay, { backgroundColor: '#000' }]}>
+            <ActivityIndicator size="large" color="#F97316" />
+            <Radio size={32} color="#F97316" style={{ marginTop: 16 }} />
+            <Text style={[styles.loadingText, { marginTop: 8 }]}>
+              {agoraTokenLoading ? 'Connecting to live stream…' : 'Waiting for broadcaster…'}
+            </Text>
+          </View>
+        ) : !isLive ? (
+          /* ── Recording: expo-video ─────────────────────────────────────── */
+          <VideoView
+            player={player}
+            style={StyleSheet.absoluteFill}
+            contentFit="contain"
+            nativeControls={false}
+            allowsFullscreen={false}
+            allowsPictureInPicture={false}
+          />
+        ) : (
+          /* Agora not available (Expo Go) — show placeholder */
+          <View style={[styles.overlay, { backgroundColor: '#111' }]}>
+            <Radio size={48} color="#F97316" />
+            <Text style={[styles.title, { marginTop: 16 }]}>Live Stream Active</Text>
+            <Text style={styles.subtitle}>
+              Install a dev build to watch the Agora live stream.{'\n'}
+              Channel: {agoraChannel}
+            </Text>
+          </View>
+        )}
 
-        {isLoading && (
+        {isLive && agoraConnected && (
+          <View style={{ position: 'absolute', top: 16, left: 16, backgroundColor: '#EF4444', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' }} />
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>LIVE</Text>
+          </View>
+        )}
+
+        {!isLive && isLoading && (
           <View style={styles.overlay}>
             <ActivityIndicator size="large" color="#F97316" />
             <Text style={styles.loadingText}>Loading Pooja Recording…</Text>
@@ -373,6 +466,35 @@ export default function LiveStreamScreen() {
                   </Pressable>
                 )}
               </View>
+
+              {/* YouTube link — shown when recording has been uploaded to YouTube */}
+              {!isLive && (recording?.youtubeLiveUrl || booking?.youtubeLiveUrl) && (
+                <Pressable
+                  onPress={() => {
+                    const { Linking } = require('react-native');
+                    Linking.openURL(recording?.youtubeLiveUrl || booking?.youtubeLiveUrl);
+                  }}
+                  style={{
+                    marginTop: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: '#FF000020',
+                    borderWidth: 1,
+                    borderColor: '#FF000040',
+                    borderRadius: 20,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    alignSelf: 'center',
+                  }}
+                >
+                  <Radio size={14} color="#FF4444" />
+                  <Text style={{ color: '#FF6666', fontSize: 13, fontWeight: '600' }}>
+                    Watch on YouTube
+                  </Text>
+                </Pressable>
+              )}
+
             </View>
           </>
         )}

@@ -1,0 +1,8 @@
+{
+  "name": "admin-panel-proxy",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix admin",
+    "build": "npm run build --prefix admin"
+  }
+}

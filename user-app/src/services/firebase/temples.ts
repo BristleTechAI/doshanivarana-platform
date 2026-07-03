@@ -10,10 +10,11 @@ export const TemplesService = {
 
   subscribeToTemples(callback: (temples: Temple[]) => void) {
     return firestore().collection('temples')
-      .where('isDeleted', '==', false)
       .onSnapshot((snapshot: any) => {
         if (snapshot) {
-          const list = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Temple));
+          const list = snapshot.docs
+            .map((doc: any) => ({ id: doc.id, ...doc.data() } as Temple))
+            .filter((t: Temple) => t.isDeleted !== true);
           callback(list);
         }
       });

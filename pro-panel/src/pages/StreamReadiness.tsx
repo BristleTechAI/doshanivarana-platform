@@ -1,8 +1,11 @@
 // @ts-nocheck
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { db } from '../lib/db';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { db as localDb } from '../lib/db';
 import { PageHeader } from '../components/PageHeader';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Stage3Checklist {
   videoClear: boolean;
@@ -16,6 +19,19 @@ interface Stage4Checklist {
   latencyChecked: boolean;
   pujariMicSecured: boolean;
 }
+
+const defaultStage3: Stage3Checklist = {
+  videoClear: false,
+  audioClear: false,
+  streamKeyWorking: false,
+  playbackTested: false,
+};
+
+const defaultStage4: Stage4Checklist = {
+  finalSignalCheck: false,
+  latencyChecked: false,
+  pujariMicSecured: false,
+};
 
 const getDaysToGo = (dateTimeStr: string) => {
   try {
@@ -40,25 +56,62 @@ const getDaysToGo = (dateTimeStr: string) => {
 export function StreamReadiness() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { templeId } = useAuth();
 
   const bookingId = id || 'BK-1001';
-  const booking = db.getBookingById(bookingId) || db.getBookings()[0];
 
-  const initialStreamData = db.getStreamReadiness(bookingId);
-
-  const [currentStage, setCurrentStage] = useState<3 | 4 | 5>(initialStreamData.currentStage);
-  
-  const [stage3, setStage3] = useState<Stage3Checklist>(initialStreamData.stage3);
-
-  const [stage4, setStage4] = useState<Stage4Checklist>(initialStreamData.stage4);
-
+  // Firestore-backed state
+  const [loading, setLoading] = useState(true);
+  const [currentStage, setCurrentStage] = useState<3 | 4 | 5>(3);
+  const [stage3, setStage3] = useState<Stage3Checklist>(defaultStage3);
+  const [stage4, setStage4] = useState<Stage4Checklist>(defaultStage4);
+  const [booking, setBooking] = useState<any>(null);
   const [notification, setNotification] = useState<string | null>(null);
 
-  const saveState = (stage: 3 | 4 | 5, s3: Stage3Checklist, s4: Stage4Checklist) => {
+  // Load readiness state from Firestore on mount
+  useEffect(() => {
+    const loadReadiness = async () => {
+      try {
+        // Load booking data
+        const bookingSnap = await getDoc(doc(db, 'bookings', bookingId));
+        if (bookingSnap.exists()) {
+          setBooking({ id: bookingSnap.id, ...bookingSnap.data() });
+        }
+
+        // Load stream readiness from Firestore
+        const readinessSnap = await getDoc(doc(db, 'streamReadiness', bookingId));
+        if (readinessSnap.exists()) {
+          const data = readinessSnap.data();
+          setCurrentStage(data.currentStage || 3);
+          setStage3(data.stage3 || defaultStage3);
+          setStage4(data.stage4 || defaultStage4);
+        }
+      } catch (e) {
+        console.error('Failed to load stream readiness:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadReadiness();
+  }, [bookingId]);
+
+  const saveState = async (stage: 3 | 4 | 5, s3: Stage3Checklist, s4: Stage4Checklist) => {
     setCurrentStage(stage);
     setStage3(s3);
     setStage4(s4);
-    db.saveStreamReadiness(bookingId, { currentStage: stage, stage3: s3, stage4: s4 });
+    // Persist to Firestore
+    try {
+      await setDoc(doc(db, 'streamReadiness', bookingId), {
+        bookingId,
+        templeId: templeId || booking?.templeId || '',
+        currentStage: stage,
+        stage3: s3,
+        stage4: s4,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.error('Failed to save stream readiness:', e);
+    }
   };
 
   const toggleStage3 = (key: keyof Stage3Checklist) => {
@@ -81,7 +134,7 @@ export function StreamReadiness() {
   const handleConfirmStage3 = () => {
     if (!isStage3Complete) return;
     saveState(4, stage3, stage4);
-    db.addNotification(
+    localDb.addNotification(
       'Stream Readiness Gate',
       `Stage 3 Complete: Test stream completed successfully for ${booking?.poojaName || 'Pooja'}.`,
       `/stream-readiness/${bookingId}`
@@ -93,7 +146,7 @@ export function StreamReadiness() {
   const handleConfirmStage4 = () => {
     if (!isStage4Complete) return;
     saveState(5, stage3, stage4);
-    db.addNotification(
+    localDb.addNotification(
       'Stream Readiness Gate',
       `Stage 4 Complete: Readiness handshake OK. Live stream unlocked for ${booking?.poojaName || 'Pooja'}.`,
       `/stream-readiness/${bookingId}`
@@ -110,6 +163,17 @@ export function StreamReadiness() {
   let progressPercent = 50;
   if (currentStage === 4) progressPercent = 75;
   if (currentStage === 5) progressPercent = 100;
+
+  if (loading) {
+    return (
+      <div className="max-w-[1440px] mx-auto pb-32 flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-4">
+          <span className="material-symbols-outlined text-[48px] text-primary animate-spin">sync</span>
+          <p className="text-on-surface-variant font-semibold">Loading readiness checklist...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1440px] mx-auto pb-32 relative font-sans">

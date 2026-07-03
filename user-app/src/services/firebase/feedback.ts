@@ -1,12 +1,21 @@
 import { firestoreProvider as firestore } from '../../lib/firebaseProvider';
 
 export const FeedbackService = {
-  async submitFeedback(userId: string, bookingId: string, rating: number, comment: string) {
+  async getFeedbackByBooking(bookingId: string) {
+    const snapshot = await firestore().collection('feedback')
+      .where('bookingId', '==', bookingId)
+      .limit(1)
+      .get();
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  },
+
+  async submitFeedback(userId: string, bookingId: string, rating: number, comment: string, templeId?: string) {
     const fbRef = firestore().collection('feedback').doc();
     await fbRef.set({
       id: fbRef.id,
       userId,
       bookingId,
+      templeId: templeId || null,
       rating,
       comment,
       status: 'PENDING',
@@ -19,10 +28,12 @@ export const FeedbackService = {
       eventType: 'feedback.created',
       entityId: fbRef.id,
       entityType: 'feedback',
-      payload: { feedbackId: fbRef.id, userId, bookingId },
+      payload: { feedbackId: fbRef.id, userId, bookingId, templeId: templeId || null },
       status: 'PENDING',
       createdAt: firestore.FieldValue.serverTimestamp()
     });
+
+    return fbRef.id;
   },
 
   async getUserFeedback(userId: string) {
@@ -33,3 +44,4 @@ export const FeedbackService = {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   }
 };
+

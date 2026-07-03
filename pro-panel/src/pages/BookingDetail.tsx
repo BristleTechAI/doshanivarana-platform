@@ -149,6 +149,27 @@ export function BookingDetail() {
 
         await updateDoc(doc(db, 'bookings', id), updatePayload);
         setBooking({ ...booking, priestId: updatePayload.priestId, priestName: updatePayload.priestName });
+
+        // Create system event so user receives a real-time notification
+        if (priestObj) {
+          const eventRef = doc(collection(db, 'systemEvents'));
+          await setDoc(eventRef, {
+            eventType: 'pujari.assigned',
+            entityId: id,
+            entityType: 'booking',
+            payload: {
+              bookingId: id,
+              userId: booking.userId,
+              templeId: booking.templeId,
+              priestId: priestObj.id,
+              priestName: priestObj.name,
+              poojaName: booking.poojaName || '',
+            },
+            status: 'PENDING',
+            createdAt: serverTimestamp()
+          });
+        }
+
         setNotification('Pujari assigned successfully!');
         setTimeout(() => setNotification(null), 3000);
       } catch (e) {
@@ -156,6 +177,7 @@ export function BookingDetail() {
       }
     }
   };
+
 
   if (loading) {
     return (

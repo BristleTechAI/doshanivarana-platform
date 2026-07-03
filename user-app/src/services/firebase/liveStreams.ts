@@ -8,7 +8,6 @@ export const LiveStreamsService = {
     const bookingIds = bookingsSnap.docs.map(doc => doc.id);
     if (bookingIds.length === 0) return [];
 
-    // Since we cannot easily do 'in' array > 10 items, just fetch all active streams and filter client side or do chunking
     const snapshot = await firestore().collection('liveStreams')
       .where('isDeleted', '==', false)
       .get();
@@ -32,8 +31,52 @@ export const LiveStreamsService = {
     };
   },
 
+  // Real-time listener for a specific booking's stream
+  subscribeToLiveStreamByBooking(bookingId: string, callback: (stream: any | null) => void) {
+    return firestore().collection('liveStreams')
+      .where('bookingId', '==', bookingId)
+      .limit(1)
+      .onSnapshot((snapshot: any) => {
+        if (snapshot && !snapshot.empty) {
+          const doc = snapshot.docs[0];
+          const data = doc.data();
+          callback({
+            id: doc.id,
+            ...data,
+            status: data.streamStatus || data.status
+          });
+        } else {
+          callback(null);
+        }
+      });
+  },
+
+  // Real-time listener for all active live streams
+  subscribeToActiveStreams(callback: (streams: any[]) => void) {
+    return firestore().collection('liveStreams')
+      .where('isDeleted', '==', false)
+      .onSnapshot((snapshot: any) => {
+        if (snapshot) {
+          const streams = snapshot.docs
+            .map((doc: any) => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                ...data,
+                status: data.streamStatus || data.status
+              };
+            })
+            .filter((s: any) =>
+              s.streamStatus === 'Live' ||
+              s.status === 'LIVE' ||
+              s.status === 'Live'
+            );
+          callback(streams);
+        }
+      });
+  },
+
   async getActiveStreams() {
-    // Adapter mapping 'LIVE' or streamStatus 'LIVE'
     const snapshot = await firestore().collection('liveStreams')
       .where('isDeleted', '==', false)
       .get();
@@ -43,3 +86,4 @@ export const LiveStreamsService = {
       .filter((s: any) => s.status === 'LIVE' || s.streamStatus === 'LIVE');
   }
 };
+

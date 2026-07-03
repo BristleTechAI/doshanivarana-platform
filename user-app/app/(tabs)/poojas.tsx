@@ -225,14 +225,14 @@ function PoojaListCard({
           <View className="flex-1">
             <View className="flex-row items-start justify-between mb-2">
               <Text className="font-semibold text-lg text-foreground flex-1" style={{ fontFamily: 'System' }}>
-                {t('poojaDb.' + id + '.title')}
+                {title}
               </Text>
               <View className="px-2 py-1 rounded-lg bg-accent/10 ml-2">
                 <Text className="text-accent text-xs font-medium">{getTranslatedDeity(deity, t)}</Text>
               </View>
             </View>
             <Text className="text-sm mb-3" numberOfLines={2} style={{ fontFamily: 'System', color: theme === 'dark' ? '#A8A29E' : '#44403C' }}>
-              {t('poojaDb.' + id + '.purpose')}
+              {purpose}
             </Text>
             <View className="flex-row items-center gap-3 mb-2">
               <View className="flex-row items-center gap-1">

@@ -64,17 +64,41 @@ export function Schedule() {
 
       const sData: UISlot[] = sSnap.docs.map(doc => {
         const data = doc.data();
+        let slotDate = data.date || '';
+        let slotStartTime = typeof data.startTime === 'string' ? data.startTime : '';
+
+        // If startTime is a Firestore Timestamp (has seconds field)
+        if (data.startTime && typeof data.startTime === 'object' && 'seconds' in data.startTime) {
+          const dateObj = new Date(data.startTime.seconds * 1000);
+          if (!slotDate) {
+            slotDate = dateObj.toISOString().split('T')[0];
+          }
+          let hours = dateObj.getHours();
+          const minutes = dateObj.getMinutes();
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          hours = hours % 12;
+          hours = hours ? hours : 12;
+          const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+          slotStartTime = `${hours.toString().padStart(2, '0')}:${minutesStr.toString().padStart(2, '0')} ${ampm}`;
+        }
+
         return {
           id: doc.id,
           ...data,
+          date: slotDate,
+          startTime: slotStartTime,
           poojaName: pMap[data.poojaId]?.name || data.poojaId || 'Unknown Pooja',
         } as UISlot;
       });
       
-      // Sort slots by date and time
+      // Sort slots by date and time safely
       sData.sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
-        return a.startTime.localeCompare(b.startTime);
+        const dateA = a.date || '';
+        const dateB = b.date || '';
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+        const timeA = a.startTime || '';
+        const timeB = b.startTime || '';
+        return timeA.localeCompare(timeB);
       });
       
       setSlots(sData);

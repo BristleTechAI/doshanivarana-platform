@@ -2,174 +2,151 @@ import { Circle, CheckCircle2, Clock, Package, PlayCircle, Video, X, Star } from
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { Link } from 'react-router';
 import { useState, useEffect } from 'react';
-import { useLanguage } from '../context/LanguageContext';
-import { POOJAS } from '../lib/poojas';
+import { BookingsService } from '../../services/firebase/bookings';
+import { FeedbackService } from '../../services/firebase/feedback';
+import { useAuth } from '../../contexts/AuthContext';
+
+// ─── Stage derivation from live Firestore fields ─────────────────────────────
+function getBookingStage(b: any): number {
+  if (!b) return 0;
+  // Stage 1: Booking exists
+  let stage = 1;
+  // Stage 2: Pujari assigned
+  if (b.priestId && b.priestId !== 'Not Assigned') stage = 2;
+  // Stage 3: Scheduled date exists
+  if (b.scheduledDate) stage = 3;
+  // Stage 4: Stream is live  
+  if (b.streamStatus === 'Live' || b.streamStatus === 'LIVE') stage = 4;
+  // Stage 5: Pooja completed
+  if (b.bookingStatus === 'Completed' || b.status === 'COMPLETED' || b.streamStatus === 'Ended') stage = 5;
+  // Stage 6: Recording published
+  if (b.recordingStatus === 'Published' || b.recordingStatus === 'Available') stage = 6;
+  // Stage 7: Prasad packed
+  if (b.deliveryStatus === 'PACKED' || b.deliveryStatus === 'Packed') stage = 7;
+  // Stage 8: Dispatched
+  if (['SHIPPED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'Dispatched', 'In Transit', 'Out for Delivery'].includes(b.deliveryStatus)) stage = 8;
+  // Stage 9: Delivered
+  if (b.deliveryStatus === 'DELIVERED' || b.deliveryStatus === 'Delivered') stage = 9;
+  return stage;
+}
+
+function isBookingCompleted(b: any): boolean {
+  return (
+    b.bookingStatus === 'Completed' ||
+    b.status === 'COMPLETED' ||
+    b.streamStatus === 'Ended' ||
+    b.streamStatus === 'ENDED' ||
+    b.deliveryStatus === 'DELIVERED' ||
+    b.deliveryStatus === 'Delivered'
+  );
+}
+
+function getPoojaImage(poojaName: string): string {
+  return 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080';
+}
+
+function formatDate(b: any): string {
+  if (b.scheduledDate) return b.scheduledDate;
+  if (b.createdAt?.toDate) return b.createdAt.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (b.createdAt?.seconds) return new Date(b.createdAt.seconds * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return '—';
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 
 export function Bookings() {
-  const { t } = useLanguage();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
+  const [allBookings, setAllBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Modal States
-  const [cancelModal, setCancelModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
-  const [rescheduleModal, setRescheduleModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
-  const [refundModal, setRefundModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
-  const [feedbackModal, setFeedbackModal] = useState<{isOpen: boolean, bookingId: string | null}>({isOpen: false, bookingId: null});
+  const [cancelModal, setCancelModal] = useState<{ isOpen: boolean; bookingId: string | null }>({ isOpen: false, bookingId: null });
+  const [cancelReason, setCancelReason] = useState('');
+  const [rescheduleModal, setRescheduleModal] = useState<{ isOpen: boolean; bookingId: string | null }>({ isOpen: false, bookingId: null });
+  const [refundModal, setRefundModal] = useState<{ isOpen: boolean; bookingId: string | null }>({ isOpen: false, bookingId: null });
+  const [feedbackModal, setFeedbackModal] = useState<{ isOpen: boolean; bookingId: string | null }>({ isOpen: false, bookingId: null });
+  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  // Feedback fields
-  const [feedbackRating, setFeedbackRating] = useState<number>(5);
-  const [feedbackComment, setFeedbackComment] = useState<string>("");
-
-  // Fetch bookings dynamically from localStorage
-  const [allBookings, setAllBookings] = useState<any[]>(() => {
-    if (typeof window !== 'undefined') {
-      const bookingsData = localStorage.getItem('doshanivarana_bookings');
-      return bookingsData ? JSON.parse(bookingsData) : [];
-    }
-    return [];
-  });
-
+  // ── Real-time subscription to user's bookings from Firestore ─────────────
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'doshanivarana_bookings') {
-        const data = localStorage.getItem('doshanivarana_bookings');
-        setAllBookings(data ? JSON.parse(data) : []);
-      }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    const handleCustomUpdate = () => {
-      const data = localStorage.getItem('doshanivarana_bookings');
-      setAllBookings(data ? JSON.parse(data) : []);
-    };
-    window.addEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
-    window.addEventListener('focus', handleCustomUpdate);
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const unsub = BookingsService.subscribeToUserBookings(user.uid, (bookings) => {
+      setAllBookings(bookings);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [user?.uid]);
 
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
-      window.removeEventListener('focus', handleCustomUpdate);
-    };
-  }, []);
-
-  const getPoojaImage = (poojaName: string) => {
-    const found = POOJAS.find(
-      (p) =>
-        p.title.toLowerCase().includes(poojaName.toLowerCase()) ||
-        poojaName.toLowerCase().includes(p.title.toLowerCase())
-    );
-    return found ? found.imageUrl : 'https://images.unsplash.com/photo-1680342786718-39d1febb5349?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjB0ZW1wbGUlMjB3b3JzaGlwJTIwcml0dWFsfGVufDF8fHx8MTc3MzgyNTQ1Mnww&ixlib=rb-4.1.0&q=80&w=1080';
-  };
-
-  const getBookingStage = (b: any) => {
-    let stage = 1; // Seva Offered
-    if (b.paymentStatus === 'Confirmed') stage = 2; // Confirmed
-    if (b.pujari !== 'Not Assigned') stage = 3; // Scheduled
-    if (b.streamStatus === 'In Progress') stage = 4; // Pooja Live
-    if (b.streamStatus === 'Ended') stage = 5; // Completed
-    if (b.recordingStatus === 'Available') stage = 6; // Recording Ready
-    if (b.deliveryStatus === 'Packed') stage = 7; // Prasad Packed
-    if (b.deliveryStatus === 'Dispatched' || b.deliveryStatus === 'In Transit' || b.deliveryStatus === 'Out for Delivery') stage = 8; // Dispatched / In Transit / Out for Delivery
-    if (b.deliveryStatus === 'Delivered') stage = 9; // Delivered
-    return stage;
-  };
-
+  // ── Map & filter ──────────────────────────────────────────────────────────
   const mappedBookings = allBookings.map((b: any) => {
-    const status = b.tab || (b.streamStatus === 'Ended' ? 'completed' : 'upcoming');
+    const completed = isBookingCompleted(b);
+    const cancelled = b.bookingStatus === 'Cancelled' || b.status === 'CANCELLED';
+    const status = cancelled ? 'cancelled' : completed ? 'completed' : 'upcoming';
     return {
       id: b.id,
-      title: b.poojaName,
-      temple: b.temple,
-      date: b.dateTime,
-      status: status,
+      title: b.poojaName || '—',
+      temple: b.templeName || b.templeId || '—',
+      date: formatDate(b),
+      status,
       currentStage: getBookingStage(b),
-      hasRecording: b.recordingStatus === 'Available',
-      imageUrl: getPoojaImage(b.poojaName),
+      hasRecording: b.recordingStatus === 'Published' || b.recordingStatus === 'Available',
+      imageUrl: getPoojaImage(b.poojaName || ''),
+      raw: b,
     };
   });
 
-  const filteredBookings = mappedBookings.filter((booking) =>
-    activeTab === 'active' ? booking.status === 'upcoming' : booking.status === 'completed'
+  const filteredBookings = mappedBookings.filter(b =>
+    activeTab === 'active' ? b.status === 'upcoming' : (b.status === 'completed' || b.status === 'cancelled')
   );
 
-  const handleCancelBooking = (id: string) => {
-    const updated = allBookings.map(b => b.id === id ? { ...b, tab: 'cancelled', paymentStatus: 'Pending' } : b);
-    localStorage.setItem('doshanivarana_bookings', JSON.stringify(updated));
-    window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
-    setCancelModal({isOpen: false, bookingId: null});
-  };
-
-  const handleRefundRequest = () => {
-    setRefundModal({isOpen: false, bookingId: null});
-    alert("Refund request submitted successfully.");
-  };
-
-  const handleFeedbackSubmit = () => {
-    const bookingId = feedbackModal.bookingId;
-    if (!bookingId) return;
-
-    // 1. Update the booking feedback locally in doshanivarana_bookings
-    const currentBookingsData = localStorage.getItem('doshanivarana_bookings');
-    let bookingsList = currentBookingsData ? JSON.parse(currentBookingsData) : [];
-    
-    const updatedBookings = bookingsList.map((b: any) => {
-      if (b.id === bookingId) {
-        return {
-          ...b,
-          feedback: feedbackComment
-        };
-      }
-      return b;
-    });
-
-    localStorage.setItem('doshanivarana_bookings', JSON.stringify(updatedBookings));
-    window.dispatchEvent(new Event('doshanivarana_bookings_updated'));
-
-    // 2. Find the updated booking to copy details to review
-    const booking = updatedBookings.find((b: any) => b.id === bookingId);
-    if (booking) {
-      // 3. Save the feedback to the global feed
-      const currentFeedbackData = localStorage.getItem('doshanivarana_feedback');
-      let feedbackList = currentFeedbackData ? JSON.parse(currentFeedbackData) : [];
-
-      const newReview = {
-        id: String(Date.now()),
-        devoteeName: booking.devoteeName || "Anonymous Devotee",
-        avatarText: booking.devoteeName ? booking.devoteeName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) : "DV",
-        avatarBg: "bg-[#e8def8] text-[#1d192b]",
-        poojaName: booking.poojaName,
-        temple: booking.temple || "Sri Venkateswara Temple",
-        date: booking.dateTime ? booking.dateTime.split(',')[0] : new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
-        rating: feedbackRating,
-        submittedTime: `Submitted Today, ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
-        comment: `"${feedbackComment}"`,
-        flagged: false
-      };
-
-      feedbackList.unshift(newReview);
-      localStorage.setItem('doshanivarana_feedback', JSON.stringify(feedbackList));
-      window.dispatchEvent(new Event('doshanivarana_feedback_updated'));
+  // ── Action handlers ───────────────────────────────────────────────────────
+  const handleCancelBooking = async () => {
+    const id = cancelModal.bookingId;
+    if (!id || !user) return;
+    setCancellingId(id);
+    try {
+      await BookingsService.cancelBooking(id, user.uid, cancelReason || 'User requested cancellation');
+    } catch (e) {
+      console.error(e);
     }
+    setCancellingId(null);
+    setCancelModal({ isOpen: false, bookingId: null });
+    setCancelReason('');
+  };
 
-    setFeedbackModal({isOpen: false, bookingId: null});
+  const handleFeedbackSubmit = async () => {
+    const id = feedbackModal.bookingId;
+    if (!id || !user || submittingFeedback) return;
+    const booking = allBookings.find(b => b.id === id);
+    setSubmittingFeedback(true);
+    try {
+      await FeedbackService.submitFeedback(
+        user.uid, id, feedbackRating, feedbackComment, booking?.templeId
+      );
+    } catch (e) {
+      console.error(e);
+    }
+    setSubmittingFeedback(false);
+    setFeedbackModal({ isOpen: false, bookingId: null });
     setFeedbackRating(5);
-    setFeedbackComment("");
-    alert("Thank you for your feedback!");
+    setFeedbackComment('');
   };
 
-  const handleRescheduleSubmit = () => {
-    setRescheduleModal({isOpen: false, bookingId: null});
-    alert("Reschedule request submitted to PRO.");
-  };
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-full">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
         <div className="max-w-lg mx-auto px-6 py-4">
-          <h1 className="text-2xl font-bold" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-            {t('bookings.title')}
-          </h1>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>My Bookings</h1>
           <p className="text-sm text-muted-foreground mt-1" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
             Track your pooja journey
           </p>
@@ -179,23 +156,21 @@ export function Bookings() {
       <div className="max-w-lg mx-auto px-6 py-6 space-y-6">
         {/* Tabs */}
         <div className="flex gap-2 p-1 bg-card rounded-xl border border-border">
-          <button 
+          <button
             onClick={() => setActiveTab('active')}
             className={`flex-1 py-2.5 rounded-lg font-medium text-sm transition-all ${
-              activeTab === 'active' 
-                ? 'bg-primary text-primary-foreground' 
-                : 'text-muted-foreground hover:text-foreground'
+              activeTab === 'active' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
+            style={{ fontFamily: "'Noto Sans', sans-serif" }}
           >
-            {t('common.active')}
+            Active
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('completed')}
             className={`flex-1 py-2.5 rounded-lg font-medium text-sm transition-all ${
-              activeTab === 'completed' 
-                ? 'bg-primary text-primary-foreground' 
-                : 'text-muted-foreground hover:text-foreground'
+              activeTab === 'completed' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
+            style={{ fontFamily: "'Noto Sans', sans-serif" }}
           >
             Past & Completed
           </button>
@@ -203,7 +178,20 @@ export function Bookings() {
 
         {/* Bookings */}
         <div className="space-y-4 pb-24">
-          {filteredBookings.length === 0 ? (
+          {loading ? (
+            Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="bg-card border border-border rounded-2xl overflow-hidden animate-pulse">
+                <div className="flex gap-4 p-4">
+                  <div className="w-20 h-20 rounded-xl bg-muted flex-shrink-0" />
+                  <div className="flex-1 space-y-2 py-1">
+                    <div className="h-4 bg-muted rounded w-3/4" />
+                    <div className="h-3 bg-muted rounded w-1/2" />
+                    <div className="h-3 bg-muted rounded w-1/4" />
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : filteredBookings.length === 0 ? (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-muted/30 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Package className="w-8 h-8 text-muted-foreground" />
@@ -212,42 +200,56 @@ export function Bookings() {
                 No {activeTab} bookings
               </h3>
               <p className="text-sm text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-                {activeTab === 'active' 
-                  ? 'Book your first pooja to get started' 
+                {activeTab === 'active'
+                  ? 'Book your first pooja to get started'
                   : 'Your completed poojas will appear here'}
               </p>
             </div>
           ) : (
             filteredBookings.map((booking) => (
-              <BookingCard 
-                key={booking.id} 
-                {...booking} 
-                onCancel={() => setCancelModal({isOpen: true, bookingId: booking.id})}
-                onReschedule={() => setRescheduleModal({isOpen: true, bookingId: booking.id})}
-                onRefund={() => setRefundModal({isOpen: true, bookingId: booking.id})}
-                onFeedback={() => setFeedbackModal({isOpen: true, bookingId: booking.id})}
+              <BookingCard
+                key={booking.id}
+                {...booking}
+                onCancel={() => setCancelModal({ isOpen: true, bookingId: booking.id })}
+                onReschedule={() => setRescheduleModal({ isOpen: true, bookingId: booking.id })}
+                onRefund={() => setRefundModal({ isOpen: true, bookingId: booking.id })}
+                onFeedback={() => setFeedbackModal({ isOpen: true, bookingId: booking.id })}
               />
             ))
           )}
         </div>
       </div>
 
+      {/* ── Modals ─────────────────────────────────────────────────────────── */}
+
       {/* Cancel Modal */}
       {cancelModal.isOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-card w-full max-w-sm rounded-2xl p-6 relative">
-            <button onClick={() => setCancelModal({isOpen: false, bookingId: null})} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+            <button onClick={() => setCancelModal({ isOpen: false, bookingId: null })} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Cancel Booking</h3>
-            <p className="text-sm text-muted-foreground mb-4">Are you sure you want to cancel this booking? This action cannot be undone.</p>
+            <p className="text-sm text-muted-foreground mb-4">Are you sure? This action cannot be undone.</p>
             <div className="mb-4">
               <label className="text-sm font-medium block mb-1">Reason for cancellation</label>
-              <textarea className="w-full border border-border rounded-lg p-3 text-sm bg-background" rows={3} placeholder="Please tell us why..."></textarea>
+              <textarea
+                className="w-full border border-border rounded-lg p-3 text-sm bg-background"
+                rows={3}
+                placeholder="Please tell us why..."
+                value={cancelReason}
+                onChange={e => setCancelReason(e.target.value)}
+              />
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setCancelModal({isOpen: false, bookingId: null})} className="flex-1 py-2.5 rounded-xl border border-border font-medium text-sm">Keep Booking</button>
-              <button onClick={() => handleCancelBooking(cancelModal.bookingId!)} className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground font-medium text-sm hover:opacity-90">Cancel It</button>
+              <button onClick={() => setCancelModal({ isOpen: false, bookingId: null })} className="flex-1 py-2.5 rounded-xl border border-border font-medium text-sm">Keep Booking</button>
+              <button
+                onClick={handleCancelBooking}
+                disabled={!!cancellingId}
+                className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground font-medium text-sm hover:opacity-90 disabled:opacity-50"
+              >
+                {cancellingId ? 'Cancelling…' : 'Cancel It'}
+              </button>
             </div>
           </div>
         </div>
@@ -257,7 +259,7 @@ export function Bookings() {
       {rescheduleModal.isOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-card w-full max-w-sm rounded-2xl p-6 relative">
-            <button onClick={() => setRescheduleModal({isOpen: false, bookingId: null})} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+            <button onClick={() => setRescheduleModal({ isOpen: false, bookingId: null })} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Reschedule Request</h3>
@@ -268,9 +270,14 @@ export function Bookings() {
             </div>
             <div className="mb-4">
               <label className="text-sm font-medium block mb-1">Reason</label>
-              <textarea className="w-full border border-border rounded-lg p-3 text-sm bg-background" rows={2} placeholder="Optional reason..."></textarea>
+              <textarea className="w-full border border-border rounded-lg p-3 text-sm bg-background" rows={2} placeholder="Optional reason..." />
             </div>
-            <button onClick={handleRescheduleSubmit} className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90">Submit Request</button>
+            <button
+              onClick={() => setRescheduleModal({ isOpen: false, bookingId: null })}
+              className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90"
+            >
+              Submit Request
+            </button>
           </div>
         </div>
       )}
@@ -279,11 +286,11 @@ export function Bookings() {
       {refundModal.isOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-card w-full max-w-sm rounded-2xl p-6 relative">
-            <button onClick={() => setRefundModal({isOpen: false, bookingId: null})} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+            <button onClick={() => setRefundModal({ isOpen: false, bookingId: null })} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Request Refund</h3>
-            <p className="text-sm text-muted-foreground mb-4">Your refund request will be reviewed by our admin team within 24-48 hours.</p>
+            <p className="text-sm text-muted-foreground mb-4">Your refund request will be reviewed within 24–48 hours.</p>
             <div className="mb-4">
               <label className="text-sm font-medium block mb-1">Refund Method</label>
               <select className="w-full border border-border rounded-lg p-3 text-sm bg-background">
@@ -291,11 +298,9 @@ export function Bookings() {
                 <option>Devaseva Wallet</option>
               </select>
             </div>
-            <div className="mb-4">
-              <label className="text-sm font-medium block mb-1">Additional Details</label>
-              <textarea className="w-full border border-border rounded-lg p-3 text-sm bg-background" rows={2} placeholder="Any specific details..."></textarea>
-            </div>
-            <button onClick={handleRefundRequest} className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90">Submit Refund Request</button>
+            <button onClick={() => setRefundModal({ isOpen: false, bookingId: null })} className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90">
+              Submit Refund Request
+            </button>
           </div>
         </div>
       )}
@@ -304,24 +309,15 @@ export function Bookings() {
       {feedbackModal.isOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-card w-full max-w-sm rounded-2xl p-6 relative">
-            <button onClick={() => setFeedbackModal({isOpen: false, bookingId: null})} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+            <button onClick={() => setFeedbackModal({ isOpen: false, bookingId: null })} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Rate Experience</h3>
             <p className="text-sm text-muted-foreground mb-4">How was your pooja experience?</p>
             <div className="flex justify-center gap-2 mb-6">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={() => setFeedbackRating(star)}
-                  className="focus:outline-none"
-                >
-                  <Star
-                    className={`w-8 h-8 transition-colors ${
-                      star <= feedbackRating ? 'text-yellow-500 fill-yellow-500' : 'text-muted'
-                    }`}
-                  />
+              {[1, 2, 3, 4, 5].map(star => (
+                <button key={star} type="button" onClick={() => setFeedbackRating(star)}>
+                  <Star className={`w-8 h-8 transition-colors ${star <= feedbackRating ? 'text-yellow-500 fill-yellow-500' : 'text-muted'}`} />
                 </button>
               ))}
             </div>
@@ -332,10 +328,16 @@ export function Bookings() {
                 rows={3}
                 placeholder="Tell us more..."
                 value={feedbackComment}
-                onChange={(e) => setFeedbackComment(e.target.value)}
+                onChange={e => setFeedbackComment(e.target.value)}
               />
             </div>
-            <button onClick={handleFeedbackSubmit} className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90">Submit Feedback</button>
+            <button
+              onClick={handleFeedbackSubmit}
+              disabled={submittingFeedback}
+              className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 disabled:opacity-50"
+            >
+              {submittingFeedback ? 'Submitting…' : 'Submit Feedback'}
+            </button>
           </div>
         </div>
       )}
@@ -343,43 +345,22 @@ export function Bookings() {
   );
 }
 
+// ─── Booking Card Component ──────────────────────────────────────────────────
+
 function BookingCard({
-  id,
-  title,
-  temple,
-  date,
-  status,
-  currentStage,
-  imageUrl,
-  hasRecording,
-  onCancel,
-  onReschedule,
-  onRefund,
-  onFeedback
+  id, title, temple, date, status, currentStage, imageUrl, hasRecording,
+  onCancel, onReschedule, onRefund, onFeedback
 }: {
-  id: string;
-  title: string;
-  temple: string;
-  date: string;
-  status: string;
-  currentStage: number;
-  imageUrl: string;
-  hasRecording?: boolean;
-  onCancel: () => void;
-  onReschedule: () => void;
-  onRefund: () => void;
-  onFeedback: () => void;
+  id: string; title: string; temple: string; date: string; status: string;
+  currentStage: number; imageUrl: string; hasRecording?: boolean;
+  onCancel: () => void; onReschedule: () => void; onRefund: () => void; onFeedback: () => void;
 }) {
   const stages = [
     { label: 'Seva Offered', icon: CheckCircle2 },
-    { label: 'Confirmed', icon: CheckCircle2 },
+    { label: 'Pujari Assigned', icon: CheckCircle2 },
     { label: 'Scheduled', icon: Clock },
     { label: 'Pooja Live', icon: PlayCircle },
     { label: 'Completed', icon: CheckCircle2 },
-    { label: 'Recording Ready', icon: PlayCircle },
-    { label: 'Prasad Packed', icon: Package },
-    { label: 'Dispatched', icon: Package },
-    { label: 'Delivered', icon: CheckCircle2 },
   ];
 
   const getStatusColor = () => {
@@ -398,33 +379,22 @@ function BookingCard({
           className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
         />
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-lg mb-1" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-            {title}
-          </h3>
-          <p className="text-sm text-muted-foreground mb-2" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-            {temple}
-          </p>
-          <div className="flex items-center gap-2">
-            <span
-              className="text-xs font-mono text-muted-foreground px-2 py-1 bg-muted/50 rounded"
-              style={{ fontFamily: "'Noto Sans Mono', monospace" }}
-            >
-              {id}
-            </span>
-          </div>
+          <h3 className="font-semibold text-lg mb-1" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>{title}</h3>
+          <p className="text-sm text-muted-foreground mb-2" style={{ fontFamily: "'Noto Sans', sans-serif" }}>{temple}</p>
+          <span className="text-xs font-mono text-muted-foreground px-2 py-1 bg-muted/50 rounded" style={{ fontFamily: "'Noto Sans Mono', monospace" }}>
+            {id.slice(0, 12)}…
+          </span>
         </div>
         <div className="text-right">
           <div className={`inline-flex px-3 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor()}`}>
             {status}
           </div>
-          <p className="text-xs text-muted-foreground mt-2" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-            {date}
-          </p>
+          <p className="text-xs text-muted-foreground mt-2" style={{ fontFamily: "'Noto Sans', sans-serif" }}>{date}</p>
         </div>
       </div>
 
-      {/* Action Buttons Section */}
-      <div className="p-4 bg-muted/10 border-b border-border flex gap-2 overflow-x-auto scrollbar-hide">
+      {/* Action Buttons */}
+      <div className="p-4 bg-muted/10 border-b border-border flex gap-2 overflow-x-auto">
         {status === 'upcoming' && (
           <>
             <button onClick={onReschedule} className="px-4 py-2 rounded-lg bg-background border border-border text-sm font-medium whitespace-nowrap hover:bg-muted/30">
@@ -448,64 +418,50 @@ function BookingCard({
         )}
       </div>
 
-      {/* Journey Timeline (Only if not cancelled) */}
+      {/* Journey Mini-Timeline */}
       {status !== 'cancelled' && (
         <div className="p-4">
-          <h4 className="text-sm font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
-            Pooja Journey
-          </h4>
+          <h4 className="text-sm font-semibold mb-3" style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Pooja Journey</h4>
           <div className="space-y-3">
-            {stages.slice(0, 5).map((stage, index) => {
+            {stages.map((stage, index) => {
               const Icon = stage.icon;
-              const isCompleted = index < currentStage;
-              const isCurrent = index === currentStage;
+              const stageNum = index + 1;
+              const isCompleted = stageNum < currentStage;
+              const isCurrent = stageNum === currentStage;
 
               return (
                 <div key={index} className="flex items-center gap-3">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      isCompleted
-                        ? 'bg-primary text-primary-foreground'
-                        : isCurrent
-                        ? 'bg-primary/20 text-primary ring-4 ring-primary/20'
-                        : 'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {isCompleted ? (
-                      <CheckCircle2 className="w-4 h-4" />
-                    ) : isCurrent ? (
-                      <Circle className="w-4 h-4" />
-                    ) : (
-                      <Circle className="w-4 h-4" />
-                    )}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    isCompleted
+                      ? 'bg-primary text-primary-foreground'
+                      : isCurrent
+                      ? 'bg-primary/20 text-primary ring-4 ring-primary/20'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
                   </div>
-                  <div className="flex-1">
-                    <p
-                      className={`text-sm font-medium ${
-                        isCompleted || isCurrent ? 'text-foreground' : 'text-muted-foreground'
-                      }`}
-                      style={{ fontFamily: "'Noto Sans', sans-serif" }}
-                    >
-                      {stage.label}
-                    </p>
-                  </div>
-                  {isCompleted && (
-                    <div className="text-xs text-muted-foreground">✓</div>
-                  )}
+                  <p className={`text-sm font-medium flex-1 ${isCompleted || isCurrent ? 'text-foreground' : 'text-muted-foreground'} ${isCurrent ? 'text-primary font-semibold' : ''}`}
+                    style={{ fontFamily: "'Noto Sans', sans-serif" }}>
+                    {stage.label}
+                  </p>
+                  {isCompleted && <div className="text-xs text-primary">✓</div>}
+                  {isCurrent && <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />}
                 </div>
               );
             })}
           </div>
-          
+
           <Link to={`/journey/${id}`}>
-            <button className="w-full mt-4 py-2.5 rounded-xl border-2 border-primary text-primary hover:bg-primary/5 transition-colors font-medium text-sm">
+            <button className="w-full mt-4 py-2.5 rounded-xl border-2 border-primary text-primary hover:bg-primary/5 transition-colors font-medium text-sm"
+              style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
               View Full Journey
             </button>
           </Link>
-          
+
           {hasRecording && (
-            <Link to={`/live/${id.replace('DS', '')}`}>
-              <button className="w-full mt-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-[#E05C10] transition-colors font-medium text-sm flex items-center justify-center gap-2">
+            <Link to={`/live/${id}`}>
+              <button className="w-full mt-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-[#E05C10] transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>
                 <Video className="w-4 h-4" />
                 Watch Recording
               </button>

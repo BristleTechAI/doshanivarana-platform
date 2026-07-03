@@ -1,7 +1,9 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const { RtcTokenBuilder, RtcRole } = require('agora-token');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -9,6 +11,303 @@ const DB_PATH = path.join(__dirname, 'queries-db.json');
 
 app.use(cors());
 app.use(express.json());
+
+// ─── Agora Token Endpoint ─────────────────────────────────────────────────────
+// GET /api/agora/token?channelName=<ch>&uid=<uid>&role=publisher|subscriber
+app.get('/api/agora/token', (req, res) => {
+  const { channelName, uid, role } = req.query;
+
+  const appId  = process.env.AGORA_APP_ID;
+  const appCert = process.env.AGORA_APP_CERTIFICATE;
+
+  if (!appId || !appCert) {
+    return res.status(500).json({ error: 'Agora credentials not configured on server. Set AGORA_APP_ID and AGORA_APP_CERTIFICATE env vars.' });
+  }
+
+  if (!channelName || !uid) {
+    return res.status(400).json({ error: 'channelName and uid are required' });
+  }
+
+  const rtcRole = role === 'publisher' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
+  const expirationTimeInSeconds = 3600; // 1 hour
+  const currentTimestamp = Math.floor(Date.now() / 1000);
+  const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+
+  try {
+    const token = RtcTokenBuilder.buildTokenWithUid(
+      appId,
+      appCert,
+      channelName,
+      parseInt(uid, 10),
+      rtcRole,
+      privilegeExpiredTs
+    );
+    res.json({ token, appId, channelName, uid, expiresAt: privilegeExpiredTs });
+  } catch (e) {
+    console.error('Agora token generation failed:', e);
+    res.status(500).json({ error: 'Token generation failed', detail: e.message });
+  }
+});
+// ─── Agora Cloud Recording Endpoints ─────────────────────────────────────────
+
+const AGORA_RECORDING_API = 'https://api.agora.io/v1/apps';
+
+function getAgoraBasicAuth() {
+  const key = process.env.AGORA_CUSTOMER_KEY;
+  const secret = process.env.AGORA_CUSTOMER_SECRET;
+  if (!key || !secret) return null;
+  return 'Basic ' + Buffer.from(`${key}:${secret}`).toString('base64');
+}
+
+// POST /api/agora/recording/start  { channelName, uid }
+app.post('/api/agora/recording/start', async (req, res) => {
+  const { channelName, uid } = req.body;
+  const appId = process.env.AGORA_APP_ID;
+  const auth = getAgoraBasicAuth();
+
+  if (!auth || !appId) {
+    return res.status(500).json({ error: 'Agora credentials not configured. Set AGORA_APP_ID, AGORA_CUSTOMER_KEY, AGORA_CUSTOMER_SECRET.' });
+  }
+
+  try {
+    // Step 1: Acquire resourceId
+    const acquireRes = await fetch(`${AGORA_RECORDING_API}/${appId}/cloud_recording/acquire`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: auth },
+      body: JSON.stringify({ cname: channelName, uid: String(uid), clientRequest: { resourceExpiredHour: 24 } })
+    });
+    const acquireData = await acquireRes.json();
+    if (!acquireData.resourceId) {
+      return res.status(500).json({ error: 'Failed to acquire Agora resource', detail: acquireData });
+    }
+
+    // Step 2: Start recording
+    const startRes = await fetch(`${AGORA_RECORDING_API}/${appId}/cloud_recording/resourceid/${acquireData.resourceId}/mode/mix/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: auth },
+      body: JSON.stringify({
+        cname: channelName,
+        uid: String(uid),
+        clientRequest: {
+          token: '', // Empty token when recording is on the backend side
+          storageConfig: {
+            // Uses Agora's own storage; replace with your S3/GCS config for production
+            vendor: 1, // Agora default
+            region: 0,
+            bucket: process.env.AGORA_STORAGE_BUCKET || '',
+            accessKey: process.env.AGORA_STORAGE_KEY || '',
+            secretKey: process.env.AGORA_STORAGE_SECRET || '',
+            fileNamePrefix: ['recordings', channelName]
+          },
+          recordingConfig: {
+            channelType: 0,
+            streamTypes: 2,
+            audioProfile: 1,
+            videoStreamType: 0,
+            maxIdleTime: 30,
+            transcodingConfig: {
+              width: 1280, height: 720, fps: 30,
+              bitrate: 2000,
+              mixedVideoLayout: 1
+            }
+          }
+        }
+      })
+    });
+    const startData = await startRes.json();
+    res.json({ resourceId: acquireData.resourceId, sid: startData.sid, uid: String(uid) });
+  } catch (e) {
+    console.error('[Agora Recording] Start error:', e);
+    res.status(500).json({ error: 'Cloud recording start failed', detail: e.message });
+  }
+});
+
+// POST /api/agora/recording/stop  { channelName, resourceId, sid, uid }
+app.post('/api/agora/recording/stop', async (req, res) => {
+  const { channelName, resourceId, sid, uid } = req.body;
+  const appId = process.env.AGORA_APP_ID;
+  const auth = getAgoraBasicAuth();
+
+  if (!auth || !appId) {
+    return res.status(500).json({ error: 'Agora credentials not configured.' });
+  }
+
+  try {
+    const stopRes = await fetch(`${AGORA_RECORDING_API}/${appId}/cloud_recording/resourceid/${resourceId}/sid/${sid}/mode/mix/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: auth },
+      body: JSON.stringify({
+        cname: channelName,
+        uid: String(uid),
+        clientRequest: {}
+      })
+    });
+    const stopData = await stopRes.json();
+    const fileList = stopData?.serverResponse?.fileList || [];
+    res.json({ success: true, fileList, raw: stopData });
+  } catch (e) {
+    console.error('[Agora Recording] Stop error:', e);
+    res.status(500).json({ error: 'Cloud recording stop failed', detail: e.message });
+  }
+});
+
+// ─── YouTube Upload Endpoints ─────────────────────────────────────────────────
+// Requires: YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN
+
+const YOUTUBE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
+async function getYouTubeAccessToken() {
+  const clientId     = process.env.YOUTUBE_CLIENT_ID;
+  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error('YouTube credentials not configured. Set YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN.');
+  }
+
+  const res = await fetch(YOUTUBE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type:    'refresh_token',
+      refresh_token: refreshToken,
+      client_id:     clientId,
+      client_secret: clientSecret,
+    }).toString()
+  });
+
+  const data = await res.json();
+  if (!data.access_token) {
+    throw new Error(`Failed to get YouTube access token: ${JSON.stringify(data)}`);
+  }
+  return data.access_token;
+}
+
+/**
+ * POST /api/youtube/upload
+ * Body: { videoUrl, title, description, poojaName, templeName, recordingId }
+ *
+ * Uploads a video from a URL to YouTube as an unlisted video.
+ * Returns { youtubeVideoId, youtubeLiveUrl }.
+ *
+ * Two strategies:
+ *  1. If googleapis is installed: use the resumable upload API with a piped stream.
+ *  2. If videoUrl is a direct download URL, we fetch → pipe → upload.
+ */
+app.post('/api/youtube/upload', async (req, res) => {
+  const { videoUrl, title, description, poojaName, templeName, recordingId } = req.body;
+
+  if (!videoUrl) {
+    return res.status(400).json({ error: 'videoUrl is required' });
+  }
+
+  let googleapis;
+  try {
+    googleapis = require('googleapis');
+  } catch (_) {
+    return res.status(500).json({ error: 'googleapis package not available. Run: npm install googleapis' });
+  }
+
+  try {
+    const accessToken = await getYouTubeAccessToken();
+    const { google } = googleapis;
+
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ access_token: accessToken });
+
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+    // Fetch the video file from the URL and pipe it to YouTube
+    const videoRes = await fetch(videoUrl);
+    if (!videoRes.ok) {
+      return res.status(400).json({ error: `Failed to fetch video from URL: ${videoRes.statusText}` });
+    }
+
+    const videoTitle = title || `${poojaName || 'Pooja'} — ${templeName || 'Temple'} | Doshanivarana`;
+    const videoDescription = description ||
+      `Live pooja recording — ${poojaName || ''} at ${templeName || ''}\n` +
+      `Captured and archived via the Doshanivarana platform.\n` +
+      `Recording ID: ${recordingId || 'N/A'}`;
+
+    const uploadResponse = await youtube.videos.insert({
+      part: ['snippet', 'status'],
+      requestBody: {
+        snippet: {
+          title: videoTitle,
+          description: videoDescription,
+          tags: ['pooja', 'temple', 'doshanivarana', poojaName, templeName].filter(Boolean),
+          categoryId: '22', // People & Blogs
+          defaultLanguage: 'te',
+          defaultAudioLanguage: 'te',
+        },
+        status: {
+          privacyStatus: 'unlisted', // Unlisted so only users with the link can watch
+          selfDeclaredMadeForKids: false,
+        },
+      },
+      media: {
+        body: videoRes.body,
+      },
+    });
+
+    const videoId = uploadResponse.data.id;
+    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+    console.log(`[YouTube] Uploaded video: ${videoId} — ${videoTitle}`);
+    res.json({ youtubeVideoId: videoId, youtubeLiveUrl: youtubeUrl });
+
+  } catch (e) {
+    console.error('[YouTube] Upload error:', e);
+    res.status(500).json({ error: 'YouTube upload failed', detail: e.message });
+  }
+});
+
+/**
+ * GET /api/youtube/status/:videoId
+ * Returns current processing status of a YouTube video.
+ */
+app.get('/api/youtube/status/:videoId', async (req, res) => {
+  const { videoId } = req.params;
+
+  let googleapis;
+  try {
+    googleapis = require('googleapis');
+  } catch (_) {
+    return res.status(500).json({ error: 'googleapis not available' });
+  }
+
+  try {
+    const accessToken = await getYouTubeAccessToken();
+    const { google } = googleapis;
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ access_token: accessToken });
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+    const response = await youtube.videos.list({
+      part: ['status', 'processingDetails', 'snippet'],
+      id: [videoId],
+    });
+
+    const video = response.data.items?.[0];
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    res.json({
+      videoId,
+      uploadStatus: video.status?.uploadStatus,
+      privacyStatus: video.status?.privacyStatus,
+      processingStatus: video.processingDetails?.processingStatus,
+      title: video.snippet?.title,
+      youtubeLiveUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    });
+  } catch (e) {
+    console.error('[YouTube] Status check error:', e);
+    res.status(500).json({ error: 'Status check failed', detail: e.message });
+  }
+});
+
+// ─── Query Helpers ────────────────────────────────────────────────────────────
 
 // Helper to get relative date/time strings for seeding
 const getRelativeDateTimeStr = (daysOffset, timeStr) => {

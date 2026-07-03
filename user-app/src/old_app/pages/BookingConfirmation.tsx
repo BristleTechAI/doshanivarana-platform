@@ -1,47 +1,27 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router';
 import { Bell, Share2 } from 'lucide-react';
+import { BookingsService } from '../../services/firebase/bookings';
 
 export function BookingConfirmation() {
   const { id } = useParams();
+  const [booking, setBooking] = useState<any>(null);
 
-  // Load bookings from localStorage
-  const [bookings, setBookings] = useState<any[]>(() => {
-    const bookingsData = localStorage.getItem('doshanivarana_bookings');
-    return bookingsData ? JSON.parse(bookingsData) : [];
-  });
-
+  // Real-time subscription to the new booking
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'doshanivarana_bookings') {
-        const data = localStorage.getItem('doshanivarana_bookings');
-        setBookings(data ? JSON.parse(data) : []);
-      }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    const handleCustomUpdate = () => {
-      const data = localStorage.getItem('doshanivarana_bookings');
-      setBookings(data ? JSON.parse(data) : []);
-    };
-    window.addEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
-    window.addEventListener('focus', handleCustomUpdate);
+    if (!id) return;
+    const unsubscribe = BookingsService.subscribeToBookingById(id, (b) => {
+      setBooking(b);
+    });
+    return () => unsubscribe();
+  }, [id]);
 
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('doshanivarana_bookings_updated', handleCustomUpdate);
-      window.removeEventListener('focus', handleCustomUpdate);
-    };
-  }, []);
-
-  const booking = bookings.find((b: any) => b.id === id);
-
-  // Fallback defaults
-  const poojaName = booking ? booking.poojaName : 'Rudrabhishekam';
-  const temple = booking ? booking.temple : 'Sri Kalahasti Shivalayam, Tirupati';
-  const dateTime = booking ? booking.dateTime : '15 April 2026 — 9:00 AM';
-  const bookingId = id || 'BK-1001';
+  const poojaName = booking?.poojaName || '—';
+  const temple = booking?.templeName || booking?.templeId || '—';
+  const dateTime = booking?.scheduledDate
+    ? `${booking.scheduledDate}${booking.scheduledTime ? ' — ' + booking.scheduledTime : ''}`
+    : 'Being Scheduled';
+  const bookingId = id || '—';
 
   return (
     <div className="min-h-screen bg-[#1A0A00] px-6 py-12 flex flex-col items-center justify-center">
@@ -50,9 +30,7 @@ export function BookingConfirmation() {
         <div className="text-8xl animate-pulse">🪔</div>
         <div
           className="absolute inset-0 blur-2xl opacity-30 rounded-full"
-          style={{
-            background: 'radial-gradient(circle, #F97316 0%, transparent 70%)',
-          }}
+          style={{ background: 'radial-gradient(circle, #F97316 0%, transparent 70%)' }}
         />
       </div>
 
@@ -112,10 +90,7 @@ export function BookingConfirmation() {
           <p className="text-xs mb-1" style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}>
             Booking ID
           </p>
-          <p
-            className="text-sm font-mono text-primary"
-            style={{ fontFamily: "'Noto Sans Mono', monospace" }}
-          >
+          <p className="text-sm font-mono text-primary" style={{ fontFamily: "'Noto Sans Mono', monospace" }}>
             {bookingId}
           </p>
         </div>
@@ -123,10 +98,12 @@ export function BookingConfirmation() {
 
       {/* CTAs */}
       <div className="w-full max-w-md space-y-3 mb-8">
-        <button className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-[#E05C10] transition-colors">
-          <Bell className="w-5 h-5" />
-          <span style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Set Reminder</span>
-        </button>
+        <Link to={`/journey/${bookingId}`}>
+          <button className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-[#E05C10] transition-colors">
+            <Bell className="w-5 h-5" />
+            <span style={{ fontFamily: "'Anek Devanagari', sans-serif" }}>Track Pooja Journey</span>
+          </button>
+        </Link>
 
         <button className="w-full py-3 rounded-xl border-2 border-primary text-primary bg-transparent font-medium flex items-center justify-center gap-2 hover:bg-primary/5 transition-colors">
           <Share2 className="w-5 h-5" />
@@ -141,23 +118,17 @@ export function BookingConfirmation() {
             <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
               <span className="text-xs text-primary-foreground">✓</span>
             </div>
-            <span className="text-xs" style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}>
-              Seva Offered
-            </span>
+            <span className="text-xs" style={{ fontFamily: "'Noto Sans', sans-serif", color: '#78716C' }}>Seva Offered</span>
           </div>
           <div className="w-8 h-0.5 bg-border" />
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full border border-border" />
-            <span className="text-xs text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-              Pujari Assigned
-            </span>
+            <span className="text-xs text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>Pujari Assigned</span>
           </div>
           <div className="w-8 h-0.5 bg-border" />
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full border border-border" />
-            <span className="text-xs text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-              Scheduled
-            </span>
+            <span className="text-xs text-muted-foreground" style={{ fontFamily: "'Noto Sans', sans-serif" }}>Scheduled</span>
           </div>
         </div>
       </div>

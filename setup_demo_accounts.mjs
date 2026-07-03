@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import * as dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
@@ -61,11 +61,22 @@ async function setupDemoAccounts() {
   for (const user of demoUsers) {
     try {
       console.log(`Creating user: ${user.email} ...`);
-      // Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, user.email, user.password);
-      const uid = userCredential.user.uid;
+      let uid;
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, user.email, user.password);
+        uid = userCredential.user.uid;
+        console.log(`✅ Success: ${user.email} created with UID: ${uid}`);
+      } catch (authErr) {
+        if (authErr.code === 'auth/email-already-in-use') {
+          console.log(`⚠️ User ${user.email} already exists in Auth. Logging in to get UID...`);
+          const userCredential = await signInWithEmailAndPassword(auth, user.email, user.password);
+          uid = userCredential.user.uid;
+        } else {
+          throw authErr;
+        }
+      }
       
-      // Map to Firestore
+      // Map/Write to Firestore to ensure user profile exists
       await setDoc(doc(db, 'users', uid), {
         uid,
         name: user.name,
@@ -76,14 +87,9 @@ async function setupDemoAccounts() {
         createdAt: new Date().toISOString()
       });
       
-      console.log(`✅ Success: ${user.email} created with UID: ${uid}`);
+      console.log(`✅ Firestore document created/verified for: ${user.email} (UID: ${uid})`);
     } catch (error) {
-      if (error.code === 'auth/email-already-in-use') {
-        console.log(`⚠️ User ${user.email} already exists. Skipping.`);
-        // Note: we aren't updating the firestore doc here if they exist, to keep it simple.
-      } else {
-        console.error(`❌ Failed to create ${user.email}:`, error.message);
-      }
+      console.error(`❌ Failed to process ${user.email}:`, error.message);
     }
   }
   

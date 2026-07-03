@@ -24,6 +24,26 @@ export const RecordingsService = {
       .filter((r: any) => bookingIds.includes(r.bookingId));
   },
 
+  // Real-time listener for a specific booking's recording
+  subscribeToRecordingByBooking(bookingId: string, callback: (recording: any | null) => void) {
+    return firestore().collection('recordings')
+      .where('bookingId', '==', bookingId)
+      .limit(1)
+      .onSnapshot((snapshot: any) => {
+        if (snapshot && !snapshot.empty) {
+          const doc = snapshot.docs[0];
+          const data = doc.data();
+          callback({
+            id: doc.id,
+            ...data,
+            actualEndTime: data.actualEndTime || data.endedAt
+          });
+        } else {
+          callback(null);
+        }
+      });
+  },
+
   async getRecordingById(id: string) {
     const doc = await firestore().collection('recordings').doc(id).get();
     if (!doc.exists) return null;
@@ -35,3 +55,4 @@ export const RecordingsService = {
     };
   }
 };
+
