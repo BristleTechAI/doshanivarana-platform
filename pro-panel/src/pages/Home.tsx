@@ -339,6 +339,15 @@ export function Home() {
                       isAssigned = true; // Use neutral/green state since it doesn't need attention
                     }
 
+                    const computedStreamStatus = 
+                      slotBookings.some(b => b.streamStatus === 'LIVE' || b.status === 'IN_PROGRESS') ? 'LIVE' :
+                      (slotBookings.length > 0 && slotBookings.every(b => b.status === 'COMPLETED' || b.streamStatus === 'ENDED')) ? 'Completed' :
+                      slotBookings.length === 0 ? 'No Bookings' : 'Pending';
+
+                    const isLive = computedStreamStatus === 'LIVE';
+                    const isCompleted = computedStreamStatus === 'Completed';
+                    const noBookings = computedStreamStatus === 'No Bookings';
+
                     return (
                     <tr key={slot.id} className="hover:bg-surface-container-lowest transition-colors bg-white">
                       <td className="p-4 font-semibold text-on-surface">{poojasMap[slot.poojaId] || slot.poojaName || slot.poojaId || 'Unknown Pooja'}</td>
@@ -355,9 +364,24 @@ export function Home() {
                           </span>
                         )}
                       </td>
-                      <td className="p-4 text-on-surface-variant">{slot.streamStatus || 'Pending'}</td>
+                      <td className="p-4 text-on-surface-variant">
+                        {isLive ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FFEBEE] text-[#C62828] animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#C62828]" />
+                            LIVE
+                          </span>
+                        ) : isCompleted ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#E8F5E9] text-[#2E7D32]">
+                            Completed
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#FFF3E0] text-[#E65100]">
+                            Pending
+                          </span>
+                        )}
+                      </td>
                       <td className="p-4 text-right">
-                        <div className="flex gap-2 justify-end">
+                        <div className="flex gap-2 justify-end items-center">
                           {!isAssigned && unassignedBookings.length > 0 && (
                             <button 
                               onClick={() => handleAssignPujari(unassignedBookings[0].id)}
@@ -366,12 +390,27 @@ export function Home() {
                               Assign Pujari
                             </button>
                           )}
-                          <button 
-                            onClick={() => handleStartStream(slot.id)}
-                            className="font-sans text-button px-4 py-2 rounded-full bg-primary text-on-primary hover:bg-primary/90 transition-colors whitespace-nowrap shadow-sm cursor-pointer font-bold"
-                          >
-                            Start Stream
-                          </button>
+                          {isCompleted ? (
+                            <span className="font-sans text-xs font-semibold px-4 py-2 bg-[#E8F5E9] text-[#2E7D32] rounded-full border border-[#2E7D32]/20 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[16px] text-[#2E7D32]">check_circle</span>
+                              Completed
+                            </span>
+                          ) : noBookings ? (
+                            <span className="font-sans text-xs font-semibold px-4 py-2 bg-surface-container-high text-on-surface-variant rounded-full border border-outline-variant">
+                              No Bookings
+                            </span>
+                          ) : (
+                            <button 
+                              onClick={() => handleStartStream(slot.id)}
+                              className={`font-sans text-button px-4 py-2 rounded-full font-bold whitespace-nowrap shadow-sm cursor-pointer transition-colors ${
+                                isLive 
+                                  ? 'bg-[#E53935] text-white hover:bg-[#D32F2F]' 
+                                  : 'bg-primary text-on-primary hover:bg-primary/90'
+                              }`}
+                            >
+                              {isLive ? '🔴 Stream Control' : 'Start Stream'}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

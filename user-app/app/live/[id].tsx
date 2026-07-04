@@ -57,7 +57,22 @@ export default function LiveStreamScreen() {
   // Agora live viewing state
   const [agoraToken, setAgoraToken] = useState<string | null>(null);
   const [agoraTokenLoading, setAgoraTokenLoading] = useState(false);
-  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+  const getDynamicBackendUrl = () => {
+    const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+    if (envUrl.includes('localhost') || envUrl.includes('127.0.0.1')) {
+      const manifest = Constants.expoConfig || Constants.manifest;
+      const debuggerHost = manifest?.debuggerHost || manifest?.hostUri;
+      if (debuggerHost) {
+        const ip = debuggerHost.split(':')[0];
+        return `http://${ip}:3001`;
+      }
+      if (Platform.OS === 'android') {
+        return 'http://10.0.2.2:3001';
+      }
+    }
+    return envUrl;
+  };
+  const BACKEND_URL = getDynamicBackendUrl();
   const AGORA_APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID || '';
 
   // Auth lookup — derive userId from stored session
@@ -294,6 +309,7 @@ export default function LiveStreamScreen() {
   // because react-native-agora requires native modules. We use a lazy require.
   // This renders as a black screen in Expo Go; use a dev build for full Agora video.
   let AgoraSurfaceView: any = null;
+  let WebViewComponent: any = null;
   const isExpoGo = Constants.appOwnership === 'expo';
   const isWeb = Platform.OS === 'web';
   if (!isExpoGo && !isWeb) {
@@ -302,7 +318,106 @@ export default function LiveStreamScreen() {
     } catch (_) {
       // react-native-agora not available (Expo Go), will fallback to placeholder
     }
+  } else if (isExpoGo && !isWeb) {
+    try {
+      WebViewComponent = require('react-native-webview').WebView;
+    } catch (_) {
+      // WebView not available
+    }
   }
+
+  // HTML content for WebView-based Agora Web SDK audience fallback
+  const agoraHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, user-scalable=no">
+      <style>
+        body, html {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          background-color: #000;
+          overflow: hidden;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        #player {
+          width: 100%;
+          height: 100%;
+          background-color: #000;
+          position: absolute;
+          top: 0;
+          left: 0;
+        }
+        #status {
+          position: absolute;
+          color: #F97316;
+          font-family: sans-serif;
+          font-size: 14px;
+          z-index: 10;
+          text-align: center;
+          background: rgba(0,0,0,0.6);
+          padding: 8px 16px;
+          border-radius: 20px;
+        }
+      </style>
+      <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+    </head>
+    <body>
+      <div id="status">Connecting to live stream...</div>
+      <div id="player"></div>
+
+      <script>
+        const appId = "${AGORA_APP_ID}";
+        const channel = "${agoraChannel}";
+        const token = "${agoraToken}";
+
+        async function startLive() {
+          const statusEl = document.getElementById("status");
+          if (typeof AgoraRTC === "undefined") {
+            statusEl.innerText = "Error: Agora Web SDK failed to load. Check your internet connection.";
+            return;
+          }
+
+          try {
+            const client = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+            await client.setClientRole("audience");
+
+            client.on("user-published", async (user, mediaType) => {
+              await client.subscribe(user, mediaType);
+              statusEl.style.display = "none";
+              if (mediaType === "video") {
+                const playerDiv = document.getElementById("player");
+                user.videoTrack.play(playerDiv, { fit: "contain" });
+              }
+              if (mediaType === "audio") {
+                user.audioTrack.play();
+              }
+            });
+
+            client.on("user-unpublished", (user, mediaType) => {
+              if (mediaType === "video") {
+                statusEl.style.display = "block";
+                statusEl.innerText = "Broadcaster stopped video...";
+              }
+            });
+
+            await client.join(appId, channel, token, null);
+            statusEl.innerText = "Waiting for broadcaster...";
+          } catch (err) {
+            statusEl.innerText = "Failed to join live stream: " + err.message;
+          }
+        }
+
+        startLive();
+      </script>
+    </body>
+    </html>
+  `;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
@@ -313,12 +428,36 @@ export default function LiveStreamScreen() {
         onPress={() => setShowControls((c) => !c)}
       >
         {/* ── Live stream: Agora RTC view ──────────────────────────────────── */}
-        {isLive && AgoraSurfaceView && agoraConnected && agoraRemoteUid !== null ? (
+        {isLive && !isExpoGo && !isWeb && AgoraSurfaceView && agoraConnected && agoraRemoteUid !== null ? (
           <AgoraSurfaceView
             canvas={{ uid: agoraRemoteUid }}
             style={StyleSheet.absoluteFill}
           />
-        ) : isLive && (agoraTokenLoading || !agoraConnected) ? (
+        ) : isLive && (isExpoGo || isWeb) && agoraToken ? (
+          /* WebView/Iframe fallback for Expo Go and Web */
+          isWeb ? (
+            <iframe
+              srcDoc={agoraHtml}
+              style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', top: 0, left: 0 }}
+              allow="autoplay; camera; microphone"
+            />
+          ) : WebViewComponent ? (
+            <WebViewComponent
+              originWhitelist={['*']}
+              source={{ html: agoraHtml }}
+              style={StyleSheet.absoluteFill}
+              mediaPlaybackRequiresUserAction={false}
+              allowsInlineMediaPlayback={true}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+            />
+          ) : (
+            <View style={[styles.overlay, { backgroundColor: '#000' }]}>
+              <ActivityIndicator size="large" color="#F97316" />
+              <Text style={styles.loadingText}>Initializing video stream fallback…</Text>
+            </View>
+          )
+        ) : isLive && (agoraTokenLoading || (!isExpoGo && !isWeb && !agoraConnected)) ? (
           <View style={[styles.overlay, { backgroundColor: '#000' }]}>
             <ActivityIndicator size="large" color="#F97316" />
             <Radio size={32} color="#F97316" style={{ marginTop: 16 }} />
@@ -337,12 +476,12 @@ export default function LiveStreamScreen() {
             allowsPictureInPicture={false}
           />
         ) : (
-          /* Agora not available (Expo Go) — show placeholder */
+          /* Agora not available (Expo Go) and no token yet — show placeholder */
           <View style={[styles.overlay, { backgroundColor: '#111' }]}>
             <Radio size={48} color="#F97316" />
             <Text style={[styles.title, { marginTop: 16 }]}>Live Stream Active</Text>
             <Text style={styles.subtitle}>
-              Install a dev build to watch the Agora live stream.{'\n'}
+              Initializing connection to Agora live stream.{'\n'}
               Channel: {agoraChannel}
             </Text>
           </View>

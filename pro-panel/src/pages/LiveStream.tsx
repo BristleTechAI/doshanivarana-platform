@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { PageHeader } from '../components/PageHeader';
@@ -92,7 +92,8 @@ export function LiveStream() {
 
       setUpcomingBookings(bks);
       if (bks.length > 0 && !selectedSlot) {
-        setSelectedSlot(bks[0].id);
+        const firstKey = `${bks[0].poojaId}_${bks[0].scheduledDate}_${bks[0].scheduledTime}`;
+        setSelectedSlot(firstKey);
       } else if (bks.length === 0) {
         setSelectedSlot('');
       }
@@ -101,7 +102,34 @@ export function LiveStream() {
     return () => unsubscribe();
   }, [templeId]);
 
-  const booking = upcomingBookings.find(b => b.id === selectedSlot);
+  // Group bookings by unique pooja slot key (poojaId + date + time)
+  const groupedSlotsMap: Record<string, { key: string, label: string, bookings: any[], firstBooking: any }> = {};
+  upcomingBookings.forEach(b => {
+    const slotKey = `${b.poojaId}_${b.scheduledDate}_${b.scheduledTime}`;
+    if (!groupedSlotsMap[slotKey]) {
+      groupedSlotsMap[slotKey] = {
+        key: slotKey,
+        label: '',
+        bookings: [],
+        firstBooking: b,
+      };
+    }
+    groupedSlotsMap[slotKey].bookings.push(b);
+  });
+
+  const groupedSlots = Object.values(groupedSlotsMap);
+  groupedSlots.forEach(slot => {
+    const b = slot.firstBooking;
+    const count = slot.bookings.length;
+    // Sort bookings inside the slot for stable display ID display
+    slot.bookings.sort((x, y) => x.displayId.localeCompare(y.displayId));
+    const primaryBooking = slot.bookings[0];
+    slot.label = `${b.poojaName} — Slot ${primaryBooking.displayId} at ${b.scheduledDate} ${b.scheduledTime} (${count} Booking${count > 1 ? 's' : ''})`;
+  });
+
+  const currentSlotGroup = groupedSlots.find(s => s.key === selectedSlot);
+  const booking = currentSlotGroup ? currentSlotGroup.bookings[0] : null;
+  const bookingsInSlot = currentSlotGroup ? currentSlotGroup.bookings : [];
 
   // Update viewer count and stream health from Agora stats every 5s when live
   useEffect(() => {
@@ -154,7 +182,7 @@ export function LiveStream() {
   }, [streamState]);
 
   const handleStartStream = async () => {
-    if (!booking) return;
+    if (!booking || bookingsInSlot.length === 0) return;
     setAgoraError(null);
 
     try {
@@ -179,64 +207,77 @@ export function LiveStream() {
 
       setAgoraChannelName(channelName);
 
-      // ── 2. Update booking status ─────────────────────────────────────────────
-      await updateDoc(doc(db, 'bookings', booking.id), {
-        status: 'IN_PROGRESS',
-        streamId: streamId,
-        streamStatus: 'LIVE'
-      });
+      // Create a batch to update all bookings in the slot atomically
+      const batch = writeBatch(db);
 
-      // ── 3. Create stream document with real Agora channel name ───────────────
-      await setDoc(doc(db, 'liveStreams', streamId), {
-        streamId,
-        bookingId: booking.id,
-        templeId: booking.templeId || templeId,
-        templeName: booking.templeName || 'Unknown Temple',
-        poojaId: booking.poojaId || '',
-        poojaName: booking.poojaName || 'Unknown Pooja',
-        priestId: booking.priestId || null,
-        priestName: booking.priestName || null,
-        // Real Agora channel info for viewers to join
-        agoraChannelName: channelName,
-        agoraUid: uid,
-        streamUrl: `agora://${channelName}`, // signals Agora-based stream to user app
-        status: 'LIVE',
-        createdAt: serverTimestamp()
-      });
+      bookingsInSlot.forEach(b => {
+        // ── 2. Update booking status ─────────────────────────────────────────────
+        batch.update(doc(db, 'bookings', b.id), {
+          status: 'IN_PROGRESS',
+          streamId: streamId,
+          streamStatus: 'LIVE'
+        });
 
-      // ── 4. System event ──────────────────────────────────────────────────────
-      await setDoc(doc(collection(db, 'systemEvents')), {
-        eventType: 'stream.started',
-        entityId: streamId,
-        entityType: 'stream',
-        payload: {
+        // ── 3. Create stream document with real Agora channel name ───────────────
+        const streamDocId = `${streamId}_${b.id}`;
+        batch.set(doc(db, 'liveStreams', streamDocId), {
           streamId,
-          bookingId: booking.id,
-          templeId: booking.templeId || templeId,
-          userId: booking.userId || 'GUEST',
-          agoraChannelName: channelName
-        },
-        status: 'PENDING',
-        createdAt: serverTimestamp()
+          bookingId: b.id,
+          templeId: b.templeId || templeId,
+          templeName: b.templeName || 'Unknown Temple',
+          poojaId: b.poojaId || '',
+          poojaName: b.poojaName || 'Unknown Pooja',
+          priestId: b.priestId || null,
+          priestName: b.priestName || null,
+          // Real Agora channel info for viewers to join
+          agoraChannelName: channelName,
+          agoraUid: uid,
+          streamUrl: `agora://${channelName}`, // signals Agora-based stream to user app
+          status: 'LIVE',
+          createdAt: serverTimestamp()
+        });
+
+        // ── 4. System event ──────────────────────────────────────────────────────
+        const eventId = `evt_${Date.now()}_${b.id}`;
+        batch.set(doc(db, 'systemEvents', eventId), {
+          id: eventId,
+          eventType: 'stream.started',
+          entityId: streamId,
+          entityType: 'stream',
+          payload: {
+            streamId,
+            bookingId: b.id,
+            templeId: b.templeId || templeId,
+            userId: b.userId || 'GUEST',
+            agoraChannelName: channelName
+          },
+          status: 'PENDING',
+          createdAt: serverTimestamp()
+        });
+
+        // ── 5. Audit log ─────────────────────────────────────────────────────────
+        const auditId = `audit_${Date.now()}_${b.id}`;
+        batch.set(doc(db, 'auditLogs', auditId), {
+          action: 'STREAM_STARTED',
+          entityId: streamId,
+          entityType: 'stream',
+          performedBy: currentUser?.uid || templeId,
+          timestamp: serverTimestamp(),
+          details: `Stream ${streamId} started for booking ${b.id} on Agora channel ${channelName}`
+        });
       });
 
-      // ── 5. Audit log ─────────────────────────────────────────────────────────
-      await setDoc(doc(collection(db, 'auditLogs')), {
-        action: 'STREAM_STARTED',
-        entityId: streamId,
-        entityType: 'stream',
-        performedBy: currentUser?.uid || templeId,
-        timestamp: serverTimestamp(),
-        details: `Stream ${streamId} started for booking ${booking.id} on Agora channel ${channelName}`
-      });
+      await batch.commit();
 
       setActiveStreamId(streamId);
       setViewers(0);
       setStreamHealth('Excellent');
       setStreamState('live');
+
+      const primaryDisplayId = bookingsInSlot[0].displayId;
       localDb.addNotification(
         'Live Stream Started',
-        `Live broadcast started for ${booking.poojaName} (${booking.id}). Devotees have been notified.`,
+        `Live broadcast started for ${booking.poojaName} (${primaryDisplayId}). Devotees have been notified.`,
         '/live-stream'
       );
       setNotification('Live broadcast started successfully!');
@@ -264,14 +305,19 @@ export function LiveStream() {
 
     // Immediately persist ENDED status to Firestore before showing modal
     // This prevents streams being stuck in LIVE state if page closes mid-flow
-    if (activeStreamId) {
+    if (activeStreamId && bookingsInSlot.length > 0) {
       try {
-        await updateDoc(doc(db, 'liveStreams', activeStreamId), {
-          status: 'ENDED',
-          endedAt: serverTimestamp()
+        const batch = writeBatch(db);
+        bookingsInSlot.forEach(b => {
+          const streamDocId = `${activeStreamId}_${b.id}`;
+          batch.update(doc(db, 'liveStreams', streamDocId), {
+            status: 'ENDED',
+            endedAt: serverTimestamp()
+          });
         });
+        await batch.commit();
       } catch (e) {
-        console.error('Failed to immediately mark stream as ENDED:', e);
+        console.error('Failed to immediately mark streams as ENDED:', e);
       }
     }
     setStreamState('ended');
@@ -307,47 +353,37 @@ export function LiveStream() {
 
   const handleModalSubmit = async (notify: boolean) => {
     setShowFinishedModal(false);
-    if (!booking || !activeStreamId) return;
+    if (bookingsInSlot.length === 0 || !activeStreamId) return;
 
     try {
-      // Stream status was already set to ENDED in handleStopStream.
-      // Just ensure the timestamp is set (may be missing if that call failed).
-      await updateDoc(doc(db, 'liveStreams', activeStreamId), {
-        status: 'ENDED',
-        endedAt: serverTimestamp()
-      });
+      const batch = writeBatch(db);
 
-      // Update booking status
-      await updateDoc(doc(db, 'bookings', booking.id), {
-        status: 'COMPLETED',
-        streamStatus: 'ENDED',
-        recordingStatus: notify ? 'Available' : 'Processing'
-      });
+      bookingsInSlot.forEach(b => {
+        // Stream status was already set to ENDED in handleStopStream.
+        // Just ensure the timestamp is set (may be missing if that call failed).
+        const streamDocId = `${activeStreamId}_${b.id}`;
+        batch.update(doc(db, 'liveStreams', streamDocId), {
+          status: 'ENDED',
+          endedAt: serverTimestamp()
+        });
 
-      // Auto-generate Recording for Demo
-      try {
-        // Fetch stream document for fallback metadata
-        let streamPoojaName = '';
-        let streamTempleName = '';
-        try {
-          const streamSnap = await getDoc(doc(db, 'liveStreams', activeStreamId));
-          if (streamSnap.exists()) {
-            streamPoojaName = streamSnap.data().poojaName || '';
-            streamTempleName = streamSnap.data().templeName || '';
-          }
-        } catch (e) {
-          console.error("Could not fetch stream metadata:", e);
-        }
+        // Update booking status
+        batch.update(doc(db, 'bookings', b.id), {
+          status: 'COMPLETED',
+          streamStatus: 'ENDED',
+          recordingStatus: notify ? 'Available' : 'Processing'
+        });
 
-        const recId = `rec_${Date.now()}`;
-        await setDoc(doc(db, 'recordings', recId), {
-          templeId: booking.templeId || templeId,
-          templeName: booking.templeName || streamTempleName || 'Unknown Temple',
-          poojaId: booking.poojaId || '',
-          poojaName: booking.poojaName || streamPoojaName || 'Unknown Pooja',
-          priestId: booking.priestId || null,
-          priestName: booking.priestName || null,
-          bookingId: booking.id,
+        // Auto-generate Recording for Demo
+        const recId = `rec_${Date.now()}_${b.id}`;
+        batch.set(doc(db, 'recordings', recId), {
+          templeId: b.templeId || templeId,
+          templeName: b.templeName || 'Unknown Temple',
+          poojaId: b.poojaId || '',
+          poojaName: b.poojaName || 'Unknown Pooja',
+          priestId: b.priestId || null,
+          priestName: b.priestName || null,
+          bookingId: b.id,
           streamId: activeStreamId,
           // Store the Agora channel name so the recording URL can be resolved
           // from Cloud Recording storage once the recording file is available.
@@ -361,48 +397,44 @@ export function LiveStream() {
           youtubeLiveUrl: '',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-          slotDate: booking.scheduledDate || booking.dateTime || new Date().toISOString().split('T')[0]
+          slotDate: b.scheduledDate || b.dateTime || new Date().toISOString().split('T')[0]
         });
-      } catch (recordingError) {
-        console.error("Failed to auto-generate recording document:", recordingError);
-      }
 
-      // Generate System Event
-      try {
-        await setDoc(doc(collection(db, 'systemEvents')), {
+        // Generate System Event
+        const eventId = `evt_ended_${Date.now()}_${b.id}`;
+        batch.set(doc(db, 'systemEvents', eventId), {
+          id: eventId,
           eventType: 'stream.ended',
           entityId: activeStreamId,
           entityType: 'stream',
           payload: {
             streamId: activeStreamId,
-            bookingId: booking.id,
-            templeId: booking.templeId || templeId,
-            userId: booking.userId || 'GUEST'
+            bookingId: b.id,
+            templeId: b.templeId || templeId,
+            userId: b.userId || 'GUEST'
           },
           status: 'PENDING',
           createdAt: serverTimestamp()
         });
-      } catch (eventError) {
-        console.error("Failed to log stream.ended system event:", eventError);
-      }
 
-      // Audit Log
-      try {
-        await setDoc(doc(collection(db, 'auditLogs')), {
+        // Audit Log
+        const auditId = `audit_ended_${Date.now()}_${b.id}`;
+        batch.set(doc(db, 'auditLogs', auditId), {
           action: 'STREAM_ENDED',
           entityId: activeStreamId,
           entityType: 'stream',
           performedBy: templeId,
           timestamp: serverTimestamp(),
-          details: `Stream ${activeStreamId} ended for booking ${booking.id}`
+          details: `Stream ${activeStreamId} ended for booking ${b.id}`
         });
-      } catch (auditError) {
-        console.error("Failed to create audit log:", auditError);
-      }
+      });
 
+      await batch.commit();
+
+      const primaryDisplayId = bookingsInSlot[0].displayId;
       localDb.addNotification(
         'Live Stream Ended',
-        `Live broadcast ended for ${booking.poojaName} (${booking.id}). Recording saved.`,
+        `Live broadcast ended for ${booking.poojaName} (${primaryDisplayId}). Recording saved.`,
         '/recordings'
       );
       if (notify) {
@@ -449,9 +481,9 @@ export function LiveStream() {
               value={selectedSlot}
               onChange={(val) => setSelectedSlot(val)}
               disabled={streamState !== 'idle'}
-              options={upcomingBookings.length > 0 ? upcomingBookings.map(b => ({
-                value: b.id,
-                label: `${b.poojaName} — ${b.displayId} at ${b.scheduledDate} (${b.currentBookings || 1} Bookings)`
+              options={groupedSlots.length > 0 ? groupedSlots.map(s => ({
+                value: s.key,
+                label: s.label
               })) : [{ value: '', label: 'No upcoming pooja bookings' }]}
               className=""
             />
