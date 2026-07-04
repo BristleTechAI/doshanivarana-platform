@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
-import { doc, getDoc, updateDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocs, updateDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { PageHeader } from '../components/PageHeader';
 import { buildGoogleMapsDirectionsUrl } from '@devaseva/core';
@@ -14,6 +14,7 @@ export function BookingDetail() {
   const [loading, setLoading] = useState(true);
   const [priests, setPriests] = useState<any[]>([]);
   const [templeData, setTempleData] = useState<any>(null);
+  const [displayId, setDisplayId] = useState<string>('');
   
   useEffect(() => {
     if (!id) return;
@@ -34,6 +35,56 @@ export function BookingDetail() {
     };
     fetchBooking();
   }, [id]);
+
+  useEffect(() => {
+    if (!booking?.templeId) return;
+
+    const fetchAllBookingsForSeq = async () => {
+      try {
+        const q = query(
+          collection(db, 'bookings'),
+          where('templeId', '==', booking.templeId),
+          where('isDeleted', '==', false)
+        );
+        const snap = await getDocs(q);
+        const allDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const getSortTime = (b: any) => {
+          if (b.createdAt) {
+            if (typeof b.createdAt.toMillis === 'function') return b.createdAt.toMillis();
+            if (typeof b.createdAt.seconds === 'number') {
+              return b.createdAt.seconds * 1000 + (b.createdAt.nanoseconds || 0) / 1000000;
+            }
+            return new Date(b.createdAt).getTime();
+          }
+          if (b.scheduledDate) {
+            return new Date(b.scheduledDate).getTime();
+          }
+          return 0;
+        };
+
+        allDocs.sort((a, b) => {
+          const timeA = getSortTime(a);
+          const timeB = getSortTime(b);
+          if (timeA !== timeB) return timeA - timeB;
+          return a.id.localeCompare(b.id);
+        });
+
+        const idx = allDocs.findIndex(d => d.id === booking.id);
+        if (idx !== -1) {
+          const seqStr = String(idx + 1).padStart(10, '0');
+          setDisplayId(`BK_${seqStr}`);
+        } else {
+          setDisplayId(booking.id);
+        }
+      } catch (err) {
+        console.error("Failed to map sequential ID:", err);
+        setDisplayId(booking.id);
+      }
+    };
+
+    fetchAllBookingsForSeq();
+  }, [booking?.id, booking?.templeId]);
 
   useEffect(() => {
     if (!booking?.templeId) return;
@@ -202,7 +253,7 @@ export function BookingDetail() {
 
   return (
     <div className="max-w-[1440px] mx-auto pb-24 relative">
-      <PageHeader title={`Booking Detail — ${booking.id}`} backTo="/bookings" />
+      <PageHeader title={`Booking Detail — ${displayId || booking.id}`} backTo="/bookings" />
 
       {/* Notification Banner */}
       {notification && (
@@ -236,11 +287,11 @@ export function BookingDetail() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Booking ID</p>
-                <p className="text-body-lg text-on-background font-bold">{booking.id}</p>
+                <p className="text-body-lg text-on-background font-bold">{displayId || booking.id}</p>
               </div>
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Booking Date</p>
-                <p className="text-body-lg text-on-background font-medium">{booking.scheduledDate}</p>
+                <p className="text-body-lg text-on-background font-medium">{booking.scheduledDate || 'N/A'}</p>
               </div>
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Payment Status</p>
@@ -256,7 +307,7 @@ export function BookingDetail() {
               </div>
               <div>
                 <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Status</p>
-                <p className="text-body-sm text-on-surface-variant break-all font-semibold">{booking.status}</p>
+                <p className="text-body-sm text-on-surface-variant break-all font-semibold">{booking.status || booking.bookingStatus}</p>
               </div>
             </div>
           </div>
@@ -269,9 +320,25 @@ export function BookingDetail() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
               <div>
-                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">User ID</p>
-                <p className="text-body-lg text-on-background font-bold">{booking.userId}</p>
+                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Name</p>
+                <p className="text-body-lg text-on-background font-bold">{booking.devoteeName || booking.devoteeDetails?.name || 'Guest'}</p>
               </div>
+              <div>
+                <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">User ID</p>
+                <p className="text-body-lg text-on-background font-medium">{booking.userId}</p>
+              </div>
+              {booking.devoteeDetails?.gotra && (
+                <div>
+                  <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Gotra</p>
+                  <p className="text-body-lg text-on-background font-medium">{booking.devoteeDetails.gotra}</p>
+                </div>
+              )}
+              {booking.devoteeDetails?.nakshatra && (
+                <div>
+                  <p className="text-label-md text-on-surface-variant font-bold uppercase tracking-wide">Nakshatra</p>
+                  <p className="text-body-lg text-on-background font-medium">{booking.devoteeDetails.nakshatra}</p>
+                </div>
+              )}
             </div>
           </div>
 

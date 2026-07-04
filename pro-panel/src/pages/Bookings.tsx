@@ -1,10 +1,31 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Booking } from '@devaseva/core';
 import { PageHeader } from '../components/PageHeader';
+
+// Helper to get sort time from booking
+const getSortTime = (b: any) => {
+  if (b.createdAt) {
+    if (typeof b.createdAt.toMillis === 'function') return b.createdAt.toMillis();
+    if (typeof b.createdAt.seconds === 'number') {
+      return b.createdAt.seconds * 1000 + (b.createdAt.nanoseconds || 0) / 1000000;
+    }
+    return new Date(b.createdAt).getTime();
+  }
+  if (b.scheduledDate) {
+    return new Date(b.scheduledDate).getTime();
+  }
+  return 0;
+};
+
+// Helper to check if a booking is completed
+const isCompleted = (b: any) => {
+  const statusStr = (b.status || b.bookingStatus || '').toUpperCase();
+  return statusStr === 'COMPLETED';
+};
 
 export function Bookings() {
   const navigate = useNavigate();
@@ -51,10 +72,12 @@ export function Bookings() {
         const snapshot = await getDocs(q);
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
         
-        // Sort by date descending
+        // Sort by date descending (newest first)
         data.sort((a, b) => {
-          if (!a.scheduledDate || !b.scheduledDate) return 0;
-          return b.scheduledDate.localeCompare(a.scheduledDate);
+          const timeA = getSortTime(a);
+          const timeB = getSortTime(b);
+          if (timeA !== timeB) return timeB - timeA;
+          return b.id.localeCompare(a.id);
         });
         
         setBookings(data);
@@ -69,9 +92,26 @@ export function Bookings() {
     navigate(`/bookings/${id}`);
   };
 
+  // Map Firestore ID to sequence string (BK_0000000001 format) chronologically (oldest first)
+  const displayIdMap = useMemo(() => {
+    const sortedChronologically = [...bookings].sort((a, b) => {
+      const timeA = getSortTime(a);
+      const timeB = getSortTime(b);
+      if (timeA !== timeB) return timeA - timeB;
+      return a.id.localeCompare(b.id);
+    });
+    
+    const map = new Map<string, string>();
+    sortedChronologically.forEach((b, index) => {
+      const seqStr = String(index + 1).padStart(10, '0');
+      map.set(b.id, `BK_${seqStr}`);
+    });
+    return map;
+  }, [bookings]);
+
   // Filters
   const filteredBookings = bookings.filter(b => {
-    const tabMatch = activeTab === 'all' || (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === activeTab;
+    const tabMatch = activeTab === 'all' || (isCompleted(b) ? 'completed' : 'upcoming') === activeTab;
     const poojaMatch = poojaType === 'All Poojas' || b.poojaName === poojaType;
     const pujariMatch = pujariFilter === 'All' || 
       (pujariFilter === 'Yes' && (b.priestName || 'Not Assigned') !== 'Not Assigned') || 
@@ -82,7 +122,21 @@ export function Bookings() {
     return tabMatch && poojaMatch && pujariMatch && deliveryMatch && paymentMatch;
   });
 
-  const unassignedCount = bookings.filter(b => (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'upcoming' && (b.priestName || 'Not Assigned') === 'Not Assigned').length;
+  const unassignedCount = bookings.filter(b => !isCompleted(b) && (b.priestName || 'Not Assigned') === 'Not Assigned').length;
+
+  const getTabCount = (tab: 'upcoming' | 'completed' | 'all') => {
+    return bookings.filter(b => {
+      const tabMatch = tab === 'all' || (isCompleted(b) ? 'completed' : 'upcoming') === tab;
+      const poojaMatch = poojaType === 'All Poojas' || b.poojaName === poojaType;
+      const pujariMatch = pujariFilter === 'All' || 
+        (pujariFilter === 'Yes' && (b.priestName || 'Not Assigned') !== 'Not Assigned') || 
+        (pujariFilter === 'No' && (b.priestName || 'Not Assigned') === 'Not Assigned');
+      const deliveryMatch = deliveryFilter === 'All' || (b.hasPrasadDelivery ? 'Yes' : 'No') === deliveryFilter;
+      const paymentMatch = paymentFilter === 'All' || b.paymentStatus === paymentFilter;
+
+      return tabMatch && poojaMatch && pujariMatch && deliveryMatch && paymentMatch;
+    }).length;
+  };
 
   return (
     <div className="max-w-[1440px] mx-auto relative">
@@ -111,7 +165,7 @@ export function Bookings() {
             activeTab === 'upcoming' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
           }`}
         >
-          Upcoming ({bookings.filter(b => (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'upcoming').length})
+          Upcoming ({getTabCount('upcoming')})
         </button>
         <button 
           onClick={() => setActiveTab('completed')}
@@ -119,7 +173,7 @@ export function Bookings() {
             activeTab === 'completed' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
           }`}
         >
-          Completed ({bookings.filter(b => (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'completed').length})
+          Completed ({getTabCount('completed')})
         </button>
         <button 
           onClick={() => setActiveTab('all')}
@@ -127,7 +181,7 @@ export function Bookings() {
             activeTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
           }`}
         >
-          All ({bookings.length})
+          All ({getTabCount('all')})
         </button>
       </div>
 
@@ -293,15 +347,15 @@ export function Bookings() {
             </thead>
             <tbody className="font-sans text-body-sm text-on-surface divide-y divide-outline-variant/20">
               
-              {filteredBookings.map(b => (
+              {filteredBookings.map((b: any) => (
                 <tr 
                   key={b.id} 
                   className={`border-b border-outline-variant/30 bg-surface-container-lowest hover:bg-surface-container-low transition-colors ${
-                    (b.status === 'COMPLETED' ? 'completed' : 'upcoming') === 'upcoming' && (b.priestName || 'Not Assigned') === 'Not Assigned' ? 'border-l-4 border-l-error' : ''
+                    !isCompleted(b) && (b.priestName || 'Not Assigned') === 'Not Assigned' ? 'border-l-4 border-l-error' : ''
                   }`}
                 >
-                  <td className="p-4 font-bold">{b.id}</td>
-                  <td className="p-4 font-semibold">{(b.devoteeDetails?.name)}</td>
+                  <td className="p-4 font-bold">{displayIdMap.get(b.id) || b.id}</td>
+                  <td className="p-4 font-semibold">{b.devoteeName || b.devoteeDetails?.name || 'Guest'}</td>
                   <td className="p-4 font-semibold">{b.poojaName}</td>
                   <td className="p-4 text-on-surface-variant">{b.scheduledDate} {b.scheduledTime}</td>
                   <td className="p-4">

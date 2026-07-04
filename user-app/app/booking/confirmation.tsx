@@ -16,6 +16,7 @@ export default function BookingConfirmation() {
   const currentPoojaId = poojaId ? poojaId.toString() : '1';
   
   const [booking, setBooking] = useState<any>(null);
+  const [mappedId, setMappedId] = useState<string>('');
 
   useEffect(() => {
     const unsubscribe = firestore().collection('bookings').doc(displayId)
@@ -28,6 +29,54 @@ export default function BookingConfirmation() {
       });
     return () => unsubscribe();
   }, [displayId]);
+
+  useEffect(() => {
+    if (!booking?.templeId) return;
+
+    const fetchAllBookingsForSeq = async () => {
+      try {
+        const snap = await firestore().collection('bookings')
+          .where('templeId', '==', booking.templeId)
+          .where('isDeleted', '==', false)
+          .get();
+        const allDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const getSortTime = (b: any) => {
+          if (b.createdAt) {
+            if (typeof b.createdAt.toMillis === 'function') return b.createdAt.toMillis();
+            if (typeof b.createdAt.seconds === 'number') {
+              return b.createdAt.seconds * 1000 + (b.createdAt.nanoseconds || 0) / 1000000;
+            }
+            return new Date(b.createdAt).getTime();
+          }
+          if (b.scheduledDate) {
+            return new Date(b.scheduledDate).getTime();
+          }
+          return 0;
+        };
+
+        allDocs.sort((a, b) => {
+          const timeA = getSortTime(a);
+          const timeB = getSortTime(b);
+          if (timeA !== timeB) return timeA - timeB;
+          return a.id.localeCompare(b.id);
+        });
+
+        const idx = allDocs.findIndex(d => d.id === booking.id);
+        if (idx !== -1) {
+          const seqStr = String(idx + 1).padStart(10, '0');
+          setMappedId(`BK_${seqStr}`);
+        } else {
+          setMappedId(booking.id);
+        }
+      } catch (err) {
+        console.error("Failed to map sequential ID in confirmation:", err);
+        setMappedId(booking.id);
+      }
+    };
+
+    fetchAllBookingsForSeq();
+  }, [booking?.id, booking?.templeId]);
 
   const pooja = poojaCatalog.find(p => p.id.toString() === (booking?.poojaId?.toString() || currentPoojaId)) || poojaCatalog[0];
   const templeKey = getTempleKey(pooja.templeName || pooja.temple || '');
@@ -157,7 +206,7 @@ export default function BookingConfirmation() {
             className="text-sm text-primary font-bold"
             style={{ fontFamily: 'System' }}
           >
-            {displayId}
+            {mappedId || displayId}
           </Text>
         </View>
       </View>

@@ -1,4 +1,4 @@
-import { firestore } from './firebase';
+import { firestoreProvider as firestore } from './firebaseProvider';
 
 export async function processSystemEvent(eventId: string) {
   const db = firestore();

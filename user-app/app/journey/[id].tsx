@@ -23,6 +23,55 @@ export default function PoojaJourneyScreen() {
   const [booking, setBooking] = useState<any>(null);
   const [delivery, setDelivery] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [mappedDisplayId, setMappedDisplayId] = useState<string>('');
+
+  useEffect(() => {
+    if (!booking?.templeId) return;
+
+    const fetchAllBookingsForSeq = async () => {
+      try {
+        const snap = await firestore().collection('bookings')
+          .where('templeId', '==', booking.templeId)
+          .where('isDeleted', '==', false)
+          .get();
+        const allDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const getSortTime = (b: any) => {
+          if (b.createdAt) {
+            if (typeof b.createdAt.toMillis === 'function') return b.createdAt.toMillis();
+            if (typeof b.createdAt.seconds === 'number') {
+              return b.createdAt.seconds * 1000 + (b.createdAt.nanoseconds || 0) / 1000000;
+            }
+            return new Date(b.createdAt).getTime();
+          }
+          if (b.scheduledDate) {
+            return new Date(b.scheduledDate).getTime();
+          }
+          return 0;
+        };
+
+        allDocs.sort((a, b) => {
+          const timeA = getSortTime(a);
+          const timeB = getSortTime(b);
+          if (timeA !== timeB) return timeA - timeB;
+          return a.id.localeCompare(b.id);
+        });
+
+        const idx = allDocs.findIndex(d => d.id === booking.id);
+        if (idx !== -1) {
+          const seqStr = String(idx + 1).padStart(10, '0');
+          setMappedDisplayId(`BK_${seqStr}`);
+        } else {
+          setMappedDisplayId(booking.id);
+        }
+      } catch (err) {
+        console.error("Failed to map sequential ID in journey screen:", err);
+        setMappedDisplayId(booking.id);
+      }
+    };
+
+    fetchAllBookingsForSeq();
+  }, [booking?.id, booking?.templeId]);
 
   useEffect(() => {
     if (!cleanId) {
@@ -130,60 +179,96 @@ export default function PoojaJourneyScreen() {
     );
   }
 
-  const currentStage = getBookingStage(booking || {}, delivery || null);
+  const formatDateString = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const b = booking || {};
+  const d = delivery || null;
+
+  const bStatus = (b.status || '').toUpperCase();
+  const bStreamStatus = (b.streamStatus || '').toUpperCase();
+  const bRecordingStatus = (b.recordingStatus || '').toUpperCase();
+  const bDeliveryStatus = (b.deliveryStatus || '').toUpperCase();
+  const dStatus = (d?.status || '').toUpperCase();
 
   const stages = [
     {
       id: 1,
       nameKey: 'journey.sevaOffered',
       descKey: 'journey.sevaOfferedDesc',
-      timestamp: booking?.createdAt ? (booking.createdAt.toDate ? booking.createdAt.toDate().toLocaleString() : new Date(booking.createdAt.seconds * 1000).toLocaleString()) : undefined,
+      isCompleted: true,
+      isCurrent: false,
+      timestamp: b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate().toLocaleString() : new Date(b.createdAt.seconds * 1000).toLocaleString()) : undefined,
     },
     {
       id: 2,
       nameKey: 'journey.pujariAssigned',
       descKey: 'journey.pujariAssignedDesc',
-      timestamp: booking?.pujari ? `Assigned: ${booking.pujari}` : undefined,
+      isCompleted: !!(b.priestName || b.pujari),
+      isCurrent: !(b.priestName || b.pujari) && (bStatus === 'CONFIRMED'),
+      timestamp: (b.priestName || b.pujari) ? `Assigned: ${b.priestName || b.pujari}` : undefined,
     },
     {
       id: 3,
       nameKey: 'journey.poojaScheduled',
       descKey: 'journey.poojaScheduledDesc',
-      timestamp: getDisplayDate(),
+      isCompleted: !!(b.scheduledDate && b.scheduledTime),
+      isCurrent: !!(b.priestName || b.pujari) && !(b.scheduledDate && b.scheduledTime),
+      timestamp: (b.scheduledDate && b.scheduledTime) ? `${formatDateString(b.scheduledDate)} at ${b.scheduledTime}` : undefined,
     },
     {
       id: 4,
       nameKey: 'journey.goingLive',
       descKey: 'journey.goingLiveDesc',
-      timestamp: booking?.streamStatus === 'In Progress' ? 'Pooja is LIVE' : undefined,
+      isCompleted: bStreamStatus === 'LIVE' || bStreamStatus === 'ENDED' || bStatus === 'IN_PROGRESS' || bStatus === 'COMPLETED',
+      isCurrent: !!(b.scheduledDate && b.scheduledTime) && !(bStreamStatus === 'LIVE' || bStreamStatus === 'ENDED' || bStatus === 'IN_PROGRESS' || bStatus === 'COMPLETED'),
+      timestamp: (bStreamStatus === 'LIVE' || bStatus === 'IN_PROGRESS') ? 'Pooja is LIVE' : undefined,
     },
     {
       id: 5,
       nameKey: 'journey.poojaCompleted',
       descKey: 'journey.poojaCompletedDesc',
-      timestamp: booking?.streamStatus === 'Ended' ? 'Concluded' : undefined,
+      isCompleted: bStatus === 'COMPLETED' || bStreamStatus === 'ENDED',
+      isCurrent: bStreamStatus === 'LIVE' || bStatus === 'IN_PROGRESS',
+      timestamp: (bStatus === 'COMPLETED' || bStreamStatus === 'ENDED') ? 'Concluded' : undefined,
     },
     {
       id: 6,
       nameKey: 'journey.recordingReady',
       descKey: 'journey.recordingReadyDesc',
+      isCompleted: bRecordingStatus === 'AVAILABLE' || bRecordingStatus === 'READY',
+      isCurrent: (bStatus === 'COMPLETED' || bStreamStatus === 'ENDED') && !(bRecordingStatus === 'AVAILABLE' || bRecordingStatus === 'READY'),
       ctaKey: 'bookings.watchRecording',
     },
     {
       id: 7,
       nameKey: 'journey.prasadPacked',
       descKey: 'journey.prasadPackedDesc',
+      isCompleted: dStatus === 'PACKED' || dStatus === 'SHIPPED' || dStatus === 'OUT_FOR_DELIVERY' || dStatus === 'DELIVERED' || bDeliveryStatus === 'PACKED',
+      isCurrent: (bStatus === 'COMPLETED' || bStreamStatus === 'ENDED') && !(dStatus === 'PACKED' || dStatus === 'SHIPPED' || dStatus === 'OUT_FOR_DELIVERY' || dStatus === 'DELIVERED' || bDeliveryStatus === 'PACKED'),
     },
     {
       id: 8,
       nameKey: 'journey.prasadDispatched',
       descKey: 'journey.prasadDispatchedDesc',
+      isCompleted: dStatus === 'SHIPPED' || dStatus === 'OUT_FOR_DELIVERY' || dStatus === 'DELIVERED' || bDeliveryStatus === 'DISPATCHED' || bDeliveryStatus === 'SHIPPED',
+      isCurrent: dStatus === 'PACKED' || bDeliveryStatus === 'PACKED',
       ctaKey: 'bookings.trackPrasad',
     },
     {
       id: 9,
       nameKey: 'journey.prasadDelivered',
       descKey: 'journey.prasadDeliveredDesc',
+      isCompleted: dStatus === 'DELIVERED' || bDeliveryStatus === 'DELIVERED',
+      isCurrent: dStatus === 'SHIPPED' || dStatus === 'OUT_FOR_DELIVERY' || bDeliveryStatus === 'DISPATCHED' || bDeliveryStatus === 'SHIPPED',
     },
   ];
 
@@ -231,7 +316,7 @@ export default function PoojaJourneyScreen() {
                 fontFamily: 'System' 
               }}
             >
-              {t('bookingConfirmation.bookingId')}: {displayId}
+              {t('bookingConfirmation.bookingId')}: {mappedDisplayId || displayId}
             </Text>
           </View>
         </View>
@@ -286,8 +371,8 @@ export default function PoojaJourneyScreen() {
         {/* Timeline */}
         <View className="px-2">
           {stages.map((stage, index) => {
-            const isCompleted = index < currentStage;
-            const isCurrent = index === currentStage;
+            const isCompleted = stage.isCompleted;
+            const isCurrent = stage.isCurrent;
             const isLast = index === stages.length - 1;
 
             return (
@@ -295,7 +380,9 @@ export default function PoojaJourneyScreen() {
                 {/* Connector Line */}
                 {!isLast && (
                   <View 
-                    className={`absolute left-[20px] top-[36px] w-[2px] h-full bg-muted`} 
+                    className={`absolute left-[20px] top-[36px] w-[2px] h-full ${
+                      isCompleted && stages[index + 1]?.isCompleted ? 'bg-primary' : 'bg-muted'
+                    }`} 
                   />
                 )}
 
@@ -342,8 +429,12 @@ export default function PoojaJourneyScreen() {
                       fontFamily: 'System' 
                     }}
                   >
-                    {stage.id === 2 && booking?.pujari
-                      ? t(stage.descKey).replace('Pandit Ramesh Sharma', booking.pujari)
+                    {stage.id === 2 && (booking?.priestName || booking?.pujari)
+                      ? t(stage.descKey).replace('Pandit Ramesh Sharma', booking.priestName || booking.pujari)
+                      : stage.id === 3 && booking?.scheduledDate
+                      ? t(stage.descKey)
+                          .replace('15 April', formatDateString(booking.scheduledDate))
+                          .replace('9:00 AM', booking.scheduledTime || '9:00 AM')
                       : t(stage.descKey)}
                   </Text>
                   {stage.timestamp && (
