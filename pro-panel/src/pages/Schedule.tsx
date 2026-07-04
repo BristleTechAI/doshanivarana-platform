@@ -9,6 +9,7 @@ import { PageHeader } from '../components/PageHeader';
 
 type UISlot = Slot & {
   poojaName: string;
+  startDateTimeMs?: number;
 };
 
 
@@ -82,25 +83,50 @@ export function Schedule() {
           slotStartTime = `${hours.toString().padStart(2, '0')}:${minutesStr.toString().padStart(2, '0')} ${ampm}`;
         }
 
+        // Calculate startDateTimeMs for precise past/future checks
+        let startDateTimeMs = 0;
+        if (data.startTime && typeof data.startTime === 'object' && 'seconds' in data.startTime) {
+          startDateTimeMs = data.startTime.seconds * 1000;
+        } else if (slotDate) {
+          const parts = slotDate.split('-');
+          if (parts.length === 3) {
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            let hours = 0;
+            let minutes = 0;
+            if (slotStartTime) {
+              const match = slotStartTime.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+              if (match) {
+                hours = parseInt(match[1], 10);
+                minutes = parseInt(match[2], 10);
+                const ampm = match[3].toUpperCase();
+                if (ampm === 'PM' && hours < 12) hours += 12;
+                if (ampm === 'AM' && hours === 12) hours = 0;
+              }
+            }
+            startDateTimeMs = new Date(year, month, day, hours, minutes, 0, 0).getTime();
+          }
+        }
+
         return {
           id: doc.id,
           ...data,
           date: slotDate,
           startTime: slotStartTime,
+          startDateTimeMs,
           poojaName: pMap[data.poojaId]?.name || data.poojaId || 'Unknown Pooja',
         } as UISlot;
       });
       
-      // Sort slots by date and time safely
+      // Sort slots chronologically using startDateTimeMs
       sData.sort((a, b) => {
-        const dateA = a.date || '';
-        const dateB = b.date || '';
-        if (dateA !== dateB) return dateA.localeCompare(dateB);
-        const timeA = a.startTime || '';
-        const timeB = b.startTime || '';
-        return timeA.localeCompare(timeB);
+        const timeA = a.startDateTimeMs || 0;
+        const timeB = b.startDateTimeMs || 0;
+        if (timeA !== timeB) return timeA - timeB;
+        return a.id.localeCompare(b.id);
       });
-      
+
       setSlots(sData);
       localStorage.setItem(CACHE_KEY, JSON.stringify(sData));
     } catch (error) {
@@ -121,7 +147,7 @@ export function Schedule() {
   }, [templeId]);
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const pastSlots = slots.filter(s => s.date < todayStr);
+  const pastSlots = slots.filter(s => s.startDateTimeMs ? s.startDateTimeMs < Date.now() : s.date < todayStr);
   const pastSlotsCount = pastSlots.length;
 
   const handleToggleStatus = async (slot: UISlot) => {
@@ -161,7 +187,7 @@ export function Schedule() {
 
   // Filter slots
   const filteredSlots = slots.filter(slot => {
-    const isPast = slot.date < todayStr;
+    const isPast = slot.startDateTimeMs ? slot.startDateTimeMs < Date.now() : slot.date < todayStr;
     if (isPast) return false;
 
     const poojaMatch = selectedPooja === 'All Poojas' || slot.poojaId === selectedPooja;

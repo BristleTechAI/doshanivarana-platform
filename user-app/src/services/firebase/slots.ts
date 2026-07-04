@@ -10,6 +10,47 @@ function toDateObj(ts: any): Date {
   return new Date(ts);
 }
 
+function getSlotStartDateTime(slot: any): Date {
+  const startTs = slot.startTime;
+  if (startTs && typeof startTs !== 'string') {
+    return toDateObj(startTs);
+  }
+  
+  const dateStr = slot.date;
+  const timeStr = typeof startTs === 'string' ? startTs : '';
+  
+  let hours = 0;
+  let minutes = 0;
+  if (timeStr) {
+    const match = timeStr.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+    if (match) {
+      hours = parseInt(match[1], 10);
+      minutes = parseInt(match[2], 10);
+      const ampm = match[3].toUpperCase();
+      if (ampm === 'PM' && hours < 12) hours += 12;
+      if (ampm === 'AM' && hours === 12) hours = 0;
+    }
+  }
+  
+  if (dateStr) {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // 0-indexed
+      const day = parseInt(parts[2], 10);
+      return new Date(year, month, day, hours, minutes, 0, 0);
+    }
+  }
+  
+  return new Date();
+}
+
+function isSlotPast(slot: any): boolean {
+  if (!slot) return true;
+  const startDateTime = getSlotStartDateTime(slot);
+  return startDateTime.getTime() < Date.now();
+}
+
 function normalizeSlot(rawSlot: any): any {
   if (!rawSlot) return null;
   
@@ -65,7 +106,9 @@ export const SlotsService = {
       .where('isDeleted', '==', false)
       .where('status', 'in', ['AVAILABLE', 'Available'])
       .get();
-    return snapshot.docs.map(doc => normalizeSlot({ id: doc.id, ...doc.data() }) as Slot);
+    return snapshot.docs
+      .map(doc => normalizeSlot({ id: doc.id, ...doc.data() }) as Slot)
+      .filter(slot => slot && !isSlotPast(slot));
   },
 
   async getSlotsByPooja(poojaId: string) {
@@ -74,7 +117,9 @@ export const SlotsService = {
       .where('poojaId', '==', poojaId)
       .where('status', 'in', ['AVAILABLE', 'Available'])
       .get();
-    return snapshot.docs.map(doc => normalizeSlot({ id: doc.id, ...doc.data() }) as Slot);
+    return snapshot.docs
+      .map(doc => normalizeSlot({ id: doc.id, ...doc.data() }) as Slot)
+      .filter(slot => slot && !isSlotPast(slot));
   },
 
   subscribeToSlotsByPooja(poojaId: string, callback: (slots: Slot[]) => void) {
@@ -84,7 +129,9 @@ export const SlotsService = {
       .where('status', 'in', ['AVAILABLE', 'Available'])
       .onSnapshot((snapshot: any) => {
         if (snapshot) {
-          const list = snapshot.docs.map((doc: any) => normalizeSlot({ id: doc.id, ...doc.data() }) as Slot);
+          const list = snapshot.docs
+            .map((doc: any) => normalizeSlot({ id: doc.id, ...doc.data() }) as Slot)
+            .filter(slot => slot && !isSlotPast(slot));
           callback(list);
         }
       });
@@ -96,6 +143,8 @@ export const SlotsService = {
       .where('templeId', '==', templeId)
       .where('status', 'in', ['AVAILABLE', 'Available'])
       .get();
-    return snapshot.docs.map(doc => normalizeSlot({ id: doc.id, ...doc.data() }) as Slot);
+    return snapshot.docs
+      .map(doc => normalizeSlot({ id: doc.id, ...doc.data() }) as Slot)
+      .filter(slot => slot && !isSlotPast(slot));
   }
 };

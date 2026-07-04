@@ -1,10 +1,11 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, Pressable, ActivityIndicator, StatusBar, StyleSheet, Image } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, StatusBar, StyleSheet, Image, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Volume2, VolumeX, Lock, Play, Pause, RotateCcw, Radio } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
+import Constants from 'expo-constants';
 import { useLanguage } from '../../src/old_app/context/LanguageContext';
 import { safeStorage } from '../../src/old_app/lib/storage';
 import { firestoreProvider as firestore } from '../../src/lib/firebaseProvider';
@@ -293,10 +294,14 @@ export default function LiveStreamScreen() {
   // because react-native-agora requires native modules. We use a lazy require.
   // This renders as a black screen in Expo Go; use a dev build for full Agora video.
   let AgoraSurfaceView: any = null;
-  try {
-    AgoraSurfaceView = require('react-native-agora').RtcSurfaceView;
-  } catch (_) {
-    // react-native-agora not available (Expo Go), will fallback to placeholder
+  const isExpoGo = Constants.appOwnership === 'expo';
+  const isWeb = Platform.OS === 'web';
+  if (!isExpoGo && !isWeb) {
+    try {
+      AgoraSurfaceView = require('react-native-agora').RtcSurfaceView;
+    } catch (_) {
+      // react-native-agora not available (Expo Go), will fallback to placeholder
+    }
   }
 
   return (

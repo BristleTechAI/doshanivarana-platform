@@ -40,21 +40,55 @@ export function LiveStream() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const bks = snapshot.docs
-        .map(d => {
-          const data = d.data();
-          return {
-            id: d.id,
-            ...data,
-            scheduledDate: data.scheduledDate || data.dateTime || data.dateVal || 'No Date',
-            scheduledTime: data.scheduledTime || data.timeVal || 'No Time',
-          };
-        })
-        .filter(b => {
-          const statusLower = (b.status || b.bookingStatus || '').toLowerCase();
-          // Filter to only confirmed or active/scheduled bookings (exclude completed/cancelled/pending)
-          return statusLower === 'confirmed' || statusLower === 'scheduled';
-        });
+      // 1. Get all bookings for sequential ID mapping
+      const allDocs = snapshot.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          scheduledDate: data.scheduledDate || data.dateTime || data.dateVal || 'No Date',
+          scheduledTime: data.scheduledTime || data.timeVal || 'No Time',
+        };
+      });
+
+      // 2. Sort them exactly like BookingDetail.tsx and user-app journey screen
+      const getSortTime = (b: any) => {
+        if (b.createdAt) {
+          if (typeof b.createdAt.toMillis === 'function') return b.createdAt.toMillis();
+          if (typeof b.createdAt.seconds === 'number') {
+            return b.createdAt.seconds * 1000 + (b.createdAt.nanoseconds || 0) / 1000000;
+          }
+          return new Date(b.createdAt).getTime();
+        }
+        if (b.scheduledDate) {
+          return new Date(b.scheduledDate).getTime();
+        }
+        return 0;
+      };
+
+      allDocs.sort((a, b) => {
+        const timeA = getSortTime(a);
+        const timeB = getSortTime(b);
+        if (timeA !== timeB) return timeA - timeB;
+        return a.id.localeCompare(b.id);
+      });
+
+      // 3. Add displayId to each doc
+      const mappedBks = allDocs.map((item) => {
+        const idx = allDocs.findIndex(d => d.id === item.id);
+        const seqStr = idx !== -1 ? String(idx + 1).padStart(10, '0') : '';
+        const displayId = seqStr ? `BK_${seqStr}` : item.id;
+        return {
+          ...item,
+          displayId
+        };
+      });
+
+      // 4. Filter to only confirmed or active/scheduled bookings
+      const bks = mappedBks.filter(b => {
+        const statusLower = (b.status || b.bookingStatus || '').toLowerCase();
+        return statusLower === 'confirmed' || statusLower === 'scheduled';
+      });
 
       setUpcomingBookings(bks);
       if (bks.length > 0 && !selectedSlot) {
@@ -417,7 +451,7 @@ export function LiveStream() {
               disabled={streamState !== 'idle'}
               options={upcomingBookings.length > 0 ? upcomingBookings.map(b => ({
                 value: b.id,
-                label: `${b.poojaName} — ${b.id} at ${b.scheduledDate} (${b.currentBookings || 1} Bookings)`
+                label: `${b.poojaName} — ${b.displayId} at ${b.scheduledDate} (${b.currentBookings || 1} Bookings)`
               })) : [{ value: '', label: 'No upcoming pooja bookings' }]}
               className=""
             />

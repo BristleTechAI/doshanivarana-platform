@@ -108,6 +108,7 @@ export function DeliveryDetail() {
     try {
       await updateDoc(doc(db, 'deliveries', id), {
         status: 'PACKED',
+        prasadPackedByPro: true,  // Explicit PRO action flag
         weight,
         length,
         width,
@@ -115,6 +116,14 @@ export function DeliveryDetail() {
         contents,
         updatedAt: serverTimestamp()
       });
+
+      // Also update the booking so the user-app journey knows prasad is packed
+      if (delivery.bookingId) {
+        await updateDoc(doc(db, 'bookings', delivery.bookingId), {
+          deliveryStatus: 'PACKED',
+          updatedAt: serverTimestamp()
+        });
+      }
 
       const eventRef = doc(collection(db, 'systemEvents'));
       await setDoc(eventRef, {
@@ -168,6 +177,14 @@ export function DeliveryDetail() {
         dispatchDate: new Date().toISOString(),
         updatedAt: serverTimestamp()
       });
+
+      // Also update the booking so the user-app journey knows prasad is shipped
+      if (delivery.bookingId) {
+        await updateDoc(doc(db, 'bookings', delivery.bookingId), {
+          deliveryStatus: 'SHIPPED',
+          updatedAt: serverTimestamp()
+        });
+      }
 
       const eventRef = doc(collection(db, 'systemEvents'));
       await setDoc(eventRef, {

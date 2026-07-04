@@ -148,8 +148,8 @@ export default function PoojaJourneyScreen() {
 
   const devoteeInfo = {
     name: booking?.devoteeName || booking?.devoteeDetails?.name || t('profile.val.raghavan'),
-    gothram: translateGothramLocal(booking?.gotra || booking?.gothram || 'Bharadwaja', language),
-    nakshatra: translateNakshatraLocal(booking?.nakshatra || 'Shravana', language),
+    gothram: translateGothramLocal(booking?.devoteeDetails?.gotra || booking?.gotra || booking?.gothram || 'Bharadwaja', language),
+    nakshatra: translateNakshatraLocal(booking?.devoteeDetails?.nakshatra || booking?.nakshatra || 'Shravana', language),
     poojaName: booking?.poojaName || t('poojaDb.' + pooja.id + '.title'),
     date: getDisplayDate(),
     temple: booking?.templeName || t('templeDb.' + templeKey + '.name'),
@@ -199,6 +199,21 @@ export default function PoojaJourneyScreen() {
   const bDeliveryStatus = (b.deliveryStatus || '').toUpperCase();
   const dStatus = (d?.status || '').toUpperCase();
 
+  // ---- Explicit PRO action flags ----
+  // pujariAssigned: true only when PRO clicks "Save Assignment" in BookingDetail
+  const pujariIsAssigned = b.pujariAssigned === true;
+  // Prasad packed: only when PRO explicitly clicks "Mark as Packed" in DeliveryDetail
+  const prasadPackedByPro = d?.prasadPackedByPro === true || bDeliveryStatus === 'PACKED';
+  // Prasad shipped: when PRO clicks "Confirm Dispatch" 
+  const prasadShipped = dStatus === 'SHIPPED' || dStatus === 'OUT_FOR_DELIVERY' || dStatus === 'DELIVERED'
+                       || bDeliveryStatus === 'SHIPPED' || bDeliveryStatus === 'DISPATCHED';
+  const prasadDelivered = dStatus === 'DELIVERED' || bDeliveryStatus === 'DELIVERED';
+
+  // Stream / completion flags
+  const poojaIsLive = bStreamStatus === 'LIVE' || bStatus === 'IN_PROGRESS';
+  const poojaIsEnded = bStreamStatus === 'ENDED' || bStatus === 'COMPLETED';
+  const recordingReady = bRecordingStatus === 'AVAILABLE' || bRecordingStatus === 'READY';
+
   const stages = [
     {
       id: 1,
@@ -212,63 +227,66 @@ export default function PoojaJourneyScreen() {
       id: 2,
       nameKey: 'journey.pujariAssigned',
       descKey: 'journey.pujariAssignedDesc',
-      isCompleted: !!(b.priestName || b.pujari),
-      isCurrent: !(b.priestName || b.pujari) && (bStatus === 'CONFIRMED'),
-      timestamp: (b.priestName || b.pujari) ? `Assigned: ${b.priestName || b.pujari}` : undefined,
+      // Completed only when PRO explicitly assigns via BookingDetail (sets pujariAssigned: true)
+      isCompleted: pujariIsAssigned,
+      isCurrent: !pujariIsAssigned && (bStatus === 'CONFIRMED' || bStatus === 'SCHEDULED'),
+      timestamp: pujariIsAssigned ? `Assigned: ${b.priestName || b.pujari}` : undefined,
     },
     {
       id: 3,
       nameKey: 'journey.poojaScheduled',
       descKey: 'journey.poojaScheduledDesc',
-      isCompleted: !!(b.scheduledDate && b.scheduledTime),
-      isCurrent: !!(b.priestName || b.pujari) && !(b.scheduledDate && b.scheduledTime),
+      // Scheduled is confirmed once pujari is assigned (date/time always present from booking)
+      isCompleted: pujariIsAssigned && !!(b.scheduledDate && b.scheduledTime),
+      isCurrent: pujariIsAssigned && !(b.scheduledDate && b.scheduledTime),
       timestamp: (b.scheduledDate && b.scheduledTime) ? `${formatDateString(b.scheduledDate)} at ${b.scheduledTime}` : undefined,
     },
     {
       id: 4,
       nameKey: 'journey.goingLive',
       descKey: 'journey.goingLiveDesc',
-      isCompleted: bStreamStatus === 'LIVE' || bStreamStatus === 'ENDED' || bStatus === 'IN_PROGRESS' || bStatus === 'COMPLETED',
-      isCurrent: !!(b.scheduledDate && b.scheduledTime) && !(bStreamStatus === 'LIVE' || bStreamStatus === 'ENDED' || bStatus === 'IN_PROGRESS' || bStatus === 'COMPLETED'),
-      timestamp: (bStreamStatus === 'LIVE' || bStatus === 'IN_PROGRESS') ? 'Pooja is LIVE' : undefined,
+      isCompleted: poojaIsLive || poojaIsEnded,
+      isCurrent: pujariIsAssigned && !!(b.scheduledDate && b.scheduledTime) && !(poojaIsLive || poojaIsEnded),
+      timestamp: poojaIsLive ? 'Pooja is LIVE' : undefined,
     },
     {
       id: 5,
       nameKey: 'journey.poojaCompleted',
       descKey: 'journey.poojaCompletedDesc',
-      isCompleted: bStatus === 'COMPLETED' || bStreamStatus === 'ENDED',
-      isCurrent: bStreamStatus === 'LIVE' || bStatus === 'IN_PROGRESS',
-      timestamp: (bStatus === 'COMPLETED' || bStreamStatus === 'ENDED') ? 'Concluded' : undefined,
+      isCompleted: poojaIsEnded,
+      isCurrent: poojaIsLive,
+      timestamp: poojaIsEnded ? 'Concluded' : undefined,
     },
     {
       id: 6,
       nameKey: 'journey.recordingReady',
       descKey: 'journey.recordingReadyDesc',
-      isCompleted: bRecordingStatus === 'AVAILABLE' || bRecordingStatus === 'READY',
-      isCurrent: (bStatus === 'COMPLETED' || bStreamStatus === 'ENDED') && !(bRecordingStatus === 'AVAILABLE' || bRecordingStatus === 'READY'),
+      isCompleted: recordingReady,
+      isCurrent: poojaIsEnded && !recordingReady,
       ctaKey: 'bookings.watchRecording',
     },
     {
       id: 7,
       nameKey: 'journey.prasadPacked',
       descKey: 'journey.prasadPackedDesc',
-      isCompleted: dStatus === 'PACKED' || dStatus === 'SHIPPED' || dStatus === 'OUT_FOR_DELIVERY' || dStatus === 'DELIVERED' || bDeliveryStatus === 'PACKED',
-      isCurrent: (bStatus === 'COMPLETED' || bStreamStatus === 'ENDED') && !(dStatus === 'PACKED' || dStatus === 'SHIPPED' || dStatus === 'OUT_FOR_DELIVERY' || dStatus === 'DELIVERED' || bDeliveryStatus === 'PACKED'),
+      // Only mark as packed when PRO explicitly clicks "Mark as Packed" (sets prasadPackedByPro: true)
+      isCompleted: prasadPackedByPro || prasadShipped || prasadDelivered,
+      isCurrent: poojaIsEnded && !prasadPackedByPro && !prasadShipped && !prasadDelivered,
     },
     {
       id: 8,
       nameKey: 'journey.prasadDispatched',
       descKey: 'journey.prasadDispatchedDesc',
-      isCompleted: dStatus === 'SHIPPED' || dStatus === 'OUT_FOR_DELIVERY' || dStatus === 'DELIVERED' || bDeliveryStatus === 'DISPATCHED' || bDeliveryStatus === 'SHIPPED',
-      isCurrent: dStatus === 'PACKED' || bDeliveryStatus === 'PACKED',
+      isCompleted: prasadShipped || prasadDelivered,
+      isCurrent: prasadPackedByPro && !prasadShipped && !prasadDelivered,
       ctaKey: 'bookings.trackPrasad',
     },
     {
       id: 9,
       nameKey: 'journey.prasadDelivered',
       descKey: 'journey.prasadDeliveredDesc',
-      isCompleted: dStatus === 'DELIVERED' || bDeliveryStatus === 'DELIVERED',
-      isCurrent: dStatus === 'SHIPPED' || dStatus === 'OUT_FOR_DELIVERY' || bDeliveryStatus === 'DISPATCHED' || bDeliveryStatus === 'SHIPPED',
+      isCompleted: prasadDelivered,
+      isCurrent: prasadShipped && !prasadDelivered,
     },
   ];
 

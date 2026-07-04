@@ -193,9 +193,11 @@ export function BookingDetail() {
         if (priestObj) {
           updatePayload.priestId = priestObj.id;
           updatePayload.priestName = priestObj.name;
+          updatePayload.pujariAssigned = true;  // Explicit PRO action flag
         } else {
           updatePayload.priestId = null;
           updatePayload.priestName = 'Not Assigned';
+          updatePayload.pujariAssigned = false; // PRO explicitly unassigned
         }
 
         await updateDoc(doc(db, 'bookings', id), updatePayload);

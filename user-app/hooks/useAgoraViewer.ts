@@ -13,6 +13,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 interface UseAgoraViewerOptions {
   channelName: string | null;
@@ -31,6 +33,11 @@ interface AgoraViewerState {
 // Lazily resolve the Agora SDK so that missing native modules don't crash the
 // JS bundle on load (e.g. in Expo Go or simulators without a dev-client build).
 function tryRequireAgora() {
+  const isExpoGo = Constants.appOwnership === 'expo';
+  const isWeb = Platform.OS === 'web';
+  if (isExpoGo || isWeb) {
+    return null;
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     return require('react-native-agora');

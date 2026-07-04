@@ -8,20 +8,33 @@ import { processSystemEvent } from "../src/lib/notificationGenerator";
 
 function AppContent() {
   useEffect(() => {
-    // Listen for PENDING system events and process them in the background
+    // Track event IDs we've already dispatched in this session to prevent
+    // duplicate processing while Firestore catches up and changes the status
+    const dispatched = new Set<string>();
+
     const unsubscribe = firestore().collection('systemEvents')
       .where('status', '==', 'PENDING')
       .onSnapshot((snapshot: any) => {
-        if (snapshot) {
-          snapshot.forEach((doc: any) => {
-            console.log('[SystemEvents Listener] Processing event:', doc.id);
-            processSystemEvent(doc.id).catch((err: any) => {
-              console.error('[SystemEvents Listener] Failed to process:', doc.id, err);
-            });
+        if (!snapshot) return;
+
+        // Only process documents that were just added to the result set
+        const changes = snapshot.docChanges
+          ? snapshot.docChanges()
+          : snapshot.docs.map((d: any) => ({ type: 'added', doc: d }));
+
+        changes.forEach((change: any) => {
+          if (change.type !== 'added') return;
+          const docId: string = change.doc.id;
+          if (dispatched.has(docId)) return; // already sent to processor this session
+          dispatched.add(docId);
+
+          processSystemEvent(docId).catch((err: any) => {
+            console.error('[SystemEvents] Failed:', docId, err);
+            dispatched.delete(docId); // allow retry if it truly failed before updating Firestore
           });
-        }
+        });
       }, (err: any) => {
-        console.error('[SystemEvents Listener] Subscription error:', err);
+        console.error('[SystemEvents] Subscription error:', err);
       });
 
     return () => unsubscribe();
