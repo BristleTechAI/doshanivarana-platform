@@ -1,13 +1,16 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router';
+import { useParams, Link, useNavigate } from 'react-router';
 import { doc, getDoc, getDocs, updateDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { PageHeader } from '../components/PageHeader';
 import { buildGoogleMapsDirectionsUrl } from '@devaseva/core';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+
 export function BookingDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [booking, setBooking] = useState<Booking | null>(null);
   const [selectedPujariId, setSelectedPujariId] = useState('Not Assigned');
   const [notification, setNotification] = useState<string | null>(null);
@@ -15,6 +18,51 @@ export function BookingDetail() {
   const [priests, setPriests] = useState<any[]>([]);
   const [templeData, setTempleData] = useState<any>(null);
   const [displayId, setDisplayId] = useState<string>('');
+  const [readinessData, setReadinessData] = useState<any>(null);
+  const [matchingSlotId, setMatchingSlotId] = useState<string | null>(null);
+
+  // Listen to streamReadiness checklist in Firestore in real-time
+  useEffect(() => {
+    if (!booking?.id) return;
+    const unsub = onSnapshot(doc(db, 'streamReadiness', booking.id), (docSnap) => {
+      if (docSnap.exists()) {
+        setReadinessData(docSnap.data());
+      } else {
+        // Fetch to initialize if it doesn't exist yet
+        const poojaId = booking.poojaId || '';
+        const tId = booking.templeId || '';
+        fetch(`${BACKEND_URL}/api/stream-readiness/${booking.id}?poojaId=${poojaId}&templeId=${tId}`)
+          .then(res => res.json())
+          .then(data => setReadinessData(data))
+          .catch(err => console.error('[Readiness] Fetch error:', err));
+      }
+    });
+    return () => unsub();
+  }, [booking?.id, booking?.poojaId, booking?.templeId]);
+
+  // Fetch matching slot ID from Firestore
+  useEffect(() => {
+    if (!booking?.poojaId || !booking?.scheduledDate || !booking?.scheduledTime) return;
+    const fetchSlot = async () => {
+      try {
+        const q = query(
+          collection(db, 'slots'),
+          where('templeId', '==', booking.templeId),
+          where('poojaId', '==', booking.poojaId),
+          where('date', '==', booking.scheduledDate),
+          where('startTime', '==', booking.scheduledTime),
+          where('isDeleted', '==', false)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setMatchingSlotId(snap.docs[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to fetch matching slot ID", err);
+      }
+    };
+    fetchSlot();
+  }, [booking?.poojaId, booking?.scheduledDate, booking?.scheduledTime, booking?.templeId]);
   
   useEffect(() => {
     if (!id) return;
@@ -229,6 +277,35 @@ export function BookingDetail() {
         console.error(e);
       }
     }
+  };
+
+  const isPujariAssigned = !!(booking?.priestId && booking?.priestId !== 'Not Assigned');
+
+  const handleGoToChecklist = () => {
+    if (!booking) return;
+    navigate(`/stream-readiness/${booking.id}?poojaId=${booking.poojaId}&templeId=${booking.templeId}&priestId=${booking.priestId || ''}&priestName=${encodeURIComponent(booking.priestName || '')}`);
+  };
+
+  const handleGoToLiveStream = () => {
+    if (readinessData?.isReady) {
+      navigate('/live-stream');
+    } else {
+      handleGoToChecklist();
+    }
+  };
+
+  const handleViewSchedule = () => {
+    if (matchingSlotId) {
+      navigate(`/schedule/edit/${matchingSlotId}`);
+    } else {
+      navigate('/schedule');
+    }
+  };
+
+  const handleMessageDevotee = () => {
+    if (!booking) return;
+    const devoteeName = booking.devoteeName || booking.devoteeDetails?.name || 'Devotee';
+    navigate(`/queries?bookingId=${booking.id}&devoteeName=${encodeURIComponent(devoteeName)}`);
   };
 
 
@@ -469,6 +546,133 @@ export function BookingDetail() {
             >
               Save Assignment
             </button>
+          </div>
+
+          {/* Actions Section Card */}
+          <div className="bg-surface-container-lowest rounded-xl soft-shadow p-6 border border-[#F0E6D2] border-t-4 border-t-primary">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined text-primary">explore</span>
+              <h3 className="font-display text-headline-sm text-on-surface font-bold">Actions</h3>
+            </div>
+            
+            <div className="flex flex-col gap-4 font-sans">
+              {/* Action 1: Go to Live Stream Readiness Checklist */}
+              <button
+                onClick={isPujariAssigned ? handleGoToChecklist : undefined}
+                disabled={!isPujariAssigned}
+                className={`w-full text-left flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
+                  isPujariAssigned 
+                    ? 'bg-surface-container-lowest hover:bg-primary/5 border-[#F0E6D2] hover:border-primary/50 cursor-pointer group shadow-sm hover:shadow' 
+                    : 'bg-surface-container-low border-outline-variant opacity-60 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                    isPujariAssigned 
+                      ? 'bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white' 
+                      : 'bg-surface-container-high text-on-surface-variant'
+                  }`}>
+                    <span className="material-symbols-outlined text-[20px]">fact_check</span>
+                  </div>
+                  <div>
+                    <h4 className="text-body-md font-bold text-on-surface">Go to Stream Readiness</h4>
+                    <p className="text-label-md text-on-surface-variant font-medium">
+                      {isPujariAssigned 
+                        ? 'Verify checklist before live stream' 
+                        : 'Assign a Pujari first'
+                      }
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  {isPujariAssigned ? (
+                    <span className={`font-label-md text-[11px] font-bold px-2 py-1 rounded-full uppercase border ${
+                      readinessData?.isReady 
+                        ? 'bg-green-50 text-green-700 border-green-200' 
+                        : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                    }`}>
+                      {readinessData?.isReady ? 'Ready' : `${readinessData?.progressPercent || 0}% Done`}
+                    </span>
+                  ) : (
+                    <span className="material-symbols-outlined text-[18px] text-on-surface-variant">lock</span>
+                  )}
+                </div>
+              </button>
+
+              {/* Action 2: Go to Live Stream */}
+              <button
+                onClick={handleGoToLiveStream}
+                className="w-full text-left flex items-center justify-between p-4 rounded-xl border transition-all duration-300 bg-surface-container-lowest hover:bg-primary/5 border-[#F0E6D2] hover:border-primary/50 cursor-pointer group shadow-sm hover:shadow"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                    readinessData?.isReady
+                      ? 'bg-green-100 text-green-800 group-hover:bg-green-600 group-hover:text-white' 
+                      : 'bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white'
+                  }`}>
+                    <span className="material-symbols-outlined text-[20px]">sensors</span>
+                  </div>
+                  <div>
+                    <h4 className="text-body-md font-bold text-on-surface">Go to Live Stream</h4>
+                    <p className="text-label-md text-on-surface-variant font-medium">
+                      {readinessData?.isReady 
+                        ? 'Start or join the live broadcast' 
+                        : 'Checklist incomplete (click to open checklist)'
+                      }
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  {readinessData?.isReady ? (
+                    <span className="material-symbols-outlined text-[20px] text-green-700 animate-pulse">play_circle</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-[18px] text-yellow-600">help</span>
+                  )}
+                </div>
+              </button>
+
+              {/* Action 3: View Pooja Schedule */}
+              <button
+                onClick={handleViewSchedule}
+                className="w-full text-left flex items-center justify-between p-4 rounded-xl border transition-all duration-300 bg-surface-container-lowest hover:bg-primary/5 border-[#F0E6D2] hover:border-primary/50 cursor-pointer group shadow-sm hover:shadow"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-colors">
+                    <span className="material-symbols-outlined text-[20px]">calendar_month</span>
+                  </div>
+                  <div>
+                    <h4 className="text-body-md font-bold text-on-surface">View Pooja Schedule</h4>
+                    <p className="text-label-md text-on-surface-variant font-medium">
+                      {matchingSlotId ? 'View and edit slot timings' : 'Go to schedule manager'}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">arrow_forward</span>
+                </div>
+              </button>
+
+              {/* Action 4: Message Devotee */}
+              <button
+                onClick={handleMessageDevotee}
+                className="w-full text-left flex items-center justify-between p-4 rounded-xl border transition-all duration-300 bg-surface-container-lowest hover:bg-primary/5 border-[#F0E6D2] hover:border-primary/50 cursor-pointer group shadow-sm hover:shadow"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-colors">
+                    <span className="material-symbols-outlined text-[20px]">chat</span>
+                  </div>
+                  <div>
+                    <h4 className="text-body-md font-bold text-on-surface">Message Devotee</h4>
+                    <p className="text-label-md text-on-surface-variant font-medium">
+                      Open chat with devotee ({booking.devoteeName || booking.devoteeDetails?.name || 'Guest'})
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">chat_bubble</span>
+                </div>
+              </button>
+            </div>
           </div>
 
         </div>

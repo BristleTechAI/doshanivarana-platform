@@ -37,6 +37,7 @@ export function Bookings() {
   const [paymentFilter, setPaymentFilter] = useState('All');
 
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Custom Dropdown states
   const [isPoojaOpen, setIsPoojaOpen] = useState(false);
@@ -121,6 +122,16 @@ export function Bookings() {
 
     return tabMatch && poojaMatch && pujariMatch && deliveryMatch && paymentMatch;
   });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, poojaType, pujariFilter, deliveryFilter, paymentFilter]);
+
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(filteredBookings.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedBookings = filteredBookings.slice(startIndex, endIndex);
 
   const unassignedCount = bookings.filter(b => !isCompleted(b) && (b.priestName || 'Not Assigned') === 'Not Assigned').length;
 
@@ -347,7 +358,7 @@ export function Bookings() {
             </thead>
             <tbody className="font-sans text-body-sm text-on-surface divide-y divide-outline-variant/20">
               
-              {filteredBookings.map((b: any) => (
+              {paginatedBookings.map((b: any) => (
                 <tr 
                   key={b.id} 
                   className={`border-b border-outline-variant/30 bg-surface-container-lowest hover:bg-surface-container-low transition-colors ${
@@ -409,13 +420,37 @@ export function Bookings() {
 
         {/* Pagination */}
         <div className="px-6 py-4 border-t border-outline-variant/30 flex items-center justify-between bg-surface-container-lowest font-sans">
-          <span className="text-body-sm text-on-surface-variant">Showing 1–{filteredBookings.length} of {filteredBookings.length} bookings</span>
+          <span className="text-body-sm text-on-surface-variant font-semibold">
+            Showing {filteredBookings.length === 0 ? 0 : startIndex + 1}–{Math.min(endIndex, filteredBookings.length)} of {filteredBookings.length} bookings
+          </span>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1 font-button text-button text-on-surface-variant hover:text-on-surface disabled:opacity-50" disabled={true}>Previous</button>
+            <button 
+              className="px-3 py-1 font-button text-button text-primary hover:bg-primary-container/20 rounded-md transition-colors font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" 
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            >
+              Previous
+            </button>
             <div className="flex gap-1">
-              <button className="w-8 h-8 rounded-full bg-primary text-on-primary font-button text-button flex items-center justify-center font-bold">1</button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                <button 
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`w-8 h-8 rounded-full font-button text-button flex items-center justify-center font-bold cursor-pointer ${
+                    currentPage === pageNum ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              ))}
             </div>
-            <button className="px-3 py-1 font-button text-button text-primary hover:bg-primary-container/20 rounded-md transition-colors font-bold" disabled={true}>Next</button>
+            <button 
+              className="px-3 py-1 font-button text-button text-primary hover:bg-primary-container/20 rounded-md transition-colors font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" 
+              disabled={currentPage === totalPages || totalPages === 0}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            >
+              Next
+            </button>
           </div>
         </div>
 

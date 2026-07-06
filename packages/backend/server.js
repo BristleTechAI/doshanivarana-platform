@@ -355,18 +355,20 @@ function calculateProgressAndLocking(stages) {
     // Check if stage is complete
     const isStageFullyComplete = stageTotal > 0 && stageCompleted === stageTotal;
 
-    if (isStageFullyComplete) {
-      stage.status = 'COMPLETED';
-    } else if (prevStageCompleted) {
-      stage.status = 'IN_PROGRESS';
-      if (!currentStageId) {
-        currentStageId = stage.id;
+    if (prevStageCompleted) {
+      if (isStageFullyComplete) {
+        stage.status = 'COMPLETED';
+      } else {
+        stage.status = 'IN_PROGRESS';
+        if (!currentStageId) {
+          currentStageId = stage.id;
+        }
       }
     } else {
       stage.status = 'LOCKED';
     }
 
-    prevStageCompleted = isStageFullyComplete;
+    prevStageCompleted = prevStageCompleted && isStageFullyComplete;
   });
 
   const progressPercent = totalItemsCount > 0
@@ -385,21 +387,173 @@ function calculateProgressAndLocking(stages) {
   };
 }
 
+const getPoojaItems = (poojaId, poojaName) => {
+  const name = (poojaName || '').toLowerCase();
+  const id = (poojaId || '').toLowerCase();
+
+  if (name.includes('satyanarayana') || id.includes('satyanarayana')) {
+    return [
+      { id: "item_idol", label: "Shri Satyanarayana Murti / Photo", completed: false, isMandatory: true },
+      { id: "item_chowki", label: "Pooja Chowki & Yellow Cloth", completed: false, isMandatory: true },
+      { id: "item_leaves", label: "Banana Leaves & Kalash Setup", completed: false, isMandatory: true },
+      { id: "item_panchamrit", label: "Panchamrit (Milk, Curd, Ghee, Honey, Sugar)", completed: false, isMandatory: true },
+      { id: "item_thread", label: "Saptarishi Thread & Mouli", completed: false, isMandatory: true },
+      { id: "item_prasad", label: "Prasad (Sheera/Suji Halwa)", completed: false, isMandatory: true }
+    ];
+  }
+  
+  if (name.includes('rudra') || name.includes('shiva') || id.includes('rudra') || id.includes('shiva') || name.includes('abihkesam') || name.includes('abhishekam') || id.includes('abihkesam') || id.includes('abhishekam') || name.includes('abhishek') || id.includes('abhishek') || name.includes('abiheskam') || id.includes('abiheskam') || name.includes('abihsekam') || id.includes('abihsekam')) {
+    return [
+      { id: "item_linga", label: "Shivalinga (Pancha Dhatu / Stone)", completed: false, isMandatory: true },
+      { id: "item_water", label: "Gangajal & Rose Water", completed: false, isMandatory: true },
+      { id: "item_leaves", label: "Bilva Leaves (Bel Patra) & Dhatura", completed: false, isMandatory: true },
+      { id: "item_bhasma", label: "Bhasma (Sacred Ash) & Sandalwood Paste", completed: false, isMandatory: true },
+      { id: "item_milk", label: "Fresh Milk, Honey & Coconut Water", completed: false, isMandatory: true },
+      { id: "item_rudraksha", label: "Rudraksha Mala & Panchamrit", completed: false, isMandatory: true }
+    ];
+  }
+
+  if (name.includes('chandi') || name.includes('durga') || id.includes('chandi') || id.includes('durga') || name.includes('homa') || id.includes('homa') || name.includes('homam') || id.includes('homam')) {
+    return [
+      { id: "item_durga", label: "Maa Durga Photo / Idol", completed: false, isMandatory: true },
+      { id: "item_kund", label: "Havan Kund & Mango Wood", completed: false, isMandatory: true },
+      { id: "item_ghee", label: "Ghee & Havan Samagri", completed: false, isMandatory: true },
+      { id: "item_flowers", label: "Red Flowers & Kumkum", completed: false, isMandatory: true },
+      { id: "item_coconut", label: "Dry Fruits & Coconut for Purnahuti", completed: false, isMandatory: true },
+      { id: "item_cloth", label: "Saree / Red Cloth offering", completed: false, isMandatory: true }
+    ];
+  }
+
+  if (name.includes('navagraha') || id.includes('navagraha')) {
+    return [
+      { id: "item_navagraha", label: "Navagraha Yantra / Photo", completed: false, isMandatory: true },
+      { id: "item_cloths", label: "Nine Colors Cloths (for Nine Planets)", completed: false, isMandatory: true },
+      { id: "item_sesame", label: "Sesame Oil & Black Sesame Seeds", completed: false, isMandatory: true },
+      { id: "item_grains", label: "Nine varieties of Grains (Navadhanya)", completed: false, isMandatory: true },
+      { id: "item_thread", label: "Mouli & Janeu (Sacred Thread)", completed: false, isMandatory: true },
+      { id: "item_havan", label: "Havan Wood & Camphor", completed: false, isMandatory: true }
+    ];
+  }
+
+  if (name.includes('ganapathi') || name.includes('ganesh') || id.includes('ganapathi') || id.includes('ganesh')) {
+    return [
+      { id: "item_ganesha", label: "Ganesha Idol (Turmeric/Clay/Metal)", completed: false, isMandatory: true },
+      { id: "item_durva", label: "Durva Grass (21 blades)", completed: false, isMandatory: true },
+      { id: "item_modak", label: "Modak or Ladoo offering", completed: false, isMandatory: true },
+      { id: "item_sandal", label: "Red Sandalwood & Hibiscus Flowers", completed: false, isMandatory: true },
+      { id: "item_coconut", label: "Coconut & Betel Leaves", completed: false, isMandatory: true },
+      { id: "item_havan", label: "Havan Samagri & Ghee", completed: false, isMandatory: true }
+    ];
+  }
+
+  // Fallback / General Pooja
+  return [
+    { id: "item_deity", label: "Idol/Photo of Deity", completed: false, isMandatory: true },
+    { id: "item_thali", label: "Pooja Thali (Haldi, Kumkum, Akshata)", completed: false, isMandatory: true },
+    { id: "item_incense", label: "Incense Sticks (Agarbatti) & Dhoop", completed: false, isMandatory: true },
+    { id: "item_diya", label: "Brass Diya & Sesame Oil/Ghee", completed: false, isMandatory: true },
+    { id: "item_flowers", label: "Fresh Flowers & Garlands", completed: false, isMandatory: true },
+    { id: "item_coconut", label: "Coconuts & Betel Leaves/Nuts", completed: false, isMandatory: true }
+  ];
+};
+
 // GET /api/stream-readiness/:bookingId
 app.get('/api/stream-readiness/:bookingId', async (req, res) => {
   const { bookingId } = req.params;
-  const { poojaId, templeId } = req.query;
+  let { poojaId, templeId } = req.query;
 
   try {
     const docRef = doc(firestoreDb, 'streamReadiness', bookingId);
     const snap = await getDoc(docRef);
 
+    // Fetch booking details from Firestore to get poojaName, poojaId, and templeId if missing
+    const bookingDocRef = doc(firestoreDb, 'bookings', bookingId);
+    const bookingSnap = await getDoc(bookingDocRef);
+    let poojaName = '';
+    if (bookingSnap.exists()) {
+      const bData = bookingSnap.data();
+      poojaName = bData.poojaName || '';
+      if (!poojaId) poojaId = bData.poojaId || '';
+      if (!templeId) templeId = bData.templeId || '';
+    }
+
+    const poojaItems = getPoojaItems(poojaId, poojaName);
+
     if (snap.exists()) {
-      return res.json(snap.data());
+      const data = snap.data();
+      let updated = false;
+      const stages = data.stages || [];
+      const stage1 = stages.find(s => s.id === 'stage1');
+      if (stage1) {
+        const currentItemIds = (stage1.items || []).map(i => i.id).join(',');
+        const targetItemIds = poojaItems.map(i => i.id).join(',');
+
+        if (stage1.title !== 'Stage 1: Pooja Preparation' || currentItemIds !== targetItemIds) {
+          stage1.title = 'Stage 1: Pooja Preparation';
+          stage1.icon = 'spa';
+          // Replace with the dynamic pooja items, keeping completed state if IDs match
+          stage1.items = poojaItems.map(newItem => {
+            const oldMatch = stage1.items.find(oi => oi.id === newItem.id);
+            return {
+              ...newItem,
+              completed: oldMatch ? oldMatch.completed : false
+            };
+          });
+          updated = true;
+        }
+      }
+
+      const stage2 = stages.find(s => s.id === 'stage2');
+      if (stage2) {
+        const currentItemIds = (stage2.items || []).map(i => i.id).join(',');
+        if (currentItemIds !== 'camera_positioned,mic_tested') {
+          stage2.items = [
+            { id: "camera_positioned", label: "Camera Position", completed: stage2.items.find(i => i.id === 'camera_positioned')?.completed || false, isMandatory: true },
+            { id: "mic_tested", label: "Microphone Tested", completed: stage2.items.find(i => i.id === 'mic_tested')?.completed || false, isMandatory: true }
+          ];
+          updated = true;
+        }
+      }
+
+      if (stages.length > 2 || stages.some(s => s.id === 'stage3' || s.id === 'stage4')) {
+        const activeStage1 = stages.find(s => s.id === 'stage1');
+        const activeStage2 = stages.find(s => s.id === 'stage2');
+
+        const newStages = [];
+        if (activeStage1) newStages.push(activeStage1);
+        if (activeStage2) newStages.push(activeStage2);
+
+        stages.length = 0;
+        stages.push(...newStages);
+        updated = true;
+      }
+
+      if (updated) {
+        const { progressPercent, isReady, currentStageId } = calculateProgressAndLocking(stages);
+        const updatedData = {
+          ...data,
+          stages,
+          progressPercent,
+          isReady,
+          currentStageId: currentStageId || 'stage1',
+          updatedAt: new Date().toISOString()
+        };
+        await setDoc(docRef, updatedData);
+        return res.json(updatedData);
+      }
+
+      return res.json(data);
     }
 
     // Initialize new checklist from template
     const template = getReadinessTemplate();
+    const stage1 = template.find(s => s.id === 'stage1');
+    if (stage1) {
+      stage1.title = 'Stage 1: Pooja Preparation';
+      stage1.icon = 'spa';
+      stage1.items = poojaItems;
+    }
+
     const { progressPercent, isReady, currentStageId } = calculateProgressAndLocking(template);
 
     const initialData = {

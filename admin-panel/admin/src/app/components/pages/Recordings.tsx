@@ -14,6 +14,7 @@ const recStatusCfg: Record<string, { bg: string; color: string }> = {
 export function RecordingsPage() {
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [page, setPage] = useState(1);
   const [recordings, setRecordings] = useState<any[]>([]);
   const [streams, setStreams] = useState<any[]>([]);
   
@@ -37,7 +38,17 @@ export function RecordingsPage() {
     (r.templeName || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const groupedByDate = filtered.reduce((acc: any, curr: any) => {
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
+  const startIndex = (page - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedRecordings = filtered.slice(startIndex, endIndex);
+
+  const groupedByDate = paginatedRecordings.reduce((acc: any, curr: any) => {
     const dateStr = curr.createdAt ? new Date(curr.createdAt).toLocaleDateString() : "Unknown Date";
     if (!acc[dateStr]) acc[dateStr] = [];
     acc[dateStr].push(curr);
@@ -246,6 +257,45 @@ export function RecordingsPage() {
           </div>
         ))
       )}
+
+      {/* Pagination */}
+      <div className="bg-white rounded-xl border p-4 flex items-center justify-between" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
+        <span className="text-xs" style={{ color: "#9CA3AF" }}>
+          Showing {filtered.length === 0 ? 0 : startIndex + 1}–{Math.min(endIndex, filtered.length)} of {filtered.length} recordings
+        </span>
+        <div className="flex items-center gap-2">
+          <button 
+            className="px-2 py-1 text-xs border rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-bold" 
+            disabled={page === 1}
+            onClick={() => setPage(prev => Math.max(1, prev - 1))}
+          >
+            Previous
+          </button>
+          <div className="flex gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+              <button 
+                key={pageNum}
+                onClick={() => setPage(pageNum)}
+                className="w-6 h-6 text-xs rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+                style={{
+                  backgroundColor: page === pageNum ? "#C76A00" : "transparent",
+                  color: page === pageNum ? "#FFFFFF" : "#6B7280",
+                  fontWeight: page === pageNum ? 700 : 500
+                }}
+              >
+                {pageNum}
+              </button>
+            ))}
+          </div>
+          <button 
+            className="px-2 py-1 text-xs border rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-bold" 
+            disabled={page === totalPages || totalPages === 0}
+            onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+          >
+            Next
+          </button>
+        </div>
+      </div>
 
       {/* Create Modal */}
       <Modal open={createOpen} onClose={() => { setCreateOpen(false); setForm({ streamId: "", recordingTitle: "", recordingDescription: "", recordingUrl: "", thumbnailUrl: "", durationSeconds: 0 }); setErrorMsg(""); }} title="Create Recording from Stream" width="500px">

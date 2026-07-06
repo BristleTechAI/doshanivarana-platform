@@ -23,6 +23,7 @@ export function Feedback() {
   const [reviews, setReviews] = useState<any[]>([]);
   const { user } = useAuth();
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const unsubscribe = FeedbackService.subscribeToFeedback(setReviews);
@@ -43,6 +44,16 @@ export function Feedback() {
 
   const pendingCount = reviews.filter((r: any) => r.status === "PENDING").length;
 
+  useEffect(() => {
+    setPage(1);
+  }, [reviews.length]);
+
+  const itemsPerPage = 5;
+  const totalPages = Math.ceil(reviews.length / itemsPerPage) || 1;
+  const startIndex = (page - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedReviews = reviews.slice(startIndex, endIndex);
+
   return (
     <div className="space-y-5">
       {/* Reviews */}
@@ -57,7 +68,7 @@ export function Feedback() {
           </div>
         </div>
         <div className="divide-y" style={{ divideColor: "rgba(199,106,0,0.06)" }}>
-          {reviews.map((r: any) => {
+          {paginatedReviews.map((r: any) => {
             const sc = sentimentConfig[r.sentiment] || sentimentConfig.Neutral;
             const SIcon = sc.icon;
             return (
@@ -108,6 +119,44 @@ export function Feedback() {
           {reviews.length === 0 && (
             <div className="p-8 text-center text-sm text-gray-500">No feedback available.</div>
           )}
+        </div>
+        {/* Pagination */}
+        <div className="px-5 py-3 border-t flex items-center justify-between" style={{ borderColor: "rgba(199,106,0,0.08)" }}>
+          <span className="text-xs" style={{ color: "#9CA3AF" }}>
+            Showing {reviews.length === 0 ? 0 : startIndex + 1}–{Math.min(endIndex, reviews.length)} of {reviews.length} reviews
+          </span>
+          <div className="flex items-center gap-2">
+            <button 
+              className="px-2 py-1 text-xs border rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-bold" 
+              disabled={page === 1}
+              onClick={() => setPage(prev => Math.max(1, prev - 1))}
+            >
+              Previous
+            </button>
+            <div className="flex gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                <button 
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className="w-6 h-6 text-xs rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+                  style={{
+                    backgroundColor: page === pageNum ? "#C76A00" : "transparent",
+                    color: page === pageNum ? "#FFFFFF" : "#6B7280",
+                    fontWeight: page === pageNum ? 700 : 500
+                  }}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+            <button 
+              className="px-2 py-1 text-xs border rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-bold" 
+              disabled={page === totalPages || totalPages === 0}
+              onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

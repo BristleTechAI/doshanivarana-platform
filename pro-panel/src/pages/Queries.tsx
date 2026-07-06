@@ -1,12 +1,52 @@
-// @ts-nocheck
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router';
 import { db, type DevoteeQuery, type ChatMessage } from '../lib/db';
 import { PageHeader } from '../components/PageHeader';
 
 export function Queries() {
   const [queries, setQueries] = useState<DevoteeQuery[]>(() => db.getQueries());
+  const [searchParams] = useSearchParams();
+  const bookingIdParam = searchParams.get('bookingId');
+  const queryIdParam = searchParams.get('queryId');
 
   const [selectedQueryId, setSelectedQueryId] = useState('Q-101');
+
+  useEffect(() => {
+    if (queryIdParam) {
+      setSelectedQueryId(queryIdParam);
+    } else if (bookingIdParam) {
+      const matched = queries.find(
+        q => q.bookingId === bookingIdParam || q.id === bookingIdParam
+      );
+      if (!matched) {
+        const devoteeName = searchParams.get('devoteeName') || 'Devotee';
+        const newQueryId = `Q-${Date.now()}`;
+        const newQuery: DevoteeQuery = {
+          id: newQueryId,
+          bookingId: bookingIdParam,
+          devoteeName: devoteeName,
+          timeAgo: 'Just now',
+          subject: `Inquiry for Booking ${bookingIdParam}`,
+          snippet: 'Namaste, how can we assist you with your booking?',
+          status: 'Open',
+          thread: [
+            {
+              sender: 'devotee',
+              senderName: devoteeName,
+              avatarText: devoteeName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2),
+              time: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + `, ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+              text: `Namaste, I have a query regarding my pooja booking ${bookingIdParam}.`
+            }
+          ]
+        };
+        db.updateQuery(newQuery);
+        setQueries(db.getQueries());
+        setSelectedQueryId(newQueryId);
+      } else {
+        setSelectedQueryId(matched.id);
+      }
+    }
+  }, [bookingIdParam, queryIdParam, queries, searchParams]);
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
   const [activeTab, setActiveTab] = useState<'All' | 'Open' | 'Replied' | 'Closed'>('All');
   const [searchText, setSearchText] = useState('');

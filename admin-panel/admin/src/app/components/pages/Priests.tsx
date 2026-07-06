@@ -32,6 +32,7 @@ export function Priests() {
   const [priests, setPriests] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [page, setPage] = useState(1);
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<any | null>(null);
   const [priestForm, setPriestForm] = useState(emptyPriestForm);
@@ -51,6 +52,16 @@ export function Priests() {
     const matchStatus = statusFilter === "All" || p.status === statusFilter;
     return matchSearch && matchStatus;
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  const itemsPerPage = 9;
+  const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
+  const startIndex = (page - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginated = filtered.slice(startIndex, endIndex);
 
   async function handleAddPriest() {
     if (!priestForm.name) return;
@@ -176,7 +187,7 @@ export function Priests() {
 
       {/* Priest Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {filtered.map((priest) => {
+        {paginated.map((priest) => {
           const sc = statusConfig[priest.status] || statusConfig.Active;
           return (
             <div key={priest.id} className="bg-white rounded-2xl border overflow-hidden hover:shadow-lg transition-shadow" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
@@ -254,6 +265,45 @@ export function Priests() {
             </div>
           );
         })}
+      </div>
+
+      {/* Pagination */}
+      <div className="bg-white rounded-xl border p-4 flex items-center justify-between" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
+        <span className="text-xs" style={{ color: "#9CA3AF" }}>
+          Showing {filtered.length === 0 ? 0 : startIndex + 1}–{Math.min(endIndex, filtered.length)} of {filtered.length} priests
+        </span>
+        <div className="flex items-center gap-2">
+          <button 
+            className="px-2 py-1 text-xs border rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-bold" 
+            disabled={page === 1}
+            onClick={() => setPage(prev => Math.max(1, prev - 1))}
+          >
+            Previous
+          </button>
+          <div className="flex gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+              <button 
+                key={pageNum}
+                onClick={() => setPage(pageNum)}
+                className="w-6 h-6 text-xs rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+                style={{
+                  backgroundColor: page === pageNum ? "#C76A00" : "transparent",
+                  color: page === pageNum ? "#FFFFFF" : "#6B7280",
+                  fontWeight: page === pageNum ? 700 : 500
+                }}
+              >
+                {pageNum}
+              </button>
+            ))}
+          </div>
+          <button 
+            className="px-2 py-1 text-xs border rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-bold" 
+            disabled={page === totalPages || totalPages === 0}
+            onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+          >
+            Next
+          </button>
+        </div>
       </div>
 
       {/* Add Priest Modal */}

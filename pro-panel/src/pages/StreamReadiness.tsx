@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -41,6 +41,131 @@ export function StreamReadiness() {
   const [checklist, setChecklist] = useState<any>(null);
   const [booking, setBooking] = useState<any>(null);
   const [notification, setNotification] = useState<string | null>(null);
+
+  const [verifyingCamera, setVerifyingCamera] = useState(false);
+  const [verifyingMic, setVerifyingMic] = useState(false);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Mic analysis state
+  const [micVolume, setMicVolume] = useState(0);
+  const [micStatus, setMicStatus] = useState('Speaking or tapping mic...');
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  const startMicChecking = () => {
+    setMicStatus('Accessing microphone...');
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        setAudioStream(stream);
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) {
+          setMicStatus('Audio API not supported in browser');
+          return;
+        }
+        const audioContext = new AudioContextClass();
+        audioContextRef.current = audioContext;
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyserRef.current = analyser;
+        source.connect(analyser);
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        let soundRegisterCount = 0;
+        setMicStatus('Listening to mic input... speak now!');
+
+        const checkVolume = () => {
+          if (!analyserRef.current) return;
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+          }
+          const average = sum / bufferLength;
+          setMicVolume(average);
+
+          if (average > 12) {
+            soundRegisterCount++;
+            if (soundRegisterCount > 6) {
+              setMicStatus('Microphone audio signal detected! ✅');
+            }
+          }
+
+          animationFrameRef.current = requestAnimationFrame(checkVolume);
+        };
+        checkVolume();
+      })
+      .catch(err => {
+        console.error(err);
+        setMicStatus('Failed to access microphone: ' + err.message);
+      });
+  };
+
+  const stopAudioStream = () => {
+    if (audioStream) {
+      audioStream.getTracks().forEach(track => track.stop());
+      setAudioStream(null);
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(console.error);
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+  };
+
+  const stopCameraStream = () => {
+    if (cameraVideoRef.current && cameraVideoRef.current.srcObject) {
+      const stream = cameraVideoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      cameraVideoRef.current.srcObject = null;
+    }
+  };
+
+  const handleToggleClick = async (stageId: string, itemId: string) => {
+    const stage = checklist?.stages?.find(s => s.id === stageId);
+    const item = stage?.items?.find(i => i.id === itemId);
+    const isCompleted = item?.completed;
+
+    if (stageId === 'stage2' && !isCompleted) {
+      if (itemId === 'camera_positioned') {
+        setVerifyingCamera(true);
+        // Start camera stream immediately
+        setTimeout(() => {
+          navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+              if (cameraVideoRef.current) {
+                cameraVideoRef.current.srcObject = stream;
+                cameraVideoRef.current.play().catch(console.error);
+              }
+            })
+            .catch(err => {
+              console.error(err);
+              alert("Failed to access camera: " + err.message);
+              setVerifyingCamera(false);
+            });
+        }, 100);
+        return;
+      }
+      if (itemId === 'mic_tested') {
+        setVerifyingMic(true);
+        setTimeout(() => {
+          startMicChecking();
+        }, 100);
+        return;
+      }
+    }
+
+    // Default toggle behavior
+    await toggleChecklistItem(stageId, itemId);
+  };
 
   // Load readiness state on mount & listen to Firestore for real-time synchronization
   useEffect(() => {
@@ -222,7 +347,7 @@ export function StreamReadiness() {
               ></div>
             </div>
 
-            <div className="grid grid-cols-4 gap-4 font-bold text-center">
+            <div className="grid grid-cols-2 gap-4 font-bold text-center">
               {(checklist?.stages || []).map((stage) => {
                 const isCompleted = stage.status === 'COMPLETED';
                 const isInProgress = stage.status === 'IN_PROGRESS';
@@ -297,10 +422,8 @@ export function StreamReadiness() {
                         <div>
                           <h4 className="font-display text-headline-sm text-on-surface font-bold">{stage.title}</h4>
                           <p className="text-body-sm text-on-surface-variant font-medium mt-0.5">
-                            {stage.id === 'stage1' && 'Notify all parties about the upcoming live event'}
+                            {stage.id === 'stage1' && 'Arrange and verify all required pooja items are physically ready'}
                             {stage.id === 'stage2' && 'Calibrate all hardware equipment and test connection'}
-                            {stage.id === 'stage3' && 'Perform a 5-minute test stream before the main event'}
-                            {stage.id === 'stage4' && 'Perform final handshake checks before initiating the live broadcast'}
                           </p>
                         </div>
                       </div>
@@ -330,7 +453,7 @@ export function StreamReadiness() {
                           return (
                             <button 
                               key={item.id}
-                              onClick={() => toggleChecklistItem(stage.id, item.id)}
+                              onClick={() => handleToggleClick(stage.id, item.id)}
                               className={`w-full text-left flex items-center gap-3 p-3 rounded-lg border border-transparent transition-colors ${
                                 isDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-surface-container-low cursor-pointer'
                               }`}
@@ -352,10 +475,8 @@ export function StreamReadiness() {
                         <div>
                           <p className="text-label-md text-on-surface mb-2 uppercase tracking-wider">Status Information</p>
                           <p className="text-body-sm text-on-surface-variant font-medium">
-                            {stage.id === 'stage1' && 'Pujari and devotees receive SMS/Email notifications of the schedule.'}
+                            {stage.id === 'stage1' && 'Verify that all ritual items, prasad, and deity preparations are complete before streaming.'}
                             {stage.id === 'stage2' && 'Check local camera setup and ensure the internet is stable.'}
-                            {stage.id === 'stage3' && 'Ensure Agora RTC feeds are clear and no echo is present.'}
-                            {stage.id === 'stage4' && 'Final confirmation is required to enable the broadcast page.'}
                           </p>
                         </div>
                         <div className="mt-4">
@@ -488,6 +609,153 @@ export function StreamReadiness() {
         </aside>
 
       </div>
+
+      {/* Camera Verification Modal */}
+      {verifyingCamera && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-surface-container-lowest rounded-2xl max-w-lg w-full overflow-hidden soft-shadow border border-[#F0E6D2] font-sans">
+            <div className="p-6 border-b border-outline-variant/30 flex justify-between items-center bg-surface">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">videocam</span>
+                <h3 className="font-display text-headline-sm font-bold text-on-surface">Camera Position Verification</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  stopCameraStream();
+                  setVerifyingCamera(false);
+                }}
+                className="text-on-surface-variant hover:text-on-surface cursor-pointer"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-6 flex flex-col items-center gap-4">
+              <div className="w-full aspect-video bg-black rounded-xl overflow-hidden shadow-inner relative flex items-center justify-center">
+                <video 
+                  ref={cameraVideoRef} 
+                  playsInline 
+                  muted 
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute top-3 left-3 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider animate-pulse flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white"></span> Live Feed
+                </div>
+              </div>
+              
+              <div className="text-center">
+                <p className="text-body-md font-bold text-on-surface">Confirm Camera Alignment</p>
+                <p className="text-body-sm text-on-surface-variant font-medium mt-1">
+                  Align the camera to focus on the pooja altar. Ensure the deity and all pooja offerings are clearly visible.
+                </p>
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-outline-variant/30 bg-surface/50 flex gap-3">
+              <button 
+                onClick={() => {
+                  stopCameraStream();
+                  setVerifyingCamera(false);
+                }}
+                className="flex-1 py-3 border-2 border-outline-variant text-on-surface font-bold rounded-full hover:bg-surface-container-high transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={async () => {
+                  stopCameraStream();
+                  setVerifyingCamera(false);
+                  await toggleChecklistItem('stage2', 'camera_positioned');
+                }}
+                className="flex-1 py-3 bg-primary text-white font-bold rounded-full hover:bg-[#b04b00] transition-colors cursor-pointer"
+              >
+                Confirm Position & Verify
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Microphone Verification Modal */}
+      {verifyingMic && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-surface-container-lowest rounded-2xl max-w-lg w-full overflow-hidden soft-shadow border border-[#F0E6D2] font-sans">
+            <div className="p-6 border-b border-outline-variant/30 flex justify-between items-center bg-surface">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">mic</span>
+                <h3 className="font-display text-headline-sm font-bold text-on-surface">Microphone Functionality Test</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  stopAudioStream();
+                  setVerifyingMic(false);
+                  setMicVolume(0);
+                }}
+                className="text-on-surface-variant hover:text-on-surface cursor-pointer"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-6 flex flex-col gap-6">
+              <div className="bg-surface-container p-6 rounded-xl border border-outline-variant/30 flex flex-col items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                  <span className={`material-symbols-outlined text-[32px] ${micVolume > 12 ? 'animate-bounce' : ''}`}>mic</span>
+                </div>
+                
+                {/* Visual Audio Meter */}
+                <div className="w-full space-y-2">
+                  <div className="flex justify-between text-xs font-bold text-on-surface-variant">
+                    <span>Input Level</span>
+                    <span>{Math.round(micVolume)} DB</span>
+                  </div>
+                  <div className="h-4 w-full bg-surface-container-highest rounded-full overflow-hidden relative">
+                    <div 
+                      className="h-full bg-gradient-to-r from-green-400 to-green-600 rounded-full transition-all duration-75" 
+                      style={{ width: `${Math.min(100, micVolume * 3)}%` }}
+                    />
+                  </div>
+                </div>
+                
+                <p className="text-body-sm font-bold text-center text-primary mt-2">
+                  {micStatus}
+                </p>
+              </div>
+              
+              <div className="text-center font-medium">
+                <p className="text-body-sm text-on-surface-variant">
+                  Speak into the microphone or tap it gently to test the audio signal. The meter will bounce to show incoming sound levels.
+                </p>
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-outline-variant/30 bg-surface/50 flex gap-3">
+              <button 
+                onClick={() => {
+                  stopAudioStream();
+                  setVerifyingMic(false);
+                  setMicVolume(0);
+                }}
+                className="flex-1 py-3 border-2 border-outline-variant text-on-surface font-bold rounded-full hover:bg-surface-container-high transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={async () => {
+                  stopAudioStream();
+                  setVerifyingMic(false);
+                  setMicVolume(0);
+                  await toggleChecklistItem('stage2', 'mic_tested');
+                }}
+                className="flex-1 py-3 bg-primary text-white font-bold rounded-full hover:bg-[#b04b00] transition-colors cursor-pointer"
+              >
+                Confirm Functioning & Verify
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

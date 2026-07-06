@@ -433,7 +433,11 @@ export const db = {
   // ─── Queries ──────────────────────────────────────────────────────────────
   getQueries: () => [...queries],
   updateQuery: (updated: DevoteeQuery) => {
-    queries = queries.map(q => q.id === updated.id ? updated : q);
+    if (!queries.some(q => q.id === updated.id)) {
+      queries.push(updated);
+    } else {
+      queries = queries.map(q => q.id === updated.id ? updated : q);
+    }
   },
 
   // ─── Feedback / Reviews ───────────────────────────────────────────────────

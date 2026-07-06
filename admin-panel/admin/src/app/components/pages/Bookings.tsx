@@ -76,6 +76,16 @@ export function Bookings() {
     return matchSearch && matchStatus;
   });
 
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
+  const startIndex = (page - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginated = filtered.slice(startIndex, endIndex);
+
   const availableSlots = slots.filter(s => s.status !== "Full" && s.status !== "Cancelled");
 
   async function handleAdd() {
@@ -188,7 +198,7 @@ export function Bookings() {
       <div className="bg-white rounded-xl border overflow-hidden" style={{ borderColor: "rgba(199,106,0,0.1)" }}>
         {/* Mobile cards */}
         <div className="md:hidden divide-y" style={{ borderColor: "rgba(199,106,0,0.06)" }}>
-          {filtered.map((b: any) => {
+          {paginated.map((b: any) => {
             const sc = statusConfig[b.bookingStatus] || statusConfig.Confirmed;
             const pc = paymentConfig[b.paymentStatus] || paymentConfig.Pending;
             return (
@@ -230,7 +240,7 @@ export function Bookings() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((b: any) => {
+              {paginated.map((b: any) => {
                 const sc = statusConfig[b.bookingStatus] || statusConfig.Pending;
                 const pc = paymentConfig[b.paymentStatus] || paymentConfig.Pending;
                 const StatusIcon = sc.icon;
@@ -286,8 +296,40 @@ export function Bookings() {
         {/* Pagination */}
         <div className="px-5 py-3 border-t flex items-center justify-between" style={{ borderColor: "rgba(199,106,0,0.08)" }}>
           <span className="text-xs" style={{ color: "#9CA3AF" }}>
-            Showing {filtered.length} of {bookings.length} bookings
+            Showing {filtered.length === 0 ? 0 : startIndex + 1}–{Math.min(endIndex, filtered.length)} of {filtered.length} bookings
           </span>
+          <div className="flex items-center gap-2">
+            <button 
+              className="px-2 py-1 text-xs border rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-bold" 
+              disabled={page === 1}
+              onClick={() => setPage(prev => Math.max(1, prev - 1))}
+            >
+              Previous
+            </button>
+            <div className="flex gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                <button 
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className="w-6 h-6 text-xs rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+                  style={{
+                    backgroundColor: page === pageNum ? "#C76A00" : "transparent",
+                    color: page === pageNum ? "#FFFFFF" : "#6B7280",
+                    fontWeight: page === pageNum ? 700 : 500
+                  }}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+            <button 
+              className="px-2 py-1 text-xs border rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-bold" 
+              disabled={page === totalPages || totalPages === 0}
+              onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
 

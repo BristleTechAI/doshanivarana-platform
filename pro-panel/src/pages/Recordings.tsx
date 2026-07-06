@@ -9,6 +9,7 @@ import { db as localDb } from '../lib/db';
 export function Recordings() {
   const { templeId } = useAuth();
   const [recordings, setRecordings] = useState<any[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [notification, setNotification] = useState<string | null>(null);
   
   // Modal states
@@ -314,6 +315,12 @@ export function Recordings() {
   const publishedCount = recordings.filter(r => r.status === 'PUBLISHED').length;
   const archivedCount = recordings.filter(r => r.status === 'ARCHIVED').length;
 
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(recordings.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedRecordings = recordings.slice(startIndex, endIndex);
+
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
       <PageHeader title="Recording Manager" />
@@ -401,7 +408,7 @@ export function Recordings() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/20 font-medium text-body-sm text-on-surface">
-                {recordings.map(rec => {
+                {paginatedRecordings.map(rec => {
                   const isProcessing = rec.status === 'PROCESSING';
                   const isReady = rec.status === 'READY';
                   const isPublished = rec.status === 'PUBLISHED';
@@ -516,6 +523,41 @@ export function Recordings() {
                 })}
               </tbody>
             </table>
+          </div>
+          {/* Pagination */}
+          <div className="px-6 py-4 border-t border-outline-variant/30 flex items-center justify-between bg-surface-container-lowest font-sans">
+            <span className="text-body-sm text-on-surface-variant font-semibold">
+              Showing {recordings.length === 0 ? 0 : startIndex + 1}–{Math.min(endIndex, recordings.length)} of {recordings.length} recordings
+            </span>
+            <div className="flex items-center gap-2">
+              <button 
+                className="px-3 py-1 font-button text-button text-primary hover:bg-primary-container/20 rounded-md transition-colors font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" 
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              >
+                Previous
+              </button>
+              <div className="flex gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                  <button 
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-8 h-8 rounded-full font-button text-button flex items-center justify-center font-bold cursor-pointer ${
+                      currentPage === pageNum ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:bg-surface-container'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+              </div>
+              <button 
+                className="px-3 py-1 font-button text-button text-primary hover:bg-primary-container/20 rounded-md transition-colors font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" 
+                disabled={currentPage === totalPages || totalPages === 0}
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       )}

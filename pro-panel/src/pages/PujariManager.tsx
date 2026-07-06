@@ -11,6 +11,7 @@ export function PujariManager() {
   const { templeId } = useAuth();
 
   const [pujaris, setPujaris] = useState<any[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('All');
   const [specFilter, setSpecFilter] = useState('All');
   
@@ -69,12 +70,21 @@ export function PujariManager() {
     }
   };
 
-  // Filter Logic
   const filteredPujaris = pujaris.filter(p => {
     const matchesStatus = statusFilter === 'All' || p.status === statusFilter;
     const matchesSpec = specFilter === 'All' || (p.specialization && p.specialization.includes(specFilter));
     return matchesStatus && matchesSpec;
   });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, specFilter]);
+
+  const itemsPerPage = 9;
+  const totalPages = Math.ceil(filteredPujaris.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedPujaris = filteredPujaris.slice(startIndex, endIndex);
 
   const totalCount = pujaris.length;
   const activeCount = pujaris.filter(p => p.status === 'Active' || p.status === 'Available' || p.status === 'Seasonal').length;
@@ -156,7 +166,7 @@ export function PujariManager() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredPujaris.map(pujari => {
+        {paginatedPujaris.map(pujari => {
           const isInactive = pujari.status === 'Inactive' || pujari.status === 'On Leave';
           const specializationsList = pujari.specialization ? pujari.specialization.split(',').map((s: string) => s.trim()) : [];
           const languagesList = Array.isArray(pujari.languages) ? pujari.languages : (pujari.languagesStr ? pujari.languagesStr.split(',') : []);
@@ -261,6 +271,42 @@ export function PujariManager() {
             </div>
           );
         })}
+      </div>
+
+      {/* Pagination */}
+      <div className="mt-8 px-6 py-4 bg-surface-container-lowest border border-[#F0E6D2] rounded-xl shadow-sm flex items-center justify-between font-sans">
+        <span className="text-body-sm text-on-surface-variant font-semibold">
+          Showing {filteredPujaris.length === 0 ? 0 : startIndex + 1}–{Math.min(endIndex, filteredPujaris.length)} of {filteredPujaris.length} pujaris
+        </span>
+        <div className="flex items-center gap-2">
+          <button 
+            className="px-3 py-1 font-button text-button text-primary hover:bg-primary-container/20 rounded-md transition-colors font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" 
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+          >
+            Previous
+          </button>
+          <div className="flex gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+              <button 
+                key={pageNum}
+                onClick={() => setCurrentPage(pageNum)}
+                className={`w-8 h-8 rounded-full font-button text-button flex items-center justify-center font-bold cursor-pointer ${
+                  currentPage === pageNum ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:bg-surface-container'
+                }`}
+              >
+                {pageNum}
+              </button>
+            ))}
+          </div>
+          <button 
+            className="px-3 py-1 font-button text-button text-primary hover:bg-primary-container/20 rounded-md transition-colors font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" 
+            disabled={currentPage === totalPages || totalPages === 0}
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+          >
+            Next
+          </button>
+        </div>
       </div>
 
       {showWarningModal && deactivatingPujari && (

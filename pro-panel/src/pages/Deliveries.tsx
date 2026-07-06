@@ -23,6 +23,7 @@ export function Deliveries() {
   const [activeTab, setActiveTab] = useState<'action' | 'ready' | 'transit' | 'completed'>('action');
   
   const [records, setRecords] = useState<DeliveryRecord[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     if (!templeId) return;
@@ -100,6 +101,16 @@ export function Deliveries() {
   };
 
   const filteredRecords = getFilteredRecords();
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
+
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedRecords = filteredRecords.slice(startIndex, endIndex);
 
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
@@ -193,7 +204,7 @@ export function Deliveries() {
               </tr>
             </thead>
             <tbody className="font-sans text-body-sm text-on-surface divide-y divide-outline-variant/20 font-medium">
-              {filteredRecords.map(rec => {
+              {paginatedRecords.map(rec => {
                 const rowClass = 'hover:bg-surface-container-low/40';
                 
                 return (
@@ -235,6 +246,41 @@ export function Deliveries() {
               )}
             </tbody>
           </table>
+        </div>
+        {/* Pagination */}
+        <div className="px-6 py-4 border-t border-outline-variant/30 flex items-center justify-between bg-surface-container-lowest font-sans">
+          <span className="text-body-sm text-on-surface-variant font-semibold">
+            Showing {filteredRecords.length === 0 ? 0 : startIndex + 1}–{Math.min(endIndex, filteredRecords.length)} of {filteredRecords.length} parcels
+          </span>
+          <div className="flex items-center gap-2">
+            <button 
+              className="px-3 py-1 font-button text-button text-primary hover:bg-primary-container/20 rounded-md transition-colors font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" 
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            >
+              Previous
+            </button>
+            <div className="flex gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                <button 
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`w-8 h-8 rounded-full font-button text-button flex items-center justify-center font-bold cursor-pointer ${
+                    currentPage === pageNum ? 'bg-primary text-on-primary font-bold' : 'text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+            <button 
+              className="px-3 py-1 font-button text-button text-primary hover:bg-primary-container/20 rounded-md transition-colors font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" 
+              disabled={currentPage === totalPages || totalPages === 0}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>
