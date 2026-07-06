@@ -1,8 +1,8 @@
 // @ts-nocheck
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, Pressable, ActivityIndicator, StatusBar, StyleSheet, Image, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Volume2, VolumeX, Lock, Play, Pause, RotateCcw, Radio } from 'lucide-react-native';
+import { ArrowLeft, Volume2, VolumeX, Lock, Play, Pause, RotateCcw, Radio, PhoneOff, Mic, MicOff, Video, VideoOff } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import Constants from 'expo-constants';
@@ -139,9 +139,11 @@ export default function LiveStreamScreen() {
     };
   }, [id, userId]);
 
-  // ── Agora: fetch subscriber token when a live stream is detected ────────────
-  const isLive = booking?.streamStatus === 'LIVE' || booking?.streamStatus === 'IN_PROGRESS' || stream?.status === 'LIVE';
-  const agoraChannel = stream?.agoraChannelName || null;
+  // ── Agora: fetch publisher token when a live stream is detected ────────────
+  const isBookingLiveState = booking?.streamStatus === 'LIVE' || booking?.streamStatus === 'IN_PROGRESS';
+  const isStreamEnded = stream?.status === 'ENDED';
+  const isLive = isBookingLiveState && !isStreamEnded;
+  const agoraChannel = booking ? `booking_${booking.id}` : (stream?.agoraChannelName || null);
 
   useEffect(() => {
     if (!isLive || !agoraChannel || agoraToken) return;
@@ -149,7 +151,7 @@ export default function LiveStreamScreen() {
       setAgoraTokenLoading(true);
       try {
         const res = await fetch(
-          `${BACKEND_URL}/api/agora/token?channelName=${encodeURIComponent(agoraChannel)}&uid=0&role=subscriber`
+          `${BACKEND_URL}/api/agora/token?channelName=${encodeURIComponent(agoraChannel)}&uid=0&role=publisher`
         );
         const data = await res.json();
         if (data.token) {
@@ -164,22 +166,30 @@ export default function LiveStreamScreen() {
     fetchToken();
   }, [isLive, agoraChannel]);
 
-  // Use Agora SDK for live viewing, expo-video for recordings
-  const { remoteUid: agoraRemoteUid, isConnected: agoraConnected, error: agoraViewError } = useAgoraViewer({
+  // Use Agora SDK for live viewing/broadcasting
+  const {
+    remoteUid: agoraRemoteUid,
+    isConnected: agoraConnected,
+    error: agoraViewError,
+    isMuted: agoraMuted,
+    isCameraOn: agoraCameraOn,
+    toggleMute: agoraToggleMute,
+    toggleCamera: agoraToggleCamera,
+    leave: agoraLeave
+  } = useAgoraViewer({
     channelName: isLive && agoraToken ? agoraChannel : null,
     appId: AGORA_APP_ID,
     token: agoraToken,
     uid: 0,
   });
 
+  const isRecordingReadyToPlay = recording?.status === 'PUBLISHED' || booking?.recordingStatus === 'Available';
+  
   const isAvailable =
     booking &&
     (
-      booking.recordingStatus === 'Available' ||
-      booking.streamStatus === 'LIVE' ||
-      booking.streamStatus === 'IN_PROGRESS' ||
-      stream?.status === 'LIVE' ||
-      recording?.status === 'PUBLISHED'
+      isRecordingReadyToPlay ||
+      isLive
     );
 
   const isFinished = !isLive && duration > 0 && currentTime >= duration - 1;
@@ -287,14 +297,20 @@ export default function LiveStreamScreen() {
   }
 
   if (!isAvailable) {
+    const streamHasEnded = isStreamEnded || booking?.streamStatus === 'ENDED';
+    
     return (
       <View style={styles.center}>
         <View style={[styles.iconBox, { borderColor: '#F59E0B33', backgroundColor: '#F59E0B1A' }]}>
           <Lock size={32} color="#F59E0B" />
         </View>
-        <Text style={styles.title}>Recording Unavailable</Text>
+        <Text style={styles.title}>
+          {streamHasEnded ? 'Live Session Concluded' : 'Recording Unavailable'}
+        </Text>
         <Text style={styles.subtitle}>
-          The video recording is being prepared or has not been published yet by the PRO team.
+          {streamHasEnded 
+            ? 'The live pooja has concluded. The recording is currently being processed and will be available here shortly.'
+            : 'The video recording is being prepared or has not been published yet by the PRO team.'}
         </Text>
         <Pressable onPress={() => router.back()} style={styles.btnOutline}>
           <Text style={styles.btnOutlineText}>{t('common.back')}</Text>
@@ -305,18 +321,16 @@ export default function LiveStreamScreen() {
 
   const progress = duration > 0 ? Math.min(currentTime / duration, 1) : 0;
 
-  // ── Live Agora path — import RtcSurfaceView at the top level is not possible
-  // because react-native-agora requires native modules. We use a lazy require.
-  // This renders as a black screen in Expo Go; use a dev build for full Agora video.
+  // ── Live Agora path — use our platform-specific module to avoid Webpack errors on web
   let AgoraSurfaceView: any = null;
   let WebViewComponent: any = null;
   const isExpoGo = Constants.appOwnership === 'expo';
   const isWeb = Platform.OS === 'web';
   if (!isExpoGo && !isWeb) {
-    try {
-      AgoraSurfaceView = require('react-native-agora').RtcSurfaceView;
-    } catch (_) {
-      // react-native-agora not available (Expo Go), will fallback to placeholder
+    // Our local platform-specific module returns null on Web
+    const NativeAgora = require('../../lib/agora-native');
+    if (NativeAgora && NativeAgora.RtcSurfaceView) {
+      AgoraSurfaceView = NativeAgora.RtcSurfaceView;
     }
   } else if (isExpoGo && !isWeb) {
     try {
@@ -341,24 +355,38 @@ export default function LiveStreamScreen() {
           height: 100%;
           background-color: #000;
           overflow: hidden;
-          display: flex;
-          justify-content: center;
-          align-items: center;
+          position: relative;
         }
-        #player {
+        #remote-player {
           width: 100%;
           height: 100%;
           background-color: #000;
           position: absolute;
           top: 0;
           left: 0;
+          z-index: 1;
+        }
+        #local-player {
+          width: 100px;
+          height: 130px;
+          border: 2px solid rgba(255,255,255,0.4);
+          border-radius: 8px;
+          position: absolute;
+          top: 20px;
+          right: 20px;
+          z-index: 10;
+          background-color: #111;
+          overflow: hidden;
         }
         #status {
           position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
           color: #F97316;
           font-family: sans-serif;
           font-size: 14px;
-          z-index: 10;
+          z-index: 20;
           text-align: center;
           background: rgba(0,0,0,0.6);
           padding: 8px 16px;
@@ -368,30 +396,63 @@ export default function LiveStreamScreen() {
       <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
     </head>
     <body>
-      <div id="status">Connecting to live stream...</div>
-      <div id="player"></div>
+      <div id="status">Connecting to call...</div>
+      <div id="remote-player"></div>
+      <div id="local-player"></div>
+      
+      <!-- Local Web Controls -->
+      <div id="web-controls" style="display: none; position: absolute; bottom: 30px; left: 0; right: 0; justify-content: center; gap: 20px; z-index: 50;">
+        <button id="mic-btn" style="width: 54px; height: 54px; border-radius: 27px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); font-size: 24px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">🎙️</button>
+        <button id="cam-btn" style="width: 54px; height: 54px; border-radius: 27px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); font-size: 24px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">📷</button>
+      </div>
 
       <script>
         const appId = "${AGORA_APP_ID}";
         const channel = "${agoraChannel}";
         const token = "${agoraToken}";
 
-        async function startLive() {
+        async function startCall() {
           const statusEl = document.getElementById("status");
           if (typeof AgoraRTC === "undefined") {
             statusEl.innerText = "Error: Agora Web SDK failed to load. Check your internet connection.";
             return;
           }
 
-          try {
-            const client = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
-            await client.setClientRole("audience");
+          let client = null;
+          let isViewerOnly = false;
+          let localAudio = null;
+          let localVideo = null;
 
+          try {
+            // 1. Try to grab local media tracks first. This is the true test of getUserMedia support.
+            try {
+              if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                [localAudio, localVideo] = await AgoraRTC.createMicrophoneAndCameraTracks();
+                const localDiv = document.getElementById("local-player");
+                localVideo.play(localDiv);
+              } else {
+                throw new Error("No mediaDevices.getUserMedia support");
+              }
+            } catch (mediaErr) {
+              console.warn("Media capture failed, switching to audience mode:", mediaErr);
+              isViewerOnly = true;
+              document.getElementById("local-player").style.display = "none";
+            }
+
+            // 2. Initialize the client based on media capability.
+            if (isViewerOnly) {
+              client = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+              await client.setClientRole("audience");
+            } else {
+              client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+            }
+
+            // 3. Set up event listeners for the remote stream
             client.on("user-published", async (user, mediaType) => {
               await client.subscribe(user, mediaType);
               statusEl.style.display = "none";
               if (mediaType === "video") {
-                const playerDiv = document.getElementById("player");
+                const playerDiv = document.getElementById("remote-player");
                 user.videoTrack.play(playerDiv, { fit: "contain" });
               }
               if (mediaType === "audio") {
@@ -402,18 +463,48 @@ export default function LiveStreamScreen() {
             client.on("user-unpublished", (user, mediaType) => {
               if (mediaType === "video") {
                 statusEl.style.display = "block";
-                statusEl.innerText = "Broadcaster stopped video...";
+                statusEl.innerText = "Pujari offline...";
               }
             });
 
+            // 4. Join the channel and publish if possible
             await client.join(appId, channel, token, null);
-            statusEl.innerText = "Waiting for broadcaster...";
+
+            if (!isViewerOnly && (localAudio || localVideo)) {
+              const tracks = [];
+              if (localAudio) tracks.push(localAudio);
+              if (localVideo) tracks.push(localVideo);
+              await client.publish(tracks);
+              statusEl.innerText = "Connected! You are live with Pujari.";
+              setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+
+              // Show Web Controls
+              document.getElementById("web-controls").style.display = "flex";
+              let micOn = true;
+              let camOn = true;
+
+              document.getElementById("mic-btn").onclick = async () => {
+                micOn = !micOn;
+                await localAudio.setMuted(!micOn);
+                document.getElementById("mic-btn").style.background = micOn ? "rgba(255,255,255,0.2)" : "#EF4444";
+              };
+
+              document.getElementById("cam-btn").onclick = async () => {
+                camOn = !camOn;
+                await localVideo.setMuted(!camOn);
+                document.getElementById("cam-btn").style.background = camOn ? "rgba(255,255,255,0.2)" : "#EF4444";
+              };
+            } else {
+              statusEl.innerHTML = "Connected in viewer mode.<br/><small>Camera/mic blocked by Expo Go WebView.</small>";
+            }
+
           } catch (err) {
-            statusEl.innerText = "Failed to join live stream: " + err.message;
+            statusEl.innerText = "Call initialization failed: " + err.message;
+            console.error("Agora Error:", err);
           }
         }
 
-        startLive();
+        startCall();
       </script>
     </body>
     </html>
@@ -429,10 +520,22 @@ export default function LiveStreamScreen() {
       >
         {/* ── Live stream: Agora RTC view ──────────────────────────────────── */}
         {isLive && !isExpoGo && !isWeb && AgoraSurfaceView && agoraConnected && agoraRemoteUid !== null ? (
-          <AgoraSurfaceView
-            canvas={{ uid: agoraRemoteUid }}
-            style={StyleSheet.absoluteFill}
-          />
+          <View style={StyleSheet.absoluteFill}>
+            {/* Main remote video from Pujari */}
+            <AgoraSurfaceView
+              canvas={{ uid: agoraRemoteUid }}
+              style={StyleSheet.absoluteFill}
+            />
+            {/* Small local devotee video container */}
+            {agoraCameraOn && (
+              <View style={styles.localVideoContainer}>
+                <AgoraSurfaceView
+                  canvas={{ uid: 0 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </View>
+            )}
+          </View>
         ) : isLive && (isExpoGo || isWeb) && agoraToken ? (
           /* WebView/Iframe fallback for Expo Go and Web */
           isWeb ? (
@@ -454,7 +557,7 @@ export default function LiveStreamScreen() {
           ) : (
             <View style={[styles.overlay, { backgroundColor: '#000' }]}>
               <ActivityIndicator size="large" color="#F97316" />
-              <Text style={styles.loadingText}>Initializing video stream fallback…</Text>
+              <Text style={styles.loadingText}>Initializing video call fallback…</Text>
             </View>
           )
         ) : isLive && (agoraTokenLoading || (!isExpoGo && !isWeb && !agoraConnected)) ? (
@@ -462,7 +565,7 @@ export default function LiveStreamScreen() {
             <ActivityIndicator size="large" color="#F97316" />
             <Radio size={32} color="#F97316" style={{ marginTop: 16 }} />
             <Text style={[styles.loadingText, { marginTop: 8 }]}>
-              {agoraTokenLoading ? 'Connecting to live stream…' : 'Waiting for broadcaster…'}
+              {agoraTokenLoading ? 'Connecting to live call…' : 'Waiting for Pujari…'}
             </Text>
           </View>
         ) : !isLive ? (
@@ -479,9 +582,9 @@ export default function LiveStreamScreen() {
           /* Agora not available (Expo Go) and no token yet — show placeholder */
           <View style={[styles.overlay, { backgroundColor: '#111' }]}>
             <Radio size={48} color="#F97316" />
-            <Text style={[styles.title, { marginTop: 16 }]}>Live Stream Active</Text>
+            <Text style={[styles.title, { marginTop: 16 }]}>1:1 Call Session Active</Text>
             <Text style={styles.subtitle}>
-              Initializing connection to Agora live stream.{'\n'}
+              Initializing connection to Agora live call.{'\n'}
               Channel: {agoraChannel}
             </Text>
           </View>
@@ -490,7 +593,7 @@ export default function LiveStreamScreen() {
         {isLive && agoraConnected && (
           <View style={{ position: 'absolute', top: 16, left: 16, backgroundColor: '#EF4444', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' }} />
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>LIVE</Text>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>1:1 CALL</Text>
           </View>
         )}
 
@@ -554,17 +657,19 @@ export default function LiveStreamScreen() {
               )}
             </View>
 
-            <View style={styles.centerBtn} pointerEvents="box-none">
-              <Pressable onPress={isFinished ? replay : togglePlay} style={styles.playBtn}>
-                {isFinished ? (
-                  <RotateCcw size={30} color="#F5F5F0" />
-                ) : isPlaying ? (
-                  <Pause size={30} color="#F5F5F0" />
-                ) : (
-                  <Play size={30} color="#F5F5F0" />
-                )}
-              </Pressable>
-            </View>
+            {!isLive && (
+              <View style={styles.centerBtn} pointerEvents="box-none">
+                <Pressable onPress={isFinished ? replay : togglePlay} style={styles.playBtn}>
+                  {isFinished ? (
+                    <RotateCcw size={30} color="#F5F5F0" />
+                  ) : isPlaying ? (
+                    <Pause size={30} color="#F5F5F0" />
+                  ) : (
+                    <Play size={30} color="#F5F5F0" />
+                  )}
+                </Pressable>
+              </View>
+            )}
 
             <View
               style={[
@@ -577,39 +682,74 @@ export default function LiveStreamScreen() {
                 {booking.devoteeDetails?.name || booking.devoteeName} &amp; Family
               </Text>
 
-              {!isLive && duration > 0 && (
-                <View style={{ marginBottom: 12, marginTop: 8 }}>
-                  <View style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-                  </View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                    <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-                    <Text style={styles.timeText}>{formatTime(duration)}</Text>
-                  </View>
-                </View>
-              )}
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Pressable onPress={toggleMute} style={styles.iconBtn}>
-                  {isMuted
-                    ? <VolumeX size={18} color="#F97316" />
-                    : <Volume2 size={18} color="#F97316" />}
-                </Pressable>
-
-                <Text style={styles.statusText}>
-                  {isLive
-                    ? '🔴 Live Broadcast'
-                    : isFinished
-                    ? '✓ Broadcast Concluded'
-                    : '📹 Recording Playback'}
-                </Text>
-
-                {!isLive && (
-                  <Pressable onPress={replay} style={styles.iconBtn}>
-                    <RotateCcw size={18} color="#F5F5F0" />
+              {isLive ? (
+                /* 1:1 Video Call controls */
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24, marginTop: 12, marginBottom: 8 }}>
+                  <Pressable
+                    onPress={agoraToggleMute}
+                    style={{
+                      width: 46, height: 46, borderRadius: 23,
+                      backgroundColor: agoraMuted ? '#EF4444' : 'rgba(255,255,255,0.15)',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    {agoraMuted ? <MicOff size={20} color="#fff" /> : <Mic size={20} color="#fff" />}
                   </Pressable>
-                )}
-              </View>
+
+                  <Pressable
+                    onPress={() => router.back()}
+                    style={{
+                      width: 54, height: 54, borderRadius: 27,
+                      backgroundColor: '#EF4444',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <PhoneOff size={24} color="#fff" />
+                  </Pressable>
+
+                  <Pressable
+                    onPress={agoraToggleCamera}
+                    style={{
+                      width: 46, height: 46, borderRadius: 23,
+                      backgroundColor: !agoraCameraOn ? '#EF4444' : 'rgba(255,255,255,0.15)',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    {!agoraCameraOn ? <VideoOff size={20} color="#fff" /> : <Video size={20} color="#fff" />}
+                  </Pressable>
+                </View>
+              ) : (
+                /* Regular playback progress bar and controls */
+                <>
+                  {duration > 0 && (
+                    <View style={{ marginBottom: 12, marginTop: 8 }}>
+                      <View style={styles.progressTrack}>
+                        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                        <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
+                        <Text style={styles.timeText}>{formatTime(duration)}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Pressable onPress={toggleMute} style={styles.iconBtn}>
+                      {isMuted
+                        ? <VolumeX size={18} color="#F97316" />
+                        : <Volume2 size={18} color="#F97316" />}
+                    </Pressable>
+
+                    <Text style={styles.statusText}>
+                      {isFinished ? '✓ Broadcast Concluded' : '📹 Recording Playback'}
+                    </Text>
+
+                    <Pressable onPress={replay} style={styles.iconBtn}>
+                      <RotateCcw size={18} color="#F5F5F0" />
+                    </Pressable>
+                  </View>
+                </>
+              )}
 
               {/* YouTube link — shown when recording has been uploaded to YouTube */}
               {!isLive && (recording?.youtubeLiveUrl || booking?.youtubeLiveUrl) && (
@@ -648,6 +788,19 @@ export default function LiveStreamScreen() {
 }
 
 const styles = StyleSheet.create({
+  localVideoContainer: {
+    position: 'absolute',
+    top: 80,
+    right: 16,
+    width: 100,
+    height: 140,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    zIndex: 10,
+  },
   center: {
     flex: 1, backgroundColor: '#1A0A00',
     alignItems: 'center', justifyContent: 'center', padding: 24,

@@ -12,7 +12,7 @@
  * the package is unavailable.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
@@ -27,23 +27,27 @@ interface AgoraViewerState {
   remoteUid: number | null;
   isConnected: boolean;
   error: string | null;
+  isMuted: boolean;
+  isCameraOn: boolean;
+  toggleMute: () => void;
+  toggleCamera: () => void;
   leave: () => void;
 }
 
-// Lazily resolve the Agora SDK so that missing native modules don't crash the
-// JS bundle on load (e.g. in Expo Go or simulators without a dev-client build).
-function tryRequireAgora() {
+import { createAgoraRtcEngine, ChannelProfileType } from '../lib/agora-native';
+
+// Try to use the native Agora methods
+function hasNativeAgora() {
   const isExpoGo = Constants.appOwnership === 'expo';
   const isWeb = Platform.OS === 'web';
   if (isExpoGo || isWeb) {
-    return null;
+    return false;
   }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require('react-native-agora');
-  } catch {
-    return null;
+  // Check if our native exports actually exist (they will be null if on Web, or if unlinked)
+  if (!createAgoraRtcEngine) {
+    return false;
   }
+  return true;
 }
 
 export function useAgoraViewer({
@@ -56,30 +60,46 @@ export function useAgoraViewer({
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOn, setIsCameraOn] = useState(true);
+
+  const engineRef = useRef<any>(null);
 
   const leave = useCallback(() => {
-    engine?.leaveChannel();
-    engine?.release();
-    setEngine(null);
+    if (engineRef.current) {
+      engineRef.current.leaveChannel();
+      engineRef.current.release();
+      engineRef.current = null;
+      setEngine(null);
+    }
     setRemoteUid(null);
     setIsConnected(false);
-  }, [engine]);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    if (engineRef.current) {
+      const nextMuted = !isMuted;
+      engineRef.current.muteLocalAudioStream(nextMuted);
+      setIsMuted(nextMuted);
+    }
+  }, [isMuted]);
+
+  const toggleCamera = useCallback(() => {
+    if (engineRef.current) {
+      const nextCamera = !isCameraOn;
+      engineRef.current.muteLocalVideoStream(!nextCamera);
+      setIsCameraOn(nextCamera);
+    }
+  }, [isCameraOn]);
 
   useEffect(() => {
     if (!channelName || !appId || !token) return;
 
-    const agora = tryRequireAgora();
-    if (!agora) {
-      console.warn('[Agora Viewer] react-native-agora is not available (Expo Go / missing native module). Live stream viewing requires a custom dev build.');
-      setError('react-native-agora is not linked. Use a custom dev build to watch live streams.');
+    if (!hasNativeAgora()) {
+      console.warn('[Agora Call] react-native-agora is not available (Expo Go / missing native module). Call requires a custom dev build.');
+      setError('react-native-agora is not linked. Use a custom dev build to make 1:1 calls.');
       return;
     }
-
-    const {
-      createAgoraRtcEngine,
-      ChannelProfileType,
-      ClientRoleType,
-    } = agora;
 
     let rtcEngine: any;
 
@@ -87,54 +107,62 @@ export function useAgoraViewer({
       try {
         rtcEngine = createAgoraRtcEngine();
         await rtcEngine.initialize({ appId });
+        engineRef.current = rtcEngine;
+        setEngine(rtcEngine);
 
-        await rtcEngine.setChannelProfile(ChannelProfileType.ChannelProfileLiveBroadcasting);
-        await rtcEngine.setClientRole(ClientRoleType.ClientRoleAudience);
+        // Switch to communication channel profile for 1:1 call
+        await rtcEngine.setChannelProfile(ChannelProfileType.ChannelProfileCommunication);
+
+        // Enable video & audio modules + start local preview
+        await rtcEngine.enableVideo();
+        await rtcEngine.enableAudio();
+        await rtcEngine.startPreview();
 
         // Event handlers
         const handler = {
           onJoinChannelSuccess: (_connection: any, elapsed: number) => {
-            console.log('[Agora Viewer] Joined channel in', elapsed, 'ms');
+            console.log('[Agora Call] Joined channel in', elapsed, 'ms');
             setIsConnected(true);
             setError(null);
           },
           onUserJoined: (_connection: any, newUid: number) => {
-            console.log('[Agora Viewer] Remote user joined:', newUid);
+            console.log('[Agora Call] Pujari joined:', newUid);
             setRemoteUid(newUid);
           },
           onUserOffline: (_connection: any, offlineUid: number) => {
-            console.log('[Agora Viewer] Remote user left:', offlineUid);
+            console.log('[Agora Call] Pujari left:', offlineUid);
             setRemoteUid((prev) => (prev === offlineUid ? null : prev));
           },
           onError: (errCode: number, msg: string) => {
-            console.error('[Agora Viewer] Error:', errCode, msg);
+            console.error('[Agora Call] Error:', errCode, msg);
             setError(`Agora error ${errCode}: ${msg}`);
           },
           onConnectionStateChanged: (_connection: any, state: any, reason: any) => {
-            console.log('[Agora Viewer] Connection state:', state, reason);
+            console.log('[Agora Call] Connection state:', state, reason);
           },
         };
 
         rtcEngine.registerEventHandler(handler);
 
-        await rtcEngine.joinChannel(token, channelName, uid, {
-          clientRoleType: ClientRoleType.ClientRoleAudience,
-        });
-
-        setEngine(rtcEngine);
+        // Join channel as a broadcaster in communication mode
+        await rtcEngine.joinChannel(token, channelName, uid, {});
       } catch (e: any) {
-        console.error('[Agora Viewer] Setup error:', e);
-        setError(`Failed to join live stream: ${e.message}`);
+        console.error('[Agora Call] Setup error:', e);
+        setError(`Failed to join 1:1 call: ${e.message}`);
       }
     };
 
     setup();
 
     return () => {
-      rtcEngine?.leaveChannel();
-      rtcEngine?.release();
+      if (rtcEngine) {
+        rtcEngine.leaveChannel();
+        rtcEngine.release();
+        engineRef.current = null;
+        setEngine(null);
+      }
     };
   }, [channelName, appId, token]);
 
-  return { remoteUid, isConnected, error, leave };
+  return { remoteUid, isConnected, error, isMuted, isCameraOn, toggleMute, toggleCamera, leave };
 }

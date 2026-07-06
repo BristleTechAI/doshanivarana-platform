@@ -92,8 +92,8 @@ app.post('/api/agora/recording/start', async (req, res) => {
           token: '', // Empty token when recording is on the backend side
           storageConfig: {
             // Uses Agora's own storage; replace with your S3/GCS config for production
-            vendor: 1, // Agora default
-            region: 0,
+            vendor: 2, // 2 = Google Cloud Storage
+            region: 5, // 5 = asia-south1
             bucket: process.env.AGORA_STORAGE_BUCKET || '',
             accessKey: process.env.AGORA_STORAGE_KEY || '',
             secretKey: process.env.AGORA_STORAGE_SECRET || '',

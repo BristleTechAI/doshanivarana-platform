@@ -1,6 +1,6 @@
 // @ts-nocheck
-import { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, writeBatch, serverTimestamp, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { PageHeader } from '../components/PageHeader';
@@ -28,6 +28,12 @@ export function LiveStream() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const viewersRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const localVideoRef = useRef<HTMLDivElement | null>(null); // for Agora local preview
+
+  // ─── 1:1 Video Call State ──────────────────────────────────────────────────
+  const remoteVideoRef = useRef<HTMLDivElement | null>(null);
+  const [devoteeConnected, setDevoteeConnected] = useState(false);
+  const [localMuted, setLocalMuted] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(true);
 
   useEffect(() => {
     if (!templeId) return;
@@ -174,12 +180,46 @@ export function LiveStream() {
     };
   }, [streamState, booking]);
 
-  // Attach local Agora video preview to the div ref when we go live
+  // Attach local Agora video preview and setup remote subscriber callbacks when we go live
   useEffect(() => {
-    if (streamState === 'live' && localVideoRef.current) {
-      agoraService.playLocalVideo(localVideoRef.current);
+    if (streamState === 'live') {
+      if (localVideoRef.current) {
+        agoraService.playLocalVideo(localVideoRef.current);
+      }
+
+      agoraService.onRemoteUserPublished = (user, mediaType) => {
+        setDevoteeConnected(true);
+        if (mediaType === 'video' && remoteVideoRef.current) {
+          user.videoTrack?.play(remoteVideoRef.current);
+        }
+        if (mediaType === 'audio') {
+          user.audioTrack?.play();
+        }
+      };
+
+      agoraService.onRemoteUserUnpublished = (user) => {
+        setDevoteeConnected(false);
+      };
+    } else {
+      agoraService.onRemoteUserPublished = undefined;
+      agoraService.onRemoteUserUnpublished = undefined;
+      setDevoteeConnected(false);
+      setLocalMuted(false);
+      setCameraEnabled(true);
     }
   }, [streamState]);
+
+  const handleToggleMute = useCallback(() => {
+    const next = !localMuted;
+    agoraService.setMuted(next);
+    setLocalMuted(next);
+  }, [localMuted]);
+
+  const handleToggleCamera = useCallback(() => {
+    const next = !cameraEnabled;
+    agoraService.setCameraEnabled(next);
+    setCameraEnabled(next);
+  }, [cameraEnabled]);
 
   const handleStartStream = async () => {
     if (!booking || bookingsInSlot.length === 0) return;
@@ -187,7 +227,7 @@ export function LiveStream() {
 
     try {
       const streamId = `stream_${Date.now()}`;
-      const channelName = streamId; // Use stream ID as Agora channel name
+      const channelName = `booking_${booking.id}`; // 1:1 call channel per booking
       const uid = Math.floor(Math.random() * 100000) + 1; // Numeric UID for Agora
 
       // ── 1. Join Agora and publish local tracks ──────────────────────────────
@@ -677,26 +717,82 @@ export function LiveStream() {
         )}
       </section>
 
-      {/* Local Video Preview (Agora camera feed) */}
+      {/* 1:1 Video Call Panel (when live) */}
       {streamState === 'live' && (
-        <section className="bg-surface-container-lowest rounded-xl soft-shadow border border-[#F0E6D2] mt-6 p-4">
-          <h4 className="font-display text-headline-sm text-on-surface font-bold mb-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-red-500 animate-pulse">videocam</span>
-            Your Camera Preview
+        <section className="bg-surface-container-lowest rounded-xl soft-shadow border border-[#F0E6D2] mt-6 p-6 lg:col-span-12">
+          <h4 className="font-display text-headline-sm text-on-surface font-bold mb-4 flex items-center gap-2">
+            <span className="material-symbols-outlined text-red-500 animate-pulse">video_call</span>
+            Live 1:1 Call Session
           </h4>
           {agoraError && (
-            <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
               <span className="material-symbols-outlined text-yellow-600 text-[18px] mt-0.5">warning</span>
               <p className="text-body-sm text-yellow-800 font-medium">{agoraError}</p>
             </div>
           )}
-          <div 
-            ref={localVideoRef}
-            className="w-full aspect-video bg-[#111] rounded-lg overflow-hidden flex items-center justify-center"
-          >
-            {!agoraChannelName && (
-              <p className="text-gray-500 text-sm">Camera not active</p>
-            )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Devotee Remote Video */}
+            <div className="relative aspect-video bg-[#111] rounded-xl overflow-hidden flex flex-col justify-center items-center border border-outline-variant">
+              <div ref={remoteVideoRef} className="absolute inset-0 w-full h-full" />
+              {!devoteeConnected && (
+                <div className="z-10 text-center p-4">
+                  <span className="material-symbols-outlined text-gray-500 text-[48px] mb-2 animate-pulse">person</span>
+                  <p className="text-gray-400 text-sm font-semibold">Waiting for devotee to join call...</p>
+                </div>
+              )}
+              {devoteeConnected && (
+                <div className="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-full text-white text-xs font-semibold">
+                  Devotee (Live)
+                </div>
+              )}
+            </div>
+
+            {/* Pujari Local Video Preview */}
+            <div className="relative aspect-video bg-[#111] rounded-xl overflow-hidden flex flex-col justify-center items-center border border-outline-variant">
+              <div ref={localVideoRef} className="absolute inset-0 w-full h-full" />
+              {!cameraEnabled && (
+                <div className="z-10 text-center p-4">
+                  <span className="material-symbols-outlined text-gray-500 text-[48px] mb-2">videocam_off</span>
+                  <p className="text-gray-400 text-sm font-semibold">Camera is turned off</p>
+                </div>
+              )}
+              <div className="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-full text-white text-xs font-semibold">
+                Pujari (You)
+              </div>
+            </div>
+          </div>
+
+          {/* Call Controls for Pujari */}
+          <div className="flex items-center justify-center gap-4 mt-6">
+            <button
+              onClick={handleToggleMute}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                localMuted ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest border border-outline-variant'
+              }`}
+              title={localMuted ? 'Unmute Mic' : 'Mute Mic'}
+            >
+              <span className="material-symbols-outlined">{localMuted ? 'mic_off' : 'mic'}</span>
+            </button>
+
+            <button
+              onClick={handleToggleCamera}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                !cameraEnabled ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest border border-outline-variant'
+              }`}
+              title={cameraEnabled ? 'Turn Off Camera' : 'Turn On Camera'}
+            >
+              <span className="material-symbols-outlined">{cameraEnabled ? 'videocam_off' : 'videocam'}</span>
+            </button>
+
+            <button
+              onClick={handleStopStream}
+              className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-full flex items-center gap-2 shadow-md cursor-pointer"
+              title="End Session"
+            >
+              <span className="material-symbols-outlined text-[20px]">call_end</span>
+              End Session
+            </button>
           </div>
         </section>
       )}

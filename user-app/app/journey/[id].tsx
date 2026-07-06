@@ -447,8 +447,10 @@ export default function PoojaJourneyScreen() {
                       fontFamily: 'System' 
                     }}
                   >
-                    {stage.id === 2 && (booking?.priestName || booking?.pujari)
-                      ? t(stage.descKey).replace('Pandit Ramesh Sharma', booking.priestName || booking.pujari)
+                    {stage.id === 2 
+                      ? (booking?.priestName || booking?.pujari
+                          ? t(stage.descKey).replace('Pandit Ramesh Sharma', booking.priestName || booking.pujari)
+                          : t(stage.descKey).replace('Pandit Ramesh Sharma has been assigned', 'A qualified pujari will be assigned').replace('Pandit Ramesh Sharma', 'A qualified pujari'))
                       : stage.id === 3 && booking?.scheduledDate
                       ? t(stage.descKey)
                           .replace('15 April', formatDateString(booking.scheduledDate))

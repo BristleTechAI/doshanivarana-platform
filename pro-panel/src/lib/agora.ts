@@ -41,16 +41,32 @@ export class AgoraService {
   private readonly backendUrl =
     import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
-  constructor() {
-    this.client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
-    this.client.setClientRole('host');
+  // Callbacks for remote video/audio streams (1:1 calling)
+  public onRemoteUserPublished?: (user: IAgoraRTCRemoteUser, mediaType: 'video' | 'audio') => void;
+  public onRemoteUserUnpublished?: (user: IAgoraRTCRemoteUser) => void;
 
-    // Log remote user events for debugging
-    this.client.on('user-published', (user: IAgoraRTCRemoteUser, mediaType) => {
+  constructor() {
+    this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+
+    // Log & Subscribe to remote user events for 1:1 call
+    this.client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType) => {
       console.log('[Agora] Remote user published:', user.uid, mediaType);
+      try {
+        await this.client.subscribe(user, mediaType);
+        console.log('[Agora] Subscribed to remote user:', user.uid, mediaType);
+        if (this.onRemoteUserPublished) {
+          this.onRemoteUserPublished(user, mediaType);
+        }
+      } catch (err) {
+        console.error('[Agora] Failed to subscribe to remote user:', err);
+      }
     });
+
     this.client.on('user-unpublished', (user: IAgoraRTCRemoteUser) => {
       console.log('[Agora] Remote user unpublished:', user.uid);
+      if (this.onRemoteUserUnpublished) {
+        this.onRemoteUserUnpublished(user);
+      }
     });
   }
 
@@ -164,6 +180,7 @@ export class AgoraService {
       return null;
     }
   }
+
 
   // ─── Cleanup ─────────────────────────────────────────────────────────────────
   /** Leave the channel and release all local tracks */
