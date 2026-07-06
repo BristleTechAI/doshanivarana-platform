@@ -324,7 +324,7 @@ export default function LiveStreamScreen() {
   // ── Live Agora path — use our platform-specific module to avoid Webpack errors on web
   let AgoraSurfaceView: any = null;
   let WebViewComponent: any = null;
-  const isExpoGo = Constants.appOwnership === 'expo';
+  const isExpoGo = Constants?.appOwnership === 'expo' || Constants?.executionEnvironment === 'storeClient';
   const isWeb = Platform.OS === 'web';
   if (!isExpoGo && !isWeb) {
     // Our local platform-specific module returns null on Web

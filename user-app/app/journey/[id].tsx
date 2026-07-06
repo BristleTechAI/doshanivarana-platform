@@ -22,6 +22,7 @@ export default function PoojaJourneyScreen() {
 
   const [booking, setBooking] = useState<any>(null);
   const [delivery, setDelivery] = useState<any>(null);
+  const [readiness, setReadiness] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [mappedDisplayId, setMappedDisplayId] = useState<string>('');
 
@@ -80,6 +81,7 @@ export default function PoojaJourneyScreen() {
     }
 
     let unsubDelivery = () => {};
+    let unsubReadiness = () => {};
 
     const unsubBooking = firestore().collection('bookings').doc(cleanId)
       .onSnapshot((doc) => {
@@ -95,6 +97,18 @@ export default function PoojaJourneyScreen() {
               if (snap && !snap.empty) {
                 setDelivery({ id: snap.docs[0].id, ...snap.docs[0].data() });
               }
+            });
+
+          unsubReadiness();
+          unsubReadiness = firestore().collection('streamReadiness').doc(foundBooking.id)
+            .onSnapshot((readinessDoc) => {
+              if (readinessDoc && readinessDoc.exists) {
+                setReadiness(readinessDoc.data());
+              } else {
+                setReadiness(null);
+              }
+              setLoading(false);
+            }, () => {
               setLoading(false);
             });
         } else {
@@ -114,6 +128,18 @@ export default function PoojaJourneyScreen() {
                     if (snap && !snap.empty) {
                       setDelivery({ id: snap.docs[0].id, ...snap.docs[0].data() });
                     }
+                  });
+
+                unsubReadiness();
+                unsubReadiness = firestore().collection('streamReadiness').doc(foundBooking.id)
+                  .onSnapshot((readinessDoc) => {
+                    if (readinessDoc && readinessDoc.exists) {
+                      setReadiness(readinessDoc.data());
+                    } else {
+                      setReadiness(null);
+                    }
+                    setLoading(false);
+                  }, () => {
                     setLoading(false);
                   });
               } else {
@@ -126,6 +152,7 @@ export default function PoojaJourneyScreen() {
     return () => {
       unsubBooking();
       unsubDelivery();
+      unsubReadiness();
     };
   }, [cleanId, displayId]);
 
@@ -247,7 +274,11 @@ export default function PoojaJourneyScreen() {
       descKey: 'journey.goingLiveDesc',
       isCompleted: poojaIsLive || poojaIsEnded,
       isCurrent: pujariIsAssigned && !!(b.scheduledDate && b.scheduledTime) && !(poojaIsLive || poojaIsEnded),
-      timestamp: poojaIsLive ? 'Pooja is LIVE' : undefined,
+      timestamp: poojaIsLive 
+        ? 'Pooja is LIVE' 
+        : readiness 
+          ? `Preparation: ${readiness.progressPercent}% Ready` 
+          : undefined,
     },
     {
       id: 5,

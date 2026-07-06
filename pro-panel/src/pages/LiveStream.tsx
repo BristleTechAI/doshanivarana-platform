@@ -90,10 +90,10 @@ export function LiveStream() {
         };
       });
 
-      // 4. Filter to only confirmed or active/scheduled bookings
+      // 4. Filter to only confirmed, active/scheduled, or in_progress bookings
       const bks = mappedBks.filter(b => {
         const statusLower = (b.status || b.bookingStatus || '').toLowerCase();
-        return statusLower === 'confirmed' || statusLower === 'scheduled';
+        return statusLower === 'confirmed' || statusLower === 'scheduled' || statusLower === 'in_progress';
       });
 
       setUpcomingBookings(bks);
@@ -136,6 +136,35 @@ export function LiveStream() {
   const currentSlotGroup = groupedSlots.find(s => s.key === selectedSlot);
   const booking = currentSlotGroup ? currentSlotGroup.bookings[0] : null;
   const bookingsInSlot = currentSlotGroup ? currentSlotGroup.bookings : [];
+
+  // ── Sync streamState if selected booking is already IN_PROGRESS ─────────────
+  useEffect(() => {
+    if (booking && (booking.status === 'IN_PROGRESS' || booking.bookingStatus === 'IN_PROGRESS')) {
+      if (streamState === 'idle') {
+        const channelName = `booking_${booking.id}`;
+        const streamId = booking.streamId || `stream_${Date.now()}`;
+        
+        // Re-join Agora channel so camera/mic start publishing again
+        const uid = Math.floor(Math.random() * 100000) + 1;
+        agoraService.init(channelName, uid)
+          .then(() => {
+            console.log('[Agora] Re-initialized active stream:', channelName);
+            setAgoraChannelName(channelName);
+            if (localVideoRef.current) {
+              agoraService.playLocalVideo(localVideoRef.current);
+            }
+          })
+          .catch((e) => {
+            console.warn('[Agora] Failed to re-initialize active stream:', e);
+            setAgoraError(`Re-joining camera stream failed: ${e.message}`);
+          });
+
+        setStreamState('live');
+        setActiveStreamId(streamId);
+        setAgoraChannelName(channelName);
+      }
+    }
+  }, [booking, streamState]);
 
   // Update viewer count and stream health from Agora stats every 5s when live
   useEffect(() => {
@@ -353,6 +382,10 @@ export function LiveStream() {
           batch.update(doc(db, 'liveStreams', streamDocId), {
             status: 'ENDED',
             endedAt: serverTimestamp()
+          });
+          batch.update(doc(db, 'bookings', b.id), {
+            status: 'COMPLETED',
+            streamStatus: 'ENDED'
           });
         });
         await batch.commit();

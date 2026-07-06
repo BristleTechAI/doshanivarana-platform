@@ -17,7 +17,7 @@ export const authProvider: () => FirebaseAuthTypes.Module = (() => {
 
 export const firestoreProvider: any = (() => {
   let useNative = false;
-  const isExpoGo = Constants.appOwnership === 'expo';
+  const isExpoGo = Constants?.appOwnership === 'expo' || Constants?.executionEnvironment === 'storeClient';
 
   if (Platform.OS !== 'web' && !isExpoGo) {
     try {

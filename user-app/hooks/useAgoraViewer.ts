@@ -38,7 +38,7 @@ import { createAgoraRtcEngine, ChannelProfileType } from '../lib/agora-native';
 
 // Try to use the native Agora methods
 function hasNativeAgora() {
-  const isExpoGo = Constants.appOwnership === 'expo';
+  const isExpoGo = Constants?.appOwnership === 'expo' || Constants?.executionEnvironment === 'storeClient';
   const isWeb = Platform.OS === 'web';
   if (isExpoGo || isWeb) {
     return false;

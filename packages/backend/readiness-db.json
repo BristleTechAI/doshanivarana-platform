@@ -1,0 +1,57 @@
+[
+  {
+    "id": "stage1",
+    "title": "Stage 1: Informed",
+    "icon": "campaign",
+    "status": "IN_PROGRESS",
+    "isMandatory": true,
+    "items": [
+      { "id": "pujari_notified", "label": "Pujari notified", "completed": false, "isMandatory": true },
+      { "id": "volunteers_informed", "label": "Volunteers informed", "completed": false, "isMandatory": true },
+      { "id": "auto_reminders", "label": "Auto-reminders sent", "completed": false, "isMandatory": true },
+      { "id": "schedule_confirmed", "label": "Schedule confirmed", "completed": false, "isMandatory": true }
+    ]
+  },
+  {
+    "id": "stage2",
+    "title": "Stage 2: Equipment Ready",
+    "icon": "videocam",
+    "status": "LOCKED",
+    "isMandatory": true,
+    "items": [
+      { "id": "camera_positioned", "label": "Camera positioned", "completed": false, "isMandatory": true },
+      { "id": "tripod_secured", "label": "Tripod secured", "completed": false, "isMandatory": true },
+      { "id": "mic_tested", "label": "Mic tested", "completed": false, "isMandatory": true },
+      { "id": "lighting_adequate", "label": "Lighting adequate", "completed": false, "isMandatory": true },
+      { "id": "internet_speed", "label": "Internet speed checked", "completed": false, "isMandatory": true },
+      { "id": "battery_charged", "label": "Battery checked", "completed": false, "isMandatory": true }
+    ]
+  },
+  {
+    "id": "stage3",
+    "title": "Stage 3: Live Test Demo",
+    "icon": "science",
+    "status": "LOCKED",
+    "isMandatory": true,
+    "items": [
+      { "id": "test_started", "label": "Test started", "completed": false, "isMandatory": true },
+      { "id": "test_stopped", "label": "Test stopped", "completed": false, "isMandatory": true },
+      { "id": "video_clear", "label": "Video clear and stable", "completed": false, "isMandatory": true },
+      { "id": "audio_clear", "label": "Audio clear (No echo)", "completed": false, "isMandatory": true },
+      { "id": "stream_key_working", "label": "Stream key working", "completed": false, "isMandatory": true },
+      { "id": "playback_tested", "label": "Playback tested on mobile", "completed": false, "isMandatory": true }
+    ]
+  },
+  {
+    "id": "stage4",
+    "title": "Stage 4: Ready to Stream",
+    "icon": "rocket_launch",
+    "status": "LOCKED",
+    "isMandatory": true,
+    "items": [
+      { "id": "latency_calibrated", "label": "Final audio-video latency calibrated", "completed": false, "isMandatory": true },
+      { "id": "upload_stable", "label": "Internet speed stable at >30 Mbps upload", "completed": false, "isMandatory": true },
+      { "id": "pujari_mic_secured", "label": "Pujari wireless mic secured & unmuted", "completed": false, "isMandatory": true }
+    ]
+  }
+]

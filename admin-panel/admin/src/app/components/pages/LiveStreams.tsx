@@ -7,6 +7,9 @@ import { PriestsService } from "../../../services/firebase/priests";
 import { SlotsService } from "../../../services/firebase/slots";
 import { Modal, Field, ModalFooter, inputCls, inputStyle, selectStyle } from "../Modal";
 import { formatTimestamp } from "../../../services/firebase/core";
+import { db } from "../../../lib/firebase";
+import { collection, query, where, getDocs, doc, onSnapshot } from "firebase/firestore";
+import { ClipboardList } from "lucide-react";
 
 const streamStatusCfg: Record<string, { bg: string; color: string; dot: string }> = {
   Live: { bg: "#FFF1F2", color: "#DC2626", dot: "#EF4444" },
@@ -30,6 +33,45 @@ export function LiveStreamsPage() {
 
   const emptyForm = { title: "", description: "", templeId: "", poojaId: "", priestId: "", slotId: "", youtubeVideoId: "", youtubeLiveUrl: "", thumbnailUrl: "" };
   const [form, setForm] = useState(emptyForm);
+
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [checklistBookingId, setChecklistBookingId] = useState<string | null>(null);
+  const [activeChecklist, setActiveChecklist] = useState<any>(null);
+
+  useEffect(() => {
+    if (!checklistBookingId) {
+      setActiveChecklist(null);
+      return;
+    }
+    const unsub = onSnapshot(doc(db, 'streamReadiness', checklistBookingId), (docSnap) => {
+      if (docSnap.exists()) {
+        setActiveChecklist(docSnap.data());
+      }
+    });
+    return () => unsub();
+  }, [checklistBookingId]);
+
+  async function handleOpenChecklist(stream: any) {
+    let bookingId = stream.bookingId;
+    if (!bookingId && stream.slotId) {
+      try {
+        const bookingsQ = query(collection(db, 'bookings'), where('slotId', '==', stream.slotId), where('isDeleted', '==', false));
+        const bookingsSnap = await getDocs(bookingsQ);
+        if (!bookingsSnap.empty) {
+          bookingId = bookingsSnap.docs[0].id;
+        }
+      } catch (e) {
+        console.error("Failed to find booking for stream slot:", e);
+      }
+    }
+
+    if (bookingId) {
+      setChecklistBookingId(bookingId);
+      setChecklistOpen(true);
+    } else {
+      alert("No active bookings found for this scheduled stream slot.");
+    }
+  }
 
   useEffect(() => {
     const unsub = LiveStreamsService.subscribeToStreams(setStreams);
@@ -174,6 +216,9 @@ export function LiveStreamsPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: "rgba(199,106,0,0.08)" }}>
+                  {(s.streamStatus === "Scheduled" || s.streamStatus === "Live") && (
+                     <button onClick={() => handleOpenChecklist(s)} className="py-1.5 px-3 rounded-lg text-xs bg-orange-50 text-orange-700 font-bold hover:bg-orange-100 border border-orange-200 flex items-center justify-center gap-1" title="View Stream Readiness Checklist"><ClipboardList size={12}/> Checklist</button>
+                  )}
                   {s.streamStatus === "Scheduled" && (
                      <button onClick={() => handleStatusUpdate(s.id, "Live", s.templeId)} className="flex-1 py-1.5 rounded-lg text-xs bg-red-100 text-red-700 font-bold hover:bg-red-200">Go Live</button>
                   )}
@@ -258,6 +303,83 @@ export function LiveStreamsPage() {
           </div>
         )}
         <ModalFooter onClose={() => setEditStream(null)} onSubmit={handleUpdate} submitLabel="Save" saving={saving} />
+      </Modal>
+
+      {/* Stream Readiness Checklist Modal (Read-Only) */}
+      <Modal open={checklistOpen} onClose={() => { setChecklistOpen(false); setChecklistBookingId(null); }} title="Stream Readiness Monitoring" width="550px">
+        <div className="px-6 py-5 space-y-5">
+          {!activeChecklist ? (
+            <div className="text-center py-8 text-gray-500 font-medium space-y-2">
+              <ClipboardList className="mx-auto text-gray-300 animate-pulse" size={40} />
+              <p>Awaiting checklist initialization by PRO...</p>
+              <p className="text-[11px] text-gray-400">Preparation status will appear here in real time once the PRO starts the checklist.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Summary card */}
+              <div className="p-4 rounded-xl border flex items-center justify-between" style={{ backgroundColor: "#FAF6F2", borderColor: "rgba(199,106,0,0.15)" }}>
+                <div>
+                  <div className="text-xs text-gray-400 font-bold uppercase tracking-wider">Overall Status</div>
+                  <div className="text-sm font-bold mt-1" style={{ color: "#1F1F1F" }}>
+                    {activeChecklist.isReady ? "Ready to Broadcast ✅" : "In Preparation..."}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold" style={{ color: "#C76A00" }}>{activeChecklist.progressPercent}%</div>
+                  <div className="text-[10px] text-gray-400 font-bold uppercase">Prepared</div>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full transition-all duration-500" style={{ width: `${activeChecklist.progressPercent}%`, backgroundColor: "#C76A00" }}></div>
+              </div>
+
+              {/* Stages List */}
+              <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
+                {(activeChecklist.stages || []).map((stage: any) => {
+                  const isCompleted = stage.status === 'COMPLETED';
+                  const isInProgress = stage.status === 'IN_PROGRESS';
+                  const isLocked = stage.status === 'LOCKED';
+
+                  return (
+                    <div key={stage.id} className="border rounded-xl p-4 space-y-3" style={{ borderColor: isCompleted ? "rgba(34,197,94,0.2)" : isInProgress ? "rgba(199,106,0,0.3)" : "rgba(0,0,0,0.06)", opacity: isLocked ? 0.6 : 1 }}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${
+                            isCompleted ? 'bg-green-50 text-green-700' : isInProgress ? 'bg-orange-50 text-orange-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {stage.title}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold" style={{ color: isCompleted ? '#16A34A' : isInProgress ? '#D97706' : '#6B7280' }}>
+                          {stage.status}
+                        </span>
+                      </div>
+
+                      {/* Items */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-1">
+                        {(stage.items || []).map((item: any) => (
+                          <div key={item.id} className="flex items-center gap-2 text-xs">
+                            <span className={`w-3.5 h-3.5 rounded flex items-center justify-center border ${
+                              item.completed ? 'bg-green-500 border-green-600 text-white' : 'border-gray-300 bg-white'
+                            }`}>
+                              {item.completed && <span className="text-[9px] font-bold">✓</span>}
+                            </span>
+                            <span className={item.completed ? 'line-through text-gray-400' : 'text-gray-700'}>
+                              {item.label}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+        <ModalFooter onClose={() => { setChecklistOpen(false); setChecklistBookingId(null); }} onSubmit={() => { setChecklistOpen(false); setChecklistBookingId(null); }} submitLabel="Close" />
       </Modal>
     </div>
   );

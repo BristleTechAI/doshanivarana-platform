@@ -3,7 +3,25 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 const { RtcTokenBuilder, RtcRole } = require('agora-token');
+
+// Firebase initialization
+const { initializeApp } = require('firebase/app');
+const { getFirestore, doc, getDoc, setDoc, updateDoc } = require('firebase/firestore');
+
+const firebaseConfig = {
+  apiKey: process.env.FIREBASE_API_KEY,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.FIREBASE_APP_ID,
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const firestoreDb = getFirestore(firebaseApp);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -17,7 +35,7 @@ app.use(express.json());
 app.get('/api/agora/token', (req, res) => {
   const { channelName, uid, role } = req.query;
 
-  const appId  = process.env.AGORA_APP_ID;
+  const appId = process.env.AGORA_APP_ID;
   const appCert = process.env.AGORA_APP_CERTIFICATE;
 
   if (!appId || !appCert) {
@@ -157,7 +175,7 @@ app.post('/api/agora/recording/stop', async (req, res) => {
 const YOUTUBE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 async function getYouTubeAccessToken() {
-  const clientId     = process.env.YOUTUBE_CLIENT_ID;
+  const clientId = process.env.YOUTUBE_CLIENT_ID;
   const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
   const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
 
@@ -169,9 +187,9 @@ async function getYouTubeAccessToken() {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      grant_type:    'refresh_token',
+      grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      client_id:     clientId,
+      client_id: clientId,
       client_secret: clientSecret,
     }).toString()
   });
@@ -246,7 +264,7 @@ app.post('/api/youtube/upload', async (req, res) => {
         },
       },
       media: {
-        body: videoRes.body,
+        body: Readable.fromWeb(videoRes.body),
       },
     });
 
@@ -304,6 +322,177 @@ app.get('/api/youtube/status/:videoId', async (req, res) => {
   } catch (e) {
     console.error('[YouTube] Status check error:', e);
     res.status(500).json({ error: 'Status check failed', detail: e.message });
+  }
+});
+
+// ─── Stream Readiness Checklist Endpoints ─────────────────────────────────────
+
+const READINESS_TEMPLATE_PATH = path.join(__dirname, 'readiness-db.json');
+const getReadinessTemplate = () => {
+  try {
+    return JSON.parse(fs.readFileSync(READINESS_TEMPLATE_PATH, 'utf8'));
+  } catch (e) {
+    console.error('Failed to read readiness checklist template:', e);
+    return [];
+  }
+};
+
+function calculateProgressAndLocking(stages) {
+  let prevStageCompleted = true; // First stage is always unlocked
+  let completedItemsCount = 0;
+  let totalItemsCount = 0;
+  let currentStageId = null;
+
+  stages.forEach((stage) => {
+    // Count items
+    const stageItems = stage.items || [];
+    const stageTotal = stageItems.length;
+    const stageCompleted = stageItems.filter(i => i.completed).length;
+
+    totalItemsCount += stageTotal;
+    completedItemsCount += stageCompleted;
+
+    // Check if stage is complete
+    const isStageFullyComplete = stageTotal > 0 && stageCompleted === stageTotal;
+
+    if (isStageFullyComplete) {
+      stage.status = 'COMPLETED';
+    } else if (prevStageCompleted) {
+      stage.status = 'IN_PROGRESS';
+      if (!currentStageId) {
+        currentStageId = stage.id;
+      }
+    } else {
+      stage.status = 'LOCKED';
+    }
+
+    prevStageCompleted = isStageFullyComplete;
+  });
+
+  const progressPercent = totalItemsCount > 0
+    ? Math.round((completedItemsCount / totalItemsCount) * 100)
+    : 0;
+
+  const isReady = completedItemsCount === totalItemsCount;
+  if (isReady) {
+    currentStageId = 'stage5'; // completed state
+  }
+
+  return {
+    progressPercent,
+    isReady,
+    currentStageId
+  };
+}
+
+// GET /api/stream-readiness/:bookingId
+app.get('/api/stream-readiness/:bookingId', async (req, res) => {
+  const { bookingId } = req.params;
+  const { poojaId, templeId } = req.query;
+
+  try {
+    const docRef = doc(firestoreDb, 'streamReadiness', bookingId);
+    const snap = await getDoc(docRef);
+
+    if (snap.exists()) {
+      return res.json(snap.data());
+    }
+
+    // Initialize new checklist from template
+    const template = getReadinessTemplate();
+    const { progressPercent, isReady, currentStageId } = calculateProgressAndLocking(template);
+
+    const initialData = {
+      bookingId,
+      poojaId: poojaId || '',
+      templeId: templeId || '',
+      stages: template,
+      progressPercent,
+      isReady,
+      currentStageId: currentStageId || 'stage1',
+      updatedAt: new Date().toISOString()
+    };
+
+    await setDoc(docRef, initialData);
+    res.json(initialData);
+  } catch (e) {
+    console.error('[Readiness] Fetch error:', e);
+    res.status(500).json({ error: 'Failed to fetch stream readiness checklist', detail: e.message });
+  }
+});
+
+// POST /api/stream-readiness/:bookingId/toggle
+app.post('/api/stream-readiness/:bookingId/toggle', async (req, res) => {
+  const { bookingId } = req.params;
+  const { stageId, itemId } = req.body;
+
+  if (!stageId || !itemId) {
+    return res.status(400).json({ error: 'stageId and itemId are required' });
+  }
+
+  try {
+    const docRef = doc(firestoreDb, 'streamReadiness', bookingId);
+    const snap = await getDoc(docRef);
+
+    if (!snap.exists()) {
+      return res.status(404).json({ error: 'Readiness checklist not found for this booking' });
+    }
+
+    const data = snap.data();
+    const stages = data.stages || [];
+
+    // Find the item and toggle it
+    let found = false;
+    for (const stage of stages) {
+      if (stage.id === stageId) {
+        if (stage.status === 'LOCKED') {
+          return res.status(400).json({ error: 'Cannot toggle items in a locked stage' });
+        }
+        for (const item of stage.items || []) {
+          if (item.id === itemId) {
+            item.completed = !item.completed;
+            found = true;
+            break;
+          }
+        }
+      }
+      if (found) break;
+    }
+
+    if (!found) {
+      return res.status(404).json({ error: 'Checklist item not found' });
+    }
+
+    // Recalculate
+    const { progressPercent, isReady, currentStageId } = calculateProgressAndLocking(stages);
+
+    const updatedData = {
+      ...data,
+      stages,
+      progressPercent,
+      isReady,
+      currentStageId: currentStageId || 'stage1',
+      updatedAt: new Date().toISOString()
+    };
+
+    await setDoc(docRef, updatedData, { merge: true });
+
+    // Synchronize status back to the booking document
+    const bookingDocRef = doc(firestoreDb, 'bookings', bookingId);
+    const bookingSnap = await getDoc(bookingDocRef);
+    if (bookingSnap.exists()) {
+      await updateDoc(bookingDocRef, {
+        readinessProgress: progressPercent,
+        readinessStatus: isReady ? 'READY' : 'IN_PROGRESS',
+        // Update streamStatus in booking if complete so devotee app knows
+        streamStatus: isReady ? 'READY' : 'IN_PROGRESS'
+      });
+    }
+
+    res.json(updatedData);
+  } catch (e) {
+    console.error('[Readiness] Toggle error:', e);
+    res.status(500).json({ error: 'Failed to toggle checklist item', detail: e.message });
   }
 });
 
@@ -503,7 +692,7 @@ app.post('/api/queries', (req, res) => {
 
   const queries = readQueries();
   const queryId = `Q-${100 + queries.length + 1}`;
-  
+
   const now = new Date();
   const formattedTime = now.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + `, ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
 
