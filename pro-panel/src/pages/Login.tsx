@@ -6,8 +6,8 @@ export function Login() {
   const { login, isAuthenticated, role, logout } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('pro@doshanivarana.com');
+  const [password, setPassword] = useState('proPassword123!');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');

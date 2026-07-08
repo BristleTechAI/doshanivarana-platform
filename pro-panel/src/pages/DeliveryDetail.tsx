@@ -25,6 +25,11 @@ interface DeliveryDetailData {
   contents: string;
   courier: string;
   trackingNumber: string;
+  awbNumber?: string;
+  courierName?: string;
+  shiprocketOrderId?: string;
+  shiprocketShipmentId?: string;
+  trackingScans?: any[];
   dispatchDate: string;
   estimatedDelivery: string;
 }
@@ -49,18 +54,34 @@ export function DeliveryDetail() {
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [trackingScans, setTrackingScans] = useState<any[]>([]);
+
   useEffect(() => {
     if (!id) return;
     
     const unsubscribe = onSnapshot(doc(db, 'deliveries', id), async (docSnap) => {
-      if (!docSnap.exists()) {
+      let dData = docSnap.exists() ? docSnap.data() : null;
+      
+      // If delivery document doesn't exist, we fallback to using `id` as `bookingId`
+      let targetBookingId = dData ? dData.bookingId : id;
+      
+      const bSnap = await getDoc(doc(db, 'bookings', targetBookingId));
+      if (!bSnap.exists()) {
+        // Neither delivery nor booking found
         setLoading(false);
         return;
       }
-      const dData = docSnap.data();
       
-      const bSnap = await getDoc(doc(db, 'bookings', dData.bookingId));
       const bData = bSnap.data() || {};
+      
+      // Create virtual delivery data if it didn't exist
+      if (!dData) {
+        dData = {
+          bookingId: targetBookingId,
+          status: 'Booked'
+        };
+      }
       
       const fullAddress = dData.shippingAddress || bData.shippingAddress || 'Address not provided';
       const pincodeMatch = fullAddress.match(/\d{5,6}$/) || fullAddress.match(/\d{3}\s?\d{3}$/);
@@ -68,7 +89,7 @@ export function DeliveryDetail() {
       const address = pincodeMatch ? fullAddress.replace(pincodeMatch[0], '').trim().replace(/,\s*$/, '') : fullAddress;
 
       setDelivery({
-        id: docSnap.id,
+        id: docSnap.id || id, // use param id as fallback
         bookingId: dData.bookingId,
         devoteeName: bData.devoteeDetails?.name || bData.userId || 'Unknown',
         mobile: bData.mobile || 'N/A',
@@ -93,9 +114,10 @@ export function DeliveryDetail() {
       if (!width && dData.width) setWidth(dData.width);
       if (!height && dData.height) setHeight(dData.height);
       if (!contents && dData.contents) setContents(dData.contents);
-      if (!trackingNumber && dData.trackingNumber) setTrackingNumber(dData.trackingNumber);
+      if (!trackingNumber && (dData.awbNumber || dData.trackingNumber)) setTrackingNumber(dData.awbNumber || dData.trackingNumber);
       if (!estimatedDelivery && dData.estimatedDelivery) setEstimatedDelivery(dData.estimatedDelivery);
-      if (dData.courier) setCourier(dData.courier);
+      if (dData.courierName || dData.courier) setCourier(dData.courierName || dData.courier);
+      if (dData.trackingScans) setTrackingScans(dData.trackingScans);
 
       setLoading(false);
     });
@@ -106,8 +128,11 @@ export function DeliveryDetail() {
   const handleMarkAsPacked = async () => {
     if (!id || !delivery) return;
     try {
-      await updateDoc(doc(db, 'deliveries', id), {
+      // Use setDoc with merge: true in case the document doesn't exist yet
+      await setDoc(doc(db, 'deliveries', id), {
         status: 'PACKED',
+        bookingId: delivery.bookingId,
+        templeId: templeId,
         prasadPackedByPro: true,  // Explicit PRO action flag
         weight,
         length,
@@ -115,7 +140,7 @@ export function DeliveryDetail() {
         height,
         contents,
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
 
       // Also update the booking so the user-app journey knows prasad is packed
       if (delivery.bookingId) {
@@ -160,38 +185,46 @@ export function DeliveryDetail() {
     }
   };
 
-  const handleConfirmDispatch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!trackingNumber.trim()) {
-      setNotification('Please enter a tracking number.');
-      setTimeout(() => setNotification(null), 3000);
-      return;
-    }
+  const handleShiprocketDispatch = async () => {
     if (!id || !delivery) return;
+    
+    setIsCreatingOrder(true);
+    setNotification('Creating shipment via Shiprocket...');
+    
     try {
-      await updateDoc(doc(db, 'deliveries', id), {
-        status: 'SHIPPED',
-        courier,
-        trackingNumber,
-        estimatedDelivery,
-        dispatchDate: new Date().toISOString(),
-        updatedAt: serverTimestamp()
+      const res = await fetch('http://localhost:3001/api/shiprocket/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deliveryId: id,
+          bookingId: delivery.bookingId,
+          devoteeName: delivery.devoteeName,
+          mobile: delivery.mobile,
+          address: delivery.address,
+          pincode: delivery.pincode,
+          weight,
+          length,
+          width,
+          height,
+          poojaName: delivery.poojaName,
+          templeId: delivery.templeId
+        })
       });
-
-      // Also update the booking so the user-app journey knows prasad is shipped
-      if (delivery.bookingId) {
-        await updateDoc(doc(db, 'bookings', delivery.bookingId), {
-          deliveryStatus: 'SHIPPED',
-          updatedAt: serverTimestamp()
-        });
+      
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || data.message || 'Failed to create Shiprocket order');
       }
-
+      
+      if (data.awbNumber) setTrackingNumber(data.awbNumber);
+      if (data.courierName) setCourier(data.courierName);
+      
       const eventRef = doc(collection(db, 'systemEvents'));
       await setDoc(eventRef, {
         eventType: 'delivery.shipped',
         entityId: id,
         entityType: 'delivery',
-        payload: { deliveryId: id, bookingId: delivery.bookingId, courier, trackingNumber },
+        payload: { deliveryId: id, bookingId: delivery.bookingId, courier: data.courierName, trackingNumber: data.awbNumber },
         status: 'PENDING',
         createdAt: serverTimestamp()
       });
@@ -202,20 +235,56 @@ export function DeliveryDetail() {
         entityId: id,
         entityType: 'delivery',
         performedBy: templeId,
-        details: `Delivery ${id} marked as SHIPPED with tracking ${trackingNumber}`,
+        details: `Delivery ${id} dispatched via Shiprocket AWB: ${data.awbNumber}`,
         createdAt: serverTimestamp()
       });
 
       localDb.addNotification(
         'Delivery Dispatched',
-        `Prasad parcel for booking ${delivery.bookingId} has been shipped via ${courier} (AWB: ${trackingNumber}).`,
+        `Prasad parcel for booking ${delivery.bookingId} has been auto-shipped via ${data.courierName}.`,
         `/deliveries/${id}`
       );
 
       setShowSuccessOverlay(true);
-    } catch (e) {
+      setNotification('Shipment created successfully!');
+    } catch (e: any) {
       console.error(e);
-      setNotification('Failed to update delivery');
+      setNotification(`Error: ${e.message}`);
+    } finally {
+      setIsCreatingOrder(false);
+      setTimeout(() => setNotification(null), 4000);
+    }
+  };
+
+  const handleRefreshTracking = async () => {
+    const awb = delivery?.awbNumber || delivery?.trackingNumber || trackingNumber;
+    if (!awb) return;
+    
+    try {
+      setNotification('Refreshing tracking status...');
+      const res = await fetch(`http://localhost:3001/api/shiprocket/track/${awb}`);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to fetch tracking updates');
+      }
+      
+      const trackingData = data[awb]?.tracking_data;
+      if (trackingData && trackingData.shipment_track_activities) {
+        const activities = trackingData.shipment_track_activities;
+        setTrackingScans(activities);
+        setNotification('Tracking refreshed!');
+        
+        await updateDoc(doc(db, 'deliveries', id!), {
+          trackingScans: activities
+        });
+      } else {
+        setNotification('No new tracking updates available.');
+      }
+    } catch (e: any) {
+      console.error(e);
+      setNotification(`Refresh Error: ${e.message}`);
+    } finally {
       setTimeout(() => setNotification(null), 3000);
     }
   };
@@ -430,68 +499,64 @@ export function DeliveryDetail() {
               Dispatch Details
             </h3>
             
-            <form onSubmit={handleConfirmDispatch} className="flex flex-col gap-5 font-semibold text-on-surface">
-              <div>
-                <label className="block text-label-md text-on-surface-variant uppercase tracking-wider text-[10px] mb-1">Courier Partner</label>
-                <div className="w-full relative">
-                  <CustomSelect 
-                    value={courier}
-                    onChange={(val) => setCourier(val)}
-                    options={[
-                      { value: 'BlueDart', label: 'BlueDart' },
-                      { value: 'Delhivery', label: 'Delhivery' },
-                      { value: 'India Post', label: 'India Post' },
-                      { value: 'DTDC', label: 'DTDC' },
-                      { value: 'Ekart', label: 'Ekart' }
-                    ]}
-                    className=""
-                  />
+            <div className="flex flex-col gap-5 font-semibold text-on-surface">
+              {isDispatched ? (
+                // Display Read-only Dispatch Info
+                <div className="bg-surface-container rounded-lg p-4 border border-outline-variant/30 space-y-3">
+                  <div className="flex justify-between items-center border-b border-outline-variant/30 pb-2">
+                    <span className="text-label-md text-on-surface-variant uppercase tracking-wider text-[10px]">Tracking (AWB)</span>
+                    <span className="font-mono font-bold text-primary bg-primary-container/20 px-2 py-0.5 rounded">{trackingNumber}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-outline-variant/30 pb-2">
+                    <span className="text-label-md text-on-surface-variant uppercase tracking-wider text-[10px]">Courier</span>
+                    <span className="font-bold text-on-surface">{courier}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-label-md text-on-surface-variant uppercase tracking-wider text-[10px]">Estimated Delivery</span>
+                    <span className="font-bold text-on-surface">{estimatedDelivery || 'Calculating...'}</span>
+                  </div>
+                  
+                  <button 
+                    type="button"
+                    onClick={handleRefreshTracking}
+                    className="w-full mt-4 py-2 px-4 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded-full font-button text-button transition-colors flex justify-center items-center gap-2 font-bold cursor-pointer text-sm"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">sync</span>
+                    Refresh Tracking
+                  </button>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-label-md text-on-surface-variant uppercase tracking-wider text-[10px] mb-1">AWB / Tracking Number</label>
-                <input 
-                  value={trackingNumber}
-                  onChange={(e) => setTrackingNumber(e.target.value)}
-                  placeholder="e.g. DL2026051098765"
-                  className="w-full bg-surface border border-outline-variant rounded-lg p-3 text-body-md focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all shadow-sm font-mono font-bold text-on-surface"
-                  type="text" 
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-label-md text-on-surface-variant uppercase tracking-wider text-[10px] mb-1">Dispatch Date</label>
-                  <input 
-                    readOnly
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-lg p-3 text-body-md text-on-surface-variant shadow-sm"
-                    type="text" 
-                    value={new Date().toLocaleDateString()} 
-                  />
+              ) : (
+                // Automated Shiprocket Creation Button
+                <div className="flex flex-col gap-4">
+                  <div className="bg-surface-container-low rounded-lg p-4 border border-outline-variant/30">
+                    <p className="text-body-sm text-on-surface-variant font-medium mb-2">
+                      Click below to automatically create a shipment in Shiprocket. We will assign the best available courier and generate an AWB instantly.
+                    </p>
+                  </div>
+                  
+                  <button 
+                    type="button"
+                    onClick={handleShiprocketDispatch}
+                    disabled={isCreatingOrder || !isPacked}
+                    className={`w-full py-3 px-6 rounded-full font-button text-button mt-2 shadow-sm transition-colors flex justify-center items-center gap-2 font-bold cursor-pointer ${
+                      isCreatingOrder || !isPacked
+                        ? 'bg-surface-variant text-on-surface-variant opacity-50'
+                        : 'bg-secondary-container text-on-secondary-container hover:bg-[#ffeae1] hover:text-primary border-2 border-transparent hover:border-primary'
+                    }`}
+                  >
+                    {isCreatingOrder ? (
+                      <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[18px]">rocket_launch</span>
+                    )}
+                    {isCreatingOrder ? 'Creating Shipment...' : 'Dispatch via Shiprocket'}
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant uppercase tracking-wider text-[10px] mb-1">Estimated Delivery</label>
-                  <input 
-                    value={estimatedDelivery}
-                    onChange={(e) => setEstimatedDelivery(e.target.value)}
-                    className="w-full bg-surface border border-outline-variant rounded-lg p-3 text-body-md focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all shadow-sm font-semibold"
-                    type="text" 
-                  />
-                </div>
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full py-3 px-6 bg-secondary-container text-on-secondary-container hover:bg-[#ffeae1] hover:text-primary border-2 border-transparent hover:border-primary rounded-full font-button text-button mt-4 shadow-sm transition-colors flex justify-center items-center gap-2 font-bold cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[18px]">send</span>
-                Confirm Dispatch
-              </button>
+              )}
               <p className="text-center text-body-sm text-on-surface-variant font-medium">
                 Devotee will be notified via Email, SMS and App on dispatch
               </p>
-            </form>
+            </div>
           </div>
 
           {/* Tracking History */}
@@ -552,12 +617,30 @@ export function DeliveryDetail() {
               </div>
 
               {/* Delivered */}
-              <div className="relative z-10 flex gap-4 items-start opacity-40 font-semibold">
-                <div className="w-5 h-5 rounded-full border-2 border-outline-variant bg-surface mt-0.5"></div>
+              <div className={`relative z-10 flex gap-4 items-start font-semibold ${delivery.status === 'DELIVERED' ? '' : 'opacity-40'}`}>
+                <div className={`w-5 h-5 rounded-full border-2 ${delivery.status === 'DELIVERED' ? 'border-green-600 bg-green-50' : 'border-outline-variant bg-surface'} mt-0.5 flex items-center justify-center`}>
+                   {delivery.status === 'DELIVERED' && <span className="material-symbols-outlined text-green-600 text-[12px]">check</span>}
+                </div>
                 <div>
                   <p className="text-body-md text-on-surface-variant">Delivered</p>
                 </div>
               </div>
+
+              {/* Dynamic Scans */}
+              {trackingScans && trackingScans.length > 0 && (
+                <div className="mt-8 pt-4 border-t border-outline-variant/30">
+                  <h4 className="text-label-md font-bold text-on-surface-variant uppercase tracking-wider mb-4">Detailed Scans</h4>
+                  <div className="space-y-4 relative before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-px before:bg-outline-variant/30">
+                    {trackingScans.map((scan, i) => (
+                      <div key={i} className="relative pl-8 text-sm">
+                        <div className="absolute left-1.5 top-1.5 w-2.5 h-2.5 bg-primary/20 border-2 border-primary rounded-full"></div>
+                        <p className="font-bold text-on-surface">{scan.activity}</p>
+                        <p className="text-on-surface-variant text-xs">{scan.location} • {scan.date}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             </div>
           </div>

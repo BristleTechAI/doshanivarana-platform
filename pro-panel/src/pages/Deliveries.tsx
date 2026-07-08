@@ -28,26 +28,31 @@ export function Deliveries() {
   useEffect(() => {
     if (!templeId) return;
 
-    // Listen to deliveries for this temple
-    const q = query(collection(db, 'deliveries'), where('templeId', '==', templeId));
+    // Listen to bookings for this temple
+    const q = query(collection(db, 'bookings'), where('templeId', '==', templeId));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const deliveryDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (deliveryDocs.length === 0) {
+      if (snapshot.empty) {
         setRecords([]);
         return;
       }
-
-      // Fetch the corresponding bookings
-      const bookingsQuery = query(collection(db, 'bookings'), where('templeId', '==', templeId));
-      const bookingsSnap = await getDocs(bookingsQuery);
       
-      const bookingsMap = new Map();
-      bookingsSnap.docs.forEach(doc => {
-        bookingsMap.set(doc.id, doc.data());
+      // Fetch the corresponding deliveries
+      const deliveriesQuery = query(collection(db, 'deliveries'), where('templeId', '==', templeId));
+      const deliveriesSnap = await getDocs(deliveriesQuery);
+      
+      const deliveriesMap = new Map();
+      deliveriesSnap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.bookingId) {
+          deliveriesMap.set(data.bookingId, { id: doc.id, ...data });
+        }
       });
-
-      const updatedRecords = deliveryDocs.map(d => {
-        const b = bookingsMap.get(d.bookingId) || {};
+      
+      const updatedRecords = snapshot.docs.map(docSnap => {
+        const b = docSnap.data();
+        const bId = docSnap.id;
+        const d = deliveriesMap.get(bId) || {};
+        
         const address = b.shippingAddress || 'Address not provided';
         
         let destination = address;
@@ -58,19 +63,19 @@ export function Deliveries() {
           const state = stateAndPin.replace(/\s+\d{6}$/, '').replace(/\d{6}$/, '').trim();
           destination = `${city}, ${state}`;
         }
-
+        
         return {
-          id: d.id,
-          bookingId: d.bookingId,
+          id: d.id || bId, // If delivery doesn't exist, use bookingId
+          bookingId: bId,
           devoteeName: b.devoteeDetails?.name || b.userId || 'Unknown',
           poojaName: b.poojaName || 'Unknown Pooja',
           destination,
-          status: d.status,
+          status: d.status || 'Booked',
           daysPending: 0, // Mock for now
           isUrgent: false
         };
       });
-
+      
       setRecords(updatedRecords);
     });
 
@@ -82,15 +87,15 @@ export function Deliveries() {
   };
 
   // Stats calculation
-  const actionRequiredCount = records.filter(r => r.status === 'PACKED').length;
+  const actionRequiredCount = records.filter(r => !r.status || r.status === 'Booked' || r.status === 'PENDING').length;
+  const readyToDispatchCount = records.filter(r => r.status === 'PACKED').length;
   const inTransitCount = records.filter(r => r.status === 'SHIPPED' || r.status === 'OUT_FOR_DELIVERY').length;
   const completedCount = records.filter(r => r.status === 'DELIVERED').length;
 
   const getFilteredRecords = () => {
     switch (activeTab) {
       case 'action':
-      case 'ready':
-        return records.filter(r => r.status === 'PACKED');
+        return records.filter(r => !r.status || r.status === 'Booked' || r.status === 'PENDING' || r.status === 'PACKED');
       case 'transit':
         return records.filter(r => r.status === 'SHIPPED' || r.status === 'OUT_FOR_DELIVERY');
       case 'completed':
@@ -139,7 +144,7 @@ export function Deliveries() {
             <h3 className="text-label-md text-on-surface-variant uppercase tracking-wider text-[10px]">Ready to Dispatch</h3>
             <span className="material-symbols-outlined text-secondary-fixed-dim text-[20px]">local_shipping</span>
           </div>
-          <p className="font-display text-headline-lg text-on-surface font-bold leading-none">{actionRequiredCount}</p>
+          <p className="font-display text-headline-lg text-on-surface font-bold leading-none">{readyToDispatchCount}</p>
         </div>
 
         {/* In Transit */}
@@ -169,7 +174,7 @@ export function Deliveries() {
             activeTab === 'action' ? 'border-error text-error' : 'border-transparent text-on-surface-variant hover:text-on-surface'
           }`}
         >
-          Action Required ({actionRequiredCount})
+          Action Required ({actionRequiredCount + readyToDispatchCount})
         </button>
         <button 
           onClick={() => setActiveTab('transit')}

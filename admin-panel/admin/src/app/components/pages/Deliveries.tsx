@@ -160,7 +160,7 @@ export function DeliveriesPage() {
                         <Clock size={10} /> {d.eta || "No ETA"}
                       </div>
                     </div>
-                    <div className="mt-1.5 text-xs font-mono" style={{ color: "#D1D5DB" }}>{d.trackingNumber || "No Tracking"}</div>
+                    <div className="mt-1.5 text-xs font-mono" style={{ color: "#D1D5DB" }}>{d.awbNumber || d.trackingNumber || "No Tracking"}</div>
                   </div>
                 ))}
               </div>

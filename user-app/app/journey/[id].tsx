@@ -408,10 +408,19 @@ export default function PoojaJourneyScreen() {
                 {devoteeInfo.gothram} / {devoteeInfo.nakshatra}
               </Text>
             </View>
-            {delivery?.trackingNumber && (
-              <View className="flex-row justify-between mb-1.5 pt-2 border-t border-border/50">
-                <Text className="text-xs text-muted-foreground">Tracking No.</Text>
-                <Text className="text-xs font-bold text-secondary">{delivery.trackingNumber} ({delivery.courier})</Text>
+            {(delivery?.awbNumber || delivery?.trackingNumber) && (
+              <View className="flex-col gap-2 pt-2 mt-1 border-t border-border/50">
+                <View className="flex-row justify-between">
+                  <Text className="text-xs text-muted-foreground">Tracking No.</Text>
+                  <Text className="text-xs font-bold text-secondary">{delivery.awbNumber || delivery.trackingNumber} ({delivery.courierName || delivery.courier})</Text>
+                </View>
+                {delivery?.trackingScans && delivery.trackingScans.length > 0 && (
+                  <View className="bg-muted/30 p-2 rounded-md mt-1 border border-border/30">
+                    <Text className="text-[10px] font-bold text-primary mb-1 uppercase tracking-widest">Latest Scan</Text>
+                    <Text className="text-xs font-medium text-foreground">{delivery.trackingScans[0].activity}</Text>
+                    <Text className="text-[10px] text-muted-foreground mt-0.5">{delivery.trackingScans[0].location} • {delivery.trackingScans[0].date}</Text>
+                  </View>
+                )}
               </View>
             )}
           </View>

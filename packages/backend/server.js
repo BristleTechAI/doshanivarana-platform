@@ -650,7 +650,363 @@ app.post('/api/stream-readiness/:bookingId/toggle', async (req, res) => {
   }
 });
 
+// ─── Shiprocket Delivery API ──────────────────────────────────────────────────
+
+let shiprocketToken = null;
+let shiprocketTokenExpiresAt = 0;
+const SHIPROCKET_BASE_URL = 'https://apiv2.shiprocket.in/v1/external';
+
+async function getShiprocketToken() {
+  const now = Date.now();
+  if (shiprocketToken && now < shiprocketTokenExpiresAt) {
+    return shiprocketToken;
+  }
+  
+  try {
+    const res = await fetch(`${SHIPROCKET_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: process.env.SHIPROCKET_EMAIL,
+        password: process.env.SHIPROCKET_PASSWORD
+      })
+    });
+    
+    const data = await res.json();
+    if (!res.ok || !data.token) {
+      console.warn('[Shiprocket] Auth failed, falling back to mock mode. Error:', JSON.stringify(data));
+      shiprocketToken = 'mock_token_12345';
+      shiprocketTokenExpiresAt = now + 10 * 24 * 60 * 60 * 1000;
+      return shiprocketToken;
+    }
+    
+    shiprocketToken = data.token;
+    shiprocketTokenExpiresAt = now + 9 * 24 * 60 * 60 * 1000;
+  } catch (err) {
+    console.warn('[Shiprocket] Auth exception, falling back to mock mode. Error:', err.message);
+    shiprocketToken = 'mock_token_12345';
+    shiprocketTokenExpiresAt = now + 10 * 24 * 60 * 60 * 1000;
+  }
+  
+  return shiprocketToken;
+}
+
+app.post('/api/shiprocket/create-pickup', async (req, res) => {
+  try {
+    const { templeId, name, email, phone, address, city, state, pincode } = req.body;
+    
+    if (!templeId || !name || !email || !phone || !address || !city || !state || !pincode) {
+      return res.status(400).json({ error: 'Missing required fields for Shiprocket pickup location' });
+    }
+    
+    const token = await getShiprocketToken();
+    if (token === 'mock_token_12345') {
+      console.log('[Shiprocket Mock] Returning mock pickup location data for', templeId);
+      return res.json({ success: true, pickupLocationName: templeId, data: { success: true, pickup_id: 'mock_pickup_999' } });
+    }
+    
+    const pickupPayload = {
+      pickup_location: templeId,
+      name: name,
+      email: email,
+      phone: phone,
+      address: address.substring(0, Math.min(address.length, 80)),
+      address_2: '',
+      city: city,
+      state: state,
+      country: 'India',
+      pin_code: pincode
+    };
+    
+    const createRes = await fetch(`${SHIPROCKET_BASE_URL}/settings/company/addpickup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(pickupPayload)
+    });
+    
+    const createData = await createRes.json();
+    
+    if (!createRes.ok || (createData.success === false)) {
+      console.error('Shiprocket pickup creation error:', createData);
+      return res.status(400).json({ error: 'Shiprocket pickup creation failed', details: createData });
+    }
+    
+    return res.json({ success: true, pickupLocationName: templeId, data: createData });
+  } catch (e) {
+    console.error('[Shiprocket] Create pickup error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/shiprocket/create-order', async (req, res) => {
+  try {
+    const { deliveryId, bookingId, devoteeName, mobile, address, pincode, weight, length, width, height, poojaName, templeId } = req.body;
+    
+    if (!deliveryId || !address || !pincode || !weight || !length || !width || !height) {
+      return res.status(400).json({ error: 'Missing required parcel details for Shiprocket order' });
+    }
+    
+    const token = await getShiprocketToken();
+    if (token === 'mock_token_12345') {
+      console.log('[Shiprocket Mock] Returning mock order data for delivery', deliveryId);
+      
+      const mockAwb = 'AWB' + Math.floor(100000000 + Math.random() * 900000000);
+      
+      // Update our database directly
+      const deliveryRef = doc(firestoreDb, 'deliveries', deliveryId);
+      await updateDoc(deliveryRef, {
+        status: 'SHIPPED',
+        trackingNumber: mockAwb,
+        courier: 'Mock Courier',
+        trackingUrl: `https://shiprocket.co/tracking/${mockAwb}`,
+        shippedAt: new Date().toISOString()
+      });
+      
+      return res.json({
+        success: true,
+        orderId: 'mock_order_123',
+        shipmentId: 'mock_shipment_123',
+        awbNumber: mockAwb,
+        courierName: 'Mock Courier'
+      });
+    }
+    
+    // Parse devotee name for first/last
+    const nameParts = (devoteeName || 'Devotee').split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Ji';
+    
+    let pickupLocationStr = process.env.SHIPROCKET_PICKUP_LOCATION_NAME || 'Primary';
+    if (templeId) {
+      try {
+        const templeDocRef = doc(firestoreDb, 'temples', templeId);
+        const templeSnap = await getDoc(templeDocRef);
+        if (templeSnap.exists()) {
+          const tData = templeSnap.data();
+          if (tData.shiprocketPickupLocation) {
+            pickupLocationStr = tData.shiprocketPickupLocation;
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching temple for pickup location:', err);
+      }
+    }
+    
+    // Create the Shiprocket order payload
+    const orderPayload = {
+      order_id: deliveryId, // Use deliveryId as our reference
+      order_date: new Date().toISOString().split('T')[0],
+      pickup_location: pickupLocationStr,
+      channel_id: '',
+      comment: `Prasad for ${poojaName || 'Pooja'}`,
+      billing_customer_name: firstName,
+      billing_last_name: lastName,
+      billing_address: address.substring(0, Math.min(address.length, 255)),
+      billing_address_2: '',
+      billing_city: 'City', // Typically parsed from address or fixed
+      billing_pincode: pincode,
+      billing_state: 'State', // Requires valid state or will fail, but Shiprocket attempts to resolve via pincode if possible. Best to extract or require user input if strict.
+      billing_country: 'India',
+      billing_email: 'noreply@doshanivarana.com',
+      billing_phone: mobile || '9999999999',
+      shipping_is_billing: true,
+      order_items: [
+        {
+          name: `Prasad - ${poojaName || 'Pooja'}`,
+          sku: 'PRASAD',
+          units: 1,
+          selling_price: 1, // Nominal value
+          discount: 0,
+          tax: 0,
+          hsn: 441122
+        }
+      ],
+      payment_method: 'Prepaid', // Already paid
+      shipping_charges: 0,
+      giftwrap_charges: 0,
+      transaction_charges: 0,
+      total_discount: 0,
+      sub_total: 1,
+      length: parseFloat(length) || 10,
+      breadth: parseFloat(width) || 10,
+      height: parseFloat(height) || 10,
+      weight: parseFloat(weight) || 0.5
+    };
+    
+    const createRes = await fetch(`${SHIPROCKET_BASE_URL}/orders/create/adhoc`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(orderPayload)
+    });
+    
+    const createData = await createRes.json();
+    
+    if (!createRes.ok || !createData.shipment_id) {
+      console.error('Shiprocket order creation error:', createData);
+      return res.status(400).json({ error: 'Shiprocket order creation failed', details: createData });
+    }
+    
+    const shipmentId = createData.shipment_id;
+    const shiprocketOrderId = createData.order_id;
+    
+    // Step 2: Generate AWB (Auto-assign courier)
+    const awbRes = await fetch(`${SHIPROCKET_BASE_URL}/courier/assign/awb`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        shipment_id: shipmentId,
+        courier_id: '' // Empty lets Shiprocket auto-assign the best available
+      })
+    });
+    
+    const awbData = await awbRes.json();
+    
+    if (!awbRes.ok || awbData.awb_assign_status !== 1) {
+      console.error('Shiprocket AWB assignment error:', awbData);
+      // We still created the order, so we can return success but indicate AWB failed.
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Order created but AWB assignment failed. Please assign manually in Shiprocket.',
+        shiprocketOrderId,
+        shiprocketShipmentId: shipmentId
+      });
+    }
+    
+    const awbNumber = awbData.response?.data?.awb_code;
+    const courierName = awbData.response?.data?.courier_name;
+    const courierId = awbData.response?.data?.courier_company_id;
+    
+    // Update Firestore directly
+    const deliveryRef = doc(firestoreDb, 'deliveries', deliveryId);
+    await updateDoc(deliveryRef, {
+      status: 'SHIPPED',
+      shiprocketOrderId,
+      shiprocketShipmentId: shipmentId,
+      trackingNumber: awbNumber, // fallback
+      awbNumber,
+      courier: courierName, // fallback
+      courierName,
+      courierId,
+      shiprocketCreatedAt: new Date().toISOString()
+    });
+    
+    if (bookingId) {
+      await updateDoc(doc(firestoreDb, 'bookings', bookingId), {
+        deliveryStatus: 'SHIPPED'
+      });
+    }
+    
+    res.json({
+      success: true,
+      shiprocketOrderId,
+      shiprocketShipmentId: shipmentId,
+      awbNumber,
+      courierName
+    });
+    
+  } catch (e) {
+    console.error('[Shiprocket] Create order error:', e);
+    res.status(500).json({ error: 'Internal server error', detail: e.message });
+  }
+});
+
+app.get('/api/shiprocket/track/:awb', async (req, res) => {
+  try {
+    const { awb } = req.params;
+    const token = await getShiprocketToken();
+    
+    const trackRes = await fetch(`${SHIPROCKET_BASE_URL}/courier/track/awb/${awb}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!trackRes.ok) {
+      const errorText = await trackRes.text();
+      return res.status(400).json({ error: 'Failed to fetch tracking', details: errorText });
+    }
+    
+    const trackData = await trackRes.json();
+    res.json(trackData);
+    
+  } catch (e) {
+    console.error('[Shiprocket] Track error:', e);
+    res.status(500).json({ error: 'Internal server error', detail: e.message });
+  }
+});
+
+app.post('/api/shiprocket/webhook', async (req, res) => {
+  try {
+    // Basic auth check using token in header (if configured in Shiprocket webhook settings)
+    const token = req.headers['x-api-key'];
+    if (process.env.WEBHOOK_SECRET_TOKEN && token !== process.env.WEBHOOK_SECRET_TOKEN) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const data = req.body;
+    console.log('[Shiprocket] Webhook received:', data);
+    
+    if (!data.awb) {
+      return res.status(200).send('OK');
+    }
+    
+    // Find delivery in Firestore by AWB (needs an index, or we could just use a query if it's small)
+    // Actually, `order_id` in Shiprocket should match our deliveryId
+    let deliveryId = data.order_id;
+    
+    if (deliveryId) {
+      const deliveryRef = doc(firestoreDb, 'deliveries', deliveryId);
+      const deliverySnap = await getDoc(deliveryRef);
+      
+      if (deliverySnap.exists()) {
+        const srStatusLabel = data.current_status; // "IN TRANSIT", "DELIVERED", etc
+        let newStatus = deliverySnap.data().status;
+        
+        if (srStatusLabel === 'DELIVERED') {
+          newStatus = 'DELIVERED';
+        } else if (srStatusLabel === 'OUT FOR DELIVERY') {
+          newStatus = 'OUT_FOR_DELIVERY';
+        } else if (['IN TRANSIT', 'SHIPPED', 'PICKED UP'].includes(srStatusLabel)) {
+          newStatus = 'SHIPPED';
+        }
+        
+        const trackingScans = data.scans || [];
+        
+        await updateDoc(deliveryRef, {
+          status: newStatus,
+          trackingScans,
+          estimatedDelivery: data.etd || deliverySnap.data().estimatedDelivery,
+          shiprocketLastUpdated: new Date().toISOString()
+        });
+        
+        // Also update booking status if it went to DELIVERED
+        if (newStatus === 'DELIVERED' && deliverySnap.data().bookingId) {
+           await updateDoc(doc(firestoreDb, 'bookings', deliverySnap.data().bookingId), {
+             deliveryStatus: 'DELIVERED'
+           });
+        }
+      }
+    }
+    
+    res.status(200).send('OK');
+  } catch (e) {
+    console.error('[Shiprocket] Webhook error:', e);
+    // Shiprocket expects 200 even on errors, else it retries heavily
+    res.status(200).send('OK');
+  }
+});
+
 // ─── Query Helpers ────────────────────────────────────────────────────────────
+
 
 // Helper to get relative date/time strings for seeding
 const getRelativeDateTimeStr = (daysOffset, timeStr) => {

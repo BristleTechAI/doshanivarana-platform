@@ -15,7 +15,7 @@ const statusConfig: Record<string, { bg: string; color: string; icon: typeof Che
   Inactive: { bg: "#FFF1F2", color: "#DC2626", icon: XCircle },
 };
 
-const emptyTempleForm = { name: "", location: "", formattedAddress: "", latitude: "", longitude: "", placeId: "", deity: "", type: "Shaiva", proManagerId: "", proManagerName: "Unassigned", status: "Active" };
+const emptyTempleForm = { name: "", location: "", formattedAddress: "", latitude: "", longitude: "", placeId: "", deity: "", type: "Shaiva", proManagerId: "", proManagerName: "Unassigned", status: "Active", pincode: "", city: "", state: "", contactPhone: "", contactEmail: "" };
 
 const COLORS = ["#C76A00", "#4A1259", "#D4A017", "#22C55E", "#6366F1", "#EF4444", "#2563EB", "#0891B2"];
 
@@ -60,7 +60,7 @@ export function Temples() {
 
   function openTempleEdit(t: typeof defaultTemples[0]) {
     setEditTarget(t);
-    setTempleForm({ name: t.name, location: t.location || "", formattedAddress: (t as any).formattedAddress || "", latitude: (t as any).latitude ?? "", longitude: (t as any).longitude ?? "", placeId: (t as any).placeId || "", deity: t.deity, type: t.type, proManagerId: t.proManagerId, proManagerName: t.proManagerName, status: t.status });
+    setTempleForm({ name: t.name, location: t.location || "", formattedAddress: (t as any).formattedAddress || "", latitude: (t as any).latitude ?? "", longitude: (t as any).longitude ?? "", placeId: (t as any).placeId || "", deity: t.deity, type: t.type, proManagerId: t.proManagerId, proManagerName: t.proManagerName, status: t.status, pincode: (t as any).pincode || "", city: (t as any).city || "", state: (t as any).state || "", contactPhone: (t as any).contactPhone || "", contactEmail: (t as any).contactEmail || "" });
   }
 
   function openTempleAdd() {
@@ -115,10 +115,43 @@ export function Temples() {
           proManagerName: updatedProName,
           status: templeForm.status,
           isActive: templeForm.status === "Active",
+          pincode: templeForm.pincode,
+          city: templeForm.city,
+          state: templeForm.state,
+          contactPhone: templeForm.contactPhone,
+          contactEmail: templeForm.contactEmail,
         });
       } else {
         // Add
+        if (!templeForm.pincode || !templeForm.city || !templeForm.state || !templeForm.contactPhone || !templeForm.contactEmail) {
+          alert("Pincode, City, State, Contact Phone, and Contact Email are required for Shiprocket pickup registration.");
+          return;
+        }
+
         const newId = genId();
+        
+        // Register Shiprocket pickup location
+        const shiprocketRes = await fetch("http://localhost:3001/api/shiprocket/create-pickup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            templeId: newId,
+            name: templeForm.name,
+            email: templeForm.contactEmail,
+            phone: templeForm.contactPhone,
+            address: templeForm.formattedAddress || templeForm.location,
+            city: templeForm.city,
+            state: templeForm.state,
+            pincode: templeForm.pincode
+          })
+        });
+
+        if (!shiprocketRes.ok) {
+          const errData = await shiprocketRes.json();
+          alert("Failed to register Shiprocket pickup location: " + (errData.error || errData.message));
+          return;
+        }
+
         await TemplesService.createTemple(newId, {
           name: templeForm.name,
           location: templeForm.location,
@@ -140,6 +173,12 @@ export function Temples() {
           color: COLORS[temples.length % COLORS.length],
           since: new Date().toLocaleDateString("en-GB", { month: "short", year: "numeric" }),
           devotees: 0,
+          pincode: templeForm.pincode,
+          city: templeForm.city,
+          state: templeForm.state,
+          contactPhone: templeForm.contactPhone,
+          contactEmail: templeForm.contactEmail,
+          shiprocketPickupLocation: newId
         });
       }
       closeModal();
@@ -496,6 +535,57 @@ export function Temples() {
               {pros.map(p => <option key={p.uid} value={p.uid}>{p.name}</option>)}
             </select>
           </Field>
+          
+          <div className="pt-4 border-t border-orange-900/10 mt-4">
+            <h4 className="text-sm font-semibold text-orange-900 mb-4">Shiprocket Pickup Details</h4>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <Field label="Pincode *">
+                <input
+                  className={inputCls} style={inputStyle}
+                  value={templeForm.pincode}
+                  onChange={e => setTempleForm(f => ({ ...f, pincode: e.target.value }))}
+                  placeholder="e.g. 110030"
+                />
+              </Field>
+              <Field label="City *">
+                <input
+                  className={inputCls} style={inputStyle}
+                  value={templeForm.city}
+                  onChange={e => setTempleForm(f => ({ ...f, city: e.target.value }))}
+                  placeholder="e.g. New Delhi"
+                />
+              </Field>
+            </div>
+            <div className="mb-4">
+              <Field label="State *">
+                <input
+                  className={inputCls} style={inputStyle}
+                  value={templeForm.state}
+                  onChange={e => setTempleForm(f => ({ ...f, state: e.target.value }))}
+                  placeholder="e.g. Delhi"
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Contact Phone *">
+                <input
+                  className={inputCls} style={inputStyle}
+                  value={templeForm.contactPhone}
+                  onChange={e => setTempleForm(f => ({ ...f, contactPhone: e.target.value }))}
+                  placeholder="e.g. 9999999999"
+                />
+              </Field>
+              <Field label="Contact Email *">
+                <input
+                  className={inputCls} style={inputStyle}
+                  type="email"
+                  value={templeForm.contactEmail}
+                  onChange={e => setTempleForm(f => ({ ...f, contactEmail: e.target.value }))}
+                  placeholder="e.g. contact@temple.com"
+                />
+              </Field>
+            </div>
+          </div>
         </div>
         <ModalFooter
           onClose={closeModal}

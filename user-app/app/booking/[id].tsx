@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Calendar, Clock, User, Star, ChevronRight, X, MapPin } from 'lucide-react-native';
@@ -17,6 +17,7 @@ interface BookingFormData {
   gothram: string;
   nakshatra: string;
   specialRequests: string;
+  shippingAddress: string;
 }
 
 const nakshatraMap: Record<string, Record<string, string>> = {
@@ -104,6 +105,7 @@ export default function BookingFlow() {
     gothram: 'Bharadwaja',
     nakshatra: 'Shravana',
     specialRequests: '',
+    shippingAddress: '',
   });
   
   const [showNakshatraModal, setShowNakshatraModal] = useState(false);
@@ -118,6 +120,17 @@ export default function BookingFlow() {
   const placeholderColor = theme === 'dark' ? '#A8A29E' : '#78716C';
 
   useEffect(() => {
+    // Pre-fill shipping address from user session if available
+    const userSession = safeStorage.getItem('doshanivarana_logged_in_user');
+    if (userSession) {
+      try {
+        const sessionObj = JSON.parse(userSession);
+        if (sessionObj.location) {
+          setFormData(prev => ({ ...prev, shippingAddress: sessionObj.location }));
+        }
+      } catch (e) {}
+    }
+
     if (!poojaId) return;
 
     let unsubTemple = () => {};
@@ -184,6 +197,7 @@ export default function BookingFlow() {
           nakshatra: formData.nakshatra,
         },
         hasPrasadDelivery: poojaData.prasad ?? true,
+        shippingAddress: formData.shippingAddress,
         amountPaid: poojaData.price || 1200,
         specialRequests: formData.specialRequests,
         imageUrl: poojaData.imageUrl || 'https://images.unsplash.com/photo-1761471658531-51ce97fc5b89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoaW5kdSUyMHRlbXBsZSUyMGFsdGFyJTIwZGl5YSUyMGxhbXB8ZW58MXx8fHwxNzczODI1NDUyfDA&ixlib=rb-4.1.0&q=80&w=1080',
@@ -210,7 +224,9 @@ export default function BookingFlow() {
       case 1:
         return formData.selectedSlotId !== '';
       case 2:
-        return formData.devoteeNames.trim() !== '' && formData.gothram.trim() !== '';
+        const hasPrasad = poojaData?.prasad ?? true;
+        const addressValid = hasPrasad ? formData.shippingAddress.trim() !== '' : true;
+        return formData.devoteeNames.trim() !== '' && formData.gothram.trim() !== '' && addressValid;
       case 3:
         return !processing;
       default:
@@ -421,6 +437,25 @@ export default function BookingFlow() {
                 style={{ color: theme === 'dark' ? '#F5F5F0' : '#1C1917', fontFamily: 'System' }}
               />
             </View>
+
+            {(poojaData?.prasad ?? true) && (
+              <View className="mt-4">
+                <Text className="text-sm font-semibold mb-2" style={{ fontFamily: 'System', color: theme === 'dark' ? '#F5F5F0' : '#1C1917' }}>
+                  {t('booking.deliveryAddress') || 'Delivery Address (For Prasad)'}
+                </Text>
+                <TextInput
+                  value={formData.shippingAddress}
+                  onChangeText={(text) => setFormData({ ...formData, shippingAddress: text })}
+                  placeholder={t('booking.addressPlaceholder') || 'Enter full address with PIN code'}
+                  placeholderTextColor={placeholderColor}
+                  multiline={true}
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                  className="w-full px-4 py-3 bg-card border border-border rounded-xl text-foreground min-h-[80px]"
+                  style={{ color: theme === 'dark' ? '#F5F5F0' : '#1C1917', fontFamily: 'System' }}
+                />
+              </View>
+            )}
           </View>
         )}
 
@@ -436,6 +471,7 @@ export default function BookingFlow() {
               <ReviewItem label={t('booking.devoteeNames')} value={formData.devoteeNames} />
               <ReviewItem label={t('booking.gothram')} value={translateGothram(formData.gothram, language)} />
               {formData.nakshatra !== '' && <ReviewItem label={t('booking.nakshatra')} value={translateNakshatra(formData.nakshatra, language)} />}
+              {(poojaData?.prasad ?? true) && <ReviewItem label={t('booking.deliveryAddress') || 'Delivery Address'} value={formData.shippingAddress} />}
               {formData.specialRequests !== '' && <ReviewItem label={t('booking.specialRequests')} value={formData.specialRequests} />}
             </View>
 

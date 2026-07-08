@@ -63,7 +63,42 @@ export function Home() {
       where('templeId', '==', templeId)
     );
     const unsubSlots = onSnapshot(slotsQuery, (snapshot) => {
-      const allSlots = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const allSlots = snapshot.docs.map(doc => {
+        const rawSlot = doc.data();
+        const id = doc.id;
+
+        // Normalize slot to derive date and time from startTime Timestamp if missing
+        let slotDate = rawSlot.date || '';
+        let slotStartTime = typeof rawSlot.startTime === 'string' ? rawSlot.startTime : '';
+
+        if (rawSlot.startTime && typeof rawSlot.startTime !== 'string') {
+          // Firebase Timestamp
+          const dateObj = rawSlot.startTime.toDate ? rawSlot.startTime.toDate() : new Date(rawSlot.startTime.seconds * 1000);
+          if (!slotDate) {
+            // Local date string in YYYY-MM-DD format
+            const offset = dateObj.getTimezoneOffset();
+            const localDate = new Date(dateObj.getTime() - (offset * 60 * 1000));
+            slotDate = localDate.toISOString().split('T')[0];
+          }
+          if (!slotStartTime) {
+            let hours = dateObj.getHours();
+            const minutes = dateObj.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+            slotStartTime = `${hours.toString().padStart(2, '0')}:${minutesStr.toString().padStart(2, '0')} ${ampm}`;
+          }
+        }
+
+        return {
+          id,
+          ...rawSlot,
+          date: slotDate,
+          time: slotStartTime,
+          startTime: slotStartTime
+        };
+      });
       
       // Todays Count
       const todays = allSlots.filter(s => s.date === todayDateStr && s.status !== 'CANCELLED');
@@ -73,7 +108,7 @@ export function Home() {
       const active = allSlots.filter(s => (s.date === todayDateStr || s.date === tomorrowDateStr) && s.status !== 'CANCELLED');
       // Sort by date then time
       active.sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        if (a.date !== b.date) return (a.date || '').localeCompare(b.date || '');
         return (a.time || '').localeCompare(b.time || '');
       });
       setActivePoojas(active);
@@ -314,8 +349,16 @@ export function Home() {
                       if (b.poojaId !== slot.poojaId) return false;
                       // Match Date
                       if (bDate !== slot.date) return false;
+                      
                       // Match Time (if specified, otherwise assume matched if date matches)
-                      if (b.scheduledTime && slot.startTime && b.scheduledTime !== slot.startTime && b.scheduledTime !== slot.time) {
+                      // Normalize time string (remove leading zeros, e.g. "04:00 PM" -> "4:00 PM") to avoid leading zero mismatch
+                      const normalizeTimeStr = (t: string) => {
+                        if (!t) return '';
+                        return t.replace(/^0/, '').trim().toUpperCase();
+                      };
+                      const normBTime = normalizeTimeStr(b.scheduledTime);
+                      const normSlotTime = normalizeTimeStr(slot.startTime || slot.time || '');
+                      if (normBTime && normSlotTime && normBTime !== normSlotTime) {
                         return false;
                       }
                       return true;
