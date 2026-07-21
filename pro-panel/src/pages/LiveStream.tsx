@@ -1,12 +1,18 @@
 // @ts-nocheck
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, writeBatch, serverTimestamp, addDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { CustomSelect } from '../components/CustomSelect';
 import { db as localDb } from '../lib/db';
 import { agoraService } from '../lib/agora';
+import type { DeviceInfo } from '../lib/agora';
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+function truncateLabel(label: string, max = 22): string {
+  return label.length > max ? label.slice(0, max - 1) + '…' : label;
+}
 
 export function LiveStream() {
   const { templeId, currentUser } = useAuth();
@@ -20,25 +26,41 @@ export function LiveStream() {
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
   const [agoraError, setAgoraError] = useState<string | null>(null);
-  
+
   // Track active stream ID and Agora channel
   const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
   const [agoraChannelName, setAgoraChannelName] = useState<string | null>(null);
 
+  // ── Device selection state ──────────────────────────────────────────────────
+  const [videoDevices, setVideoDevices] = useState<DeviceInfo[]>([]);
+  const [audioDevices, setAudioDevices] = useState<DeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [selectedMicId, setSelectedMicId] = useState<string>('');
+  const [isDetectingDevices, setIsDetectingDevices] = useState(false);
+  // Whether the user has ever granted camera permission (affects preview availability)
+  const [permissionGranted, setPermissionGranted] = useState(false);
+  // Hot-switch states (live controls)
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+  const [isSwitchingMic, setIsSwitchingMic] = useState(false);
+  // Device disconnection warning
+  const [deviceWarning, setDeviceWarning] = useState<string | null>(null);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const viewersRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const localVideoRef = useRef<HTMLDivElement | null>(null); // for Agora local preview
+  const localVideoRef = useRef<HTMLDivElement | null>(null);     // Agora live preview
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null); // Pre-stream camera preview
+  const previewStreamRef = useRef<MediaStream | null>(null);    // Raw preview MediaStream
 
-  // ─── 1:1 Video Call State ──────────────────────────────────────────────────
+  // ── 1:1 Video Call State ────────────────────────────────────────────────────
   const remoteVideoRef = useRef<HTMLDivElement | null>(null);
   const [devoteeConnected, setDevoteeConnected] = useState(false);
   const [localMuted, setLocalMuted] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(true);
 
+  // ── Bookings fetch ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!templeId) return;
 
-    // Fetch all bookings for this temple
     const q = query(
       collection(db, 'bookings'),
       where('templeId', '==', templeId),
@@ -46,7 +68,6 @@ export function LiveStream() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      // 1. Get all bookings for sequential ID mapping
       const allDocs = snapshot.docs.map(d => {
         const data = d.data();
         return {
@@ -57,7 +78,6 @@ export function LiveStream() {
         };
       });
 
-      // 2. Sort them exactly like BookingDetail.tsx and user-app journey screen
       const getSortTime = (b: any) => {
         if (b.createdAt) {
           if (typeof b.createdAt.toMillis === 'function') return b.createdAt.toMillis();
@@ -66,9 +86,7 @@ export function LiveStream() {
           }
           return new Date(b.createdAt).getTime();
         }
-        if (b.scheduledDate) {
-          return new Date(b.scheduledDate).getTime();
-        }
+        if (b.scheduledDate) return new Date(b.scheduledDate).getTime();
         return 0;
       };
 
@@ -79,18 +97,13 @@ export function LiveStream() {
         return a.id.localeCompare(b.id);
       });
 
-      // 3. Add displayId to each doc
       const mappedBks = allDocs.map((item) => {
         const idx = allDocs.findIndex(d => d.id === item.id);
         const seqStr = idx !== -1 ? String(idx + 1).padStart(10, '0') : '';
         const displayId = seqStr ? `BK_${seqStr}` : item.id;
-        return {
-          ...item,
-          displayId
-        };
+        return { ...item, displayId };
       });
 
-      // 4. Filter to only confirmed, active/scheduled, or in_progress bookings
       const bks = mappedBks.filter(b => {
         const statusLower = (b.status || b.bookingStatus || '').toLowerCase();
         return statusLower === 'confirmed' || statusLower === 'scheduled' || statusLower === 'in_progress';
@@ -108,17 +121,12 @@ export function LiveStream() {
     return () => unsubscribe();
   }, [templeId]);
 
-  // Group bookings by unique pooja slot key (poojaId + date + time)
-  const groupedSlotsMap: Record<string, { key: string, label: string, bookings: any[], firstBooking: any }> = {};
+  // Group bookings by slot key
+  const groupedSlotsMap: Record<string, { key: string; label: string; bookings: any[]; firstBooking: any }> = {};
   upcomingBookings.forEach(b => {
     const slotKey = `${b.poojaId}_${b.scheduledDate}_${b.scheduledTime}`;
     if (!groupedSlotsMap[slotKey]) {
-      groupedSlotsMap[slotKey] = {
-        key: slotKey,
-        label: '',
-        bookings: [],
-        firstBooking: b,
-      };
+      groupedSlotsMap[slotKey] = { key: slotKey, label: '', bookings: [], firstBooking: b };
     }
     groupedSlotsMap[slotKey].bookings.push(b);
   });
@@ -127,7 +135,6 @@ export function LiveStream() {
   groupedSlots.forEach(slot => {
     const b = slot.firstBooking;
     const count = slot.bookings.length;
-    // Sort bookings inside the slot for stable display ID display
     slot.bookings.sort((x, y) => x.displayId.localeCompare(y.displayId));
     const primaryBooking = slot.bookings[0];
     slot.label = `${b.poojaName} — Slot ${primaryBooking.displayId} at ${b.scheduledDate} ${b.scheduledTime} (${count} Booking${count > 1 ? 's' : ''})`;
@@ -137,16 +144,141 @@ export function LiveStream() {
   const booking = currentSlotGroup ? currentSlotGroup.bookings[0] : null;
   const bookingsInSlot = currentSlotGroup ? currentSlotGroup.bookings : [];
 
+  // ── Device detection ────────────────────────────────────────────────────────
+  const detectDevices = useCallback(async () => {
+    setIsDetectingDevices(true);
+    setDeviceWarning(null);
+    try {
+      const { video, audio } = await agoraService.listAllDevices();
+      setVideoDevices(video);
+      setAudioDevices(audio);
+      setPermissionGranted(true);
+
+      // Preserve current selection if the device is still available
+      setSelectedCameraId(prev => {
+        const stillAvail = video.some(v => v.deviceId === prev);
+        return stillAvail ? prev : (video[0]?.deviceId || '');
+      });
+      setSelectedMicId(prev => {
+        const stillAvail = audio.some(a => a.deviceId === prev);
+        return stillAvail ? prev : (audio[0]?.deviceId || '');
+      });
+    } catch (e) {
+      console.error('[DeviceDetect] Failed:', e);
+    } finally {
+      setIsDetectingDevices(false);
+    }
+  }, []);
+
+  // Run detection once on mount
+  useEffect(() => {
+    detectDevices();
+  }, [detectDevices]);
+
+  // ── devicechange listener — hot-detect plugging/unplugging USB devices ──────
+  useEffect(() => {
+    const handler = async () => {
+      console.log('[devicechange] Device list changed — re-enumerating…');
+      const { video, audio } = await agoraService.listAllDevices();
+      setVideoDevices(video);
+      setAudioDevices(audio);
+
+      // If currently live and the selected camera was unplugged, fall back
+      if (streamState === 'live') {
+        setSelectedCameraId(prev => {
+          const stillAvail = video.some(v => v.deviceId === prev);
+          if (!stillAvail && video.length > 0) {
+            const fallback = video[0];
+            setDeviceWarning(`Camera disconnected. Switched to: ${fallback.label}`);
+            agoraService.handleCameraDisconnect(video);
+            setTimeout(() => setDeviceWarning(null), 6000);
+            return fallback.deviceId;
+          }
+          return prev;
+        });
+
+        setSelectedMicId(prev => {
+          const stillAvail = audio.some(a => a.deviceId === prev);
+          if (!stillAvail && audio.length > 0) {
+            const fallback = audio[0];
+            setDeviceWarning(`Microphone disconnected. Switched to: ${fallback.label}`);
+            agoraService.handleMicDisconnect(audio);
+            setTimeout(() => setDeviceWarning(null), 6000);
+            return fallback.deviceId;
+          }
+          return prev;
+        });
+      } else {
+        // Not live — just update selection to still-valid device
+        setSelectedCameraId(prev => {
+          const stillAvail = video.some(v => v.deviceId === prev);
+          return stillAvail ? prev : (video[0]?.deviceId || '');
+        });
+        setSelectedMicId(prev => {
+          const stillAvail = audio.some(a => a.deviceId === prev);
+          return stillAvail ? prev : (audio[0]?.deviceId || '');
+        });
+      }
+    };
+
+    navigator.mediaDevices.addEventListener('devicechange', handler);
+    return () => navigator.mediaDevices.removeEventListener('devicechange', handler);
+  }, [streamState]);
+
+  // ── Live camera preview (before stream starts) ──────────────────────────────
+  useEffect(() => {
+    if (streamState !== 'idle' || !selectedCameraId || !permissionGranted) {
+      // Stop any existing preview
+      if (previewStreamRef.current) {
+        previewStreamRef.current.getTracks().forEach(t => t.stop());
+        previewStreamRef.current = null;
+      }
+      return;
+    }
+
+    let active = true;
+    const startPreview = async () => {
+      try {
+        // Stop previous preview stream
+        if (previewStreamRef.current) {
+          previewStreamRef.current.getTracks().forEach(t => t.stop());
+          previewStreamRef.current = null;
+        }
+        const constraints: MediaStreamConstraints = {
+          video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : true,
+          audio: false,
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+        previewStreamRef.current = stream;
+        if (previewVideoRef.current) {
+          previewVideoRef.current.srcObject = stream;
+        }
+      } catch (e) {
+        console.warn('[Preview] Could not start preview:', e);
+      }
+    };
+
+    startPreview();
+
+    return () => {
+      active = false;
+      if (previewStreamRef.current) {
+        previewStreamRef.current.getTracks().forEach(t => t.stop());
+        previewStreamRef.current = null;
+      }
+    };
+  }, [selectedCameraId, streamState, permissionGranted]);
+
   // ── Sync streamState if selected booking is already IN_PROGRESS ─────────────
   useEffect(() => {
     if (booking && (booking.status === 'IN_PROGRESS' || booking.bookingStatus === 'IN_PROGRESS')) {
       if (streamState === 'idle') {
         const channelName = `booking_${booking.id}`;
         const streamId = booking.streamId || `stream_${Date.now()}`;
-        
-        // Re-join Agora channel so camera/mic start publishing again
         const uid = Math.floor(Math.random() * 100000) + 1;
-        agoraService.init(channelName, uid)
+
+        agoraService.init(channelName, uid, selectedCameraId || undefined, selectedMicId || undefined)
           .then(() => {
             console.log('[Agora] Re-initialized active stream:', channelName);
             setAgoraChannelName(channelName);
@@ -166,7 +298,7 @@ export function LiveStream() {
     }
   }, [booking, streamState]);
 
-  // Update viewer count and stream health from Agora stats every 5s when live
+  // ── Timer + viewer polling when live ────────────────────────────────────────
   useEffect(() => {
     if (streamState === 'live') {
       timerRef.current = setInterval(() => {
@@ -175,12 +307,10 @@ export function LiveStream() {
 
       viewersRef.current = setInterval(async () => {
         try {
-          // Get real remote user count from Agora client
           const remoteUsers = agoraService.rtcClient.remoteUsers;
           const count = remoteUsers.length;
           setViewers(count > 0 ? count : Math.max(1, viewers ?? 1));
 
-          // Get network stats for health indicator
           const stats = await agoraService.rtcClient.getLocalVideoStats();
           const loss = stats?.sendPacketsLost ?? 0;
           const total = stats?.sendPackets ?? 1;
@@ -190,7 +320,6 @@ export function LiveStream() {
           else if (lossRate < 10) setStreamHealth('Fair');
           else setStreamHealth('Poor');
         } catch {
-          // Agora not initialized yet — fallback to simulation
           setViewers(prev => {
             if (prev === null) return 0;
             const delta = Math.floor(Math.random() * 3) - 1;
@@ -209,7 +338,7 @@ export function LiveStream() {
     };
   }, [streamState, booking]);
 
-  // Attach local Agora video preview and setup remote subscriber callbacks when we go live
+  // ── Attach local Agora video preview + remote callbacks when live ───────────
   useEffect(() => {
     if (streamState === 'live') {
       if (localVideoRef.current) {
@@ -226,18 +355,37 @@ export function LiveStream() {
         }
       };
 
-      agoraService.onRemoteUserUnpublished = (user) => {
+      agoraService.onRemoteUserUnpublished = () => {
         setDevoteeConnected(false);
+      };
+
+      agoraService.onDeviceFallback = (type, newDeviceId) => {
+        if (type === 'video') {
+          const dev = videoDevices.find(d => d.deviceId === newDeviceId);
+          setDeviceWarning(newDeviceId
+            ? `Camera disconnected. Switched to: ${dev?.label || newDeviceId}`
+            : 'Camera disconnected — no fallback available. Please connect a camera.');
+          if (newDeviceId) setSelectedCameraId(newDeviceId);
+        } else {
+          const dev = audioDevices.find(d => d.deviceId === newDeviceId);
+          setDeviceWarning(newDeviceId
+            ? `Microphone disconnected. Switched to: ${dev?.label || newDeviceId}`
+            : 'Microphone disconnected — no fallback available.');
+          if (newDeviceId) setSelectedMicId(newDeviceId);
+        }
+        setTimeout(() => setDeviceWarning(null), 7000);
       };
     } else {
       agoraService.onRemoteUserPublished = undefined;
       agoraService.onRemoteUserUnpublished = undefined;
+      agoraService.onDeviceFallback = undefined;
       setDevoteeConnected(false);
       setLocalMuted(false);
       setCameraEnabled(true);
     }
-  }, [streamState]);
+  }, [streamState, videoDevices, audioDevices]);
 
+  // ── Controls ────────────────────────────────────────────────────────────────
   const handleToggleMute = useCallback(() => {
     const next = !localMuted;
     agoraService.setMuted(next);
@@ -250,44 +398,80 @@ export function LiveStream() {
     setCameraEnabled(next);
   }, [cameraEnabled]);
 
+  /** Hot-switch camera while live */
+  const handleLiveCameraSwitch = useCallback(async (deviceId: string) => {
+    if (!deviceId || deviceId === selectedCameraId) return;
+    setIsSwitchingCamera(true);
+    try {
+      await agoraService.switchCamera(deviceId);
+      setSelectedCameraId(deviceId);
+      const dev = videoDevices.find(d => d.deviceId === deviceId);
+      setNotification(`Camera switched to: ${dev?.label || deviceId}`);
+      setTimeout(() => setNotification(null), 3000);
+    } catch (e) {
+      setAgoraError(`Camera switch failed: ${e.message}`);
+    } finally {
+      setIsSwitchingCamera(false);
+    }
+  }, [selectedCameraId, videoDevices]);
+
+  /** Hot-switch microphone while live */
+  const handleLiveMicSwitch = useCallback(async (deviceId: string) => {
+    if (!deviceId || deviceId === selectedMicId) return;
+    setIsSwitchingMic(true);
+    try {
+      await agoraService.switchMicrophone(deviceId);
+      setSelectedMicId(deviceId);
+      const dev = audioDevices.find(d => d.deviceId === deviceId);
+      setNotification(`Microphone switched to: ${dev?.label || deviceId}`);
+      setTimeout(() => setNotification(null), 3000);
+    } catch (e) {
+      setAgoraError(`Microphone switch failed: ${e.message}`);
+    } finally {
+      setIsSwitchingMic(false);
+    }
+  }, [selectedMicId, audioDevices]);
+
+  // ── Start stream ────────────────────────────────────────────────────────────
   const handleStartStream = async () => {
     if (!booking || bookingsInSlot.length === 0) return;
     setAgoraError(null);
 
     try {
       const streamId = `stream_${Date.now()}`;
-      const channelName = `booking_${booking.id}`; // 1:1 call channel per booking
-      const uid = Math.floor(Math.random() * 100000) + 1; // Numeric UID for Agora
+      const channelName = `booking_${booking.id}`;
+      const uid = Math.floor(Math.random() * 100000) + 1;
 
-      // ── 1. Join Agora and publish local tracks ──────────────────────────────
+      // ── 1. Join Agora with selected devices ──────────────────────────────────
       try {
-        await agoraService.init(channelName, uid);
-        console.log('[Agora] PRO joined channel:', channelName);
+        await agoraService.init(
+          channelName,
+          uid,
+          selectedCameraId || undefined,
+          selectedMicId || undefined,
+        );
+        console.log('[Agora] PRO joined channel:', channelName,
+          '| cam:', selectedCameraId || 'default',
+          '| mic:', selectedMicId || 'default');
 
-        // Start cloud recording in background (non-blocking)
         agoraService.startCloudRecording(channelName, uid).catch(e =>
           console.warn('[Agora] Cloud recording start failed (non-fatal):', e)
         );
       } catch (agoraErr) {
         console.error('[Agora] Failed to join channel:', agoraErr);
         setAgoraError(`Camera/mic access failed: ${agoraErr.message}. Streaming in audio-only mode.`);
-        // Non-fatal: continue with Firestore-only stream
       }
 
       setAgoraChannelName(channelName);
 
-      // Create a batch to update all bookings in the slot atomically
       const batch = writeBatch(db);
-
       bookingsInSlot.forEach(b => {
-        // ── 2. Update booking status ─────────────────────────────────────────────
         batch.update(doc(db, 'bookings', b.id), {
           status: 'IN_PROGRESS',
           streamId: streamId,
           streamStatus: 'LIVE'
         });
 
-        // ── 3. Create stream document with real Agora channel name ───────────────
         const streamDocId = `${streamId}_${b.id}`;
         batch.set(doc(db, 'liveStreams', streamDocId), {
           streamId,
@@ -298,15 +482,13 @@ export function LiveStream() {
           poojaName: b.poojaName || 'Unknown Pooja',
           priestId: b.priestId || null,
           priestName: b.priestName || null,
-          // Real Agora channel info for viewers to join
           agoraChannelName: channelName,
           agoraUid: uid,
-          streamUrl: `agora://${channelName}`, // signals Agora-based stream to user app
+          streamUrl: `agora://${channelName}`,
           status: 'LIVE',
           createdAt: serverTimestamp()
         });
 
-        // ── 4. System event ──────────────────────────────────────────────────────
         const eventId = `evt_${Date.now()}_${b.id}`;
         batch.set(doc(db, 'systemEvents', eventId), {
           id: eventId,
@@ -324,7 +506,6 @@ export function LiveStream() {
           createdAt: serverTimestamp()
         });
 
-        // ── 5. Audit log ─────────────────────────────────────────────────────────
         const auditId = `audit_${Date.now()}_${b.id}`;
         batch.set(doc(db, 'auditLogs', auditId), {
           action: 'STREAM_STARTED',
@@ -357,36 +538,24 @@ export function LiveStream() {
     }
   };
 
+  // ── Stop stream ─────────────────────────────────────────────────────────────
   const handleStopStream = async () => {
-    // Stop Agora cloud recording and leave channel
     if (agoraChannelName) {
-      try {
-        await agoraService.stopCloudRecording(agoraChannelName);
-      } catch (e) {
+      try { await agoraService.stopCloudRecording(agoraChannelName); } catch (e) {
         console.warn('[Agora] Cloud recording stop failed (non-fatal):', e);
       }
-      try {
-        await agoraService.stop();
-      } catch (e) {
+      try { await agoraService.stop(); } catch (e) {
         console.warn('[Agora] Leave channel failed (non-fatal):', e);
       }
     }
 
-    // Immediately persist ENDED status to Firestore before showing modal
-    // This prevents streams being stuck in LIVE state if page closes mid-flow
     if (activeStreamId && bookingsInSlot.length > 0) {
       try {
         const batch = writeBatch(db);
         bookingsInSlot.forEach(b => {
           const streamDocId = `${activeStreamId}_${b.id}`;
-          batch.update(doc(db, 'liveStreams', streamDocId), {
-            status: 'ENDED',
-            endedAt: serverTimestamp()
-          });
-          batch.update(doc(db, 'bookings', b.id), {
-            status: 'COMPLETED',
-            streamStatus: 'ENDED'
-          });
+          batch.update(doc(db, 'liveStreams', streamDocId), { status: 'ENDED', endedAt: serverTimestamp() });
+          batch.update(doc(db, 'bookings', b.id), { status: 'COMPLETED', streamStatus: 'ENDED' });
         });
         await batch.commit();
       } catch (e) {
@@ -420,7 +589,7 @@ export function LiveStream() {
     return [
       hrs.toString().padStart(2, '0'),
       mins.toString().padStart(2, '0'),
-      secs.toString().padStart(2, '0')
+      secs.toString().padStart(2, '0'),
     ].join(':');
   };
 
@@ -430,24 +599,15 @@ export function LiveStream() {
 
     try {
       const batch = writeBatch(db);
-
       bookingsInSlot.forEach(b => {
-        // Stream status was already set to ENDED in handleStopStream.
-        // Just ensure the timestamp is set (may be missing if that call failed).
         const streamDocId = `${activeStreamId}_${b.id}`;
-        batch.update(doc(db, 'liveStreams', streamDocId), {
-          status: 'ENDED',
-          endedAt: serverTimestamp()
-        });
-
-        // Update booking status
+        batch.update(doc(db, 'liveStreams', streamDocId), { status: 'ENDED', endedAt: serverTimestamp() });
         batch.update(doc(db, 'bookings', b.id), {
           status: 'COMPLETED',
           streamStatus: 'ENDED',
           recordingStatus: notify ? 'Available' : 'Processing'
         });
 
-        // Auto-generate Recording for Demo
         const recId = `rec_${Date.now()}_${b.id}`;
         batch.set(doc(db, 'recordings', recId), {
           templeId: b.templeId || templeId,
@@ -458,13 +618,9 @@ export function LiveStream() {
           priestName: b.priestName || null,
           bookingId: b.id,
           streamId: activeStreamId,
-          // Store the Agora channel name so the recording URL can be resolved
-          // from Cloud Recording storage once the recording file is available.
           agoraChannelName: agoraChannelName || activeStreamId,
           status: 'READY',
           duration: '1h 02m',
-          // videoUrl will be updated by backend webhook after cloud recording is processed.
-          // For now, store empty string — user app checks for PUBLISHED status before playing.
           videoUrl: '',
           youtubeVideoId: '',
           youtubeLiveUrl: '',
@@ -473,24 +629,17 @@ export function LiveStream() {
           slotDate: b.scheduledDate || b.dateTime || new Date().toISOString().split('T')[0]
         });
 
-        // Generate System Event
         const eventId = `evt_ended_${Date.now()}_${b.id}`;
         batch.set(doc(db, 'systemEvents', eventId), {
           id: eventId,
           eventType: 'stream.ended',
           entityId: activeStreamId,
           entityType: 'stream',
-          payload: {
-            streamId: activeStreamId,
-            bookingId: b.id,
-            templeId: b.templeId || templeId,
-            userId: b.userId || 'GUEST'
-          },
+          payload: { streamId: activeStreamId, bookingId: b.id, templeId: b.templeId || templeId, userId: b.userId || 'GUEST' },
           status: 'PENDING',
           createdAt: serverTimestamp()
         });
 
-        // Audit Log
         const auditId = `audit_ended_${Date.now()}_${b.id}`;
         batch.set(doc(db, 'auditLogs', auditId), {
           action: 'STREAM_ENDED',
@@ -519,17 +668,21 @@ export function LiveStream() {
       setStreamState('idle');
       setElapsedSeconds(0);
       setActiveStreamId(null);
-      
     } catch (e) {
       console.error(e);
       alert('Failed to end stream properly');
     }
   };
 
+  // ── Derived display values ──────────────────────────────────────────────────
+  const selectedCameraLabel = videoDevices.find(d => d.deviceId === selectedCameraId)?.label || 'Camera';
+  const selectedMicLabel = audioDevices.find(d => d.deviceId === selectedMicId)?.label || 'Microphone';
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-[1440px] mx-auto pb-12 font-sans relative">
       <PageHeader title="Live Stream Control" />
-      
+
       {/* Toast Notification */}
       {notification && (
         <div className="fixed top-20 right-8 z-50 bg-[#a04100] text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 font-semibold transition-all duration-300">
@@ -538,7 +691,15 @@ export function LiveStream() {
         </div>
       )}
 
-      {/* Page Header */}
+      {/* Device Disconnection Warning */}
+      {deviceWarning && (
+        <div className="fixed top-32 right-8 z-50 bg-amber-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 font-semibold animate-pulse max-w-sm">
+          <span className="material-symbols-outlined text-[20px]">warning</span>
+          <span className="text-sm">{deviceWarning}</span>
+        </div>
+      )}
+
+      {/* Page subheader */}
       <div className="mb-6">
         <p className="text-body-md text-on-surface-variant font-medium">Manage live pooja broadcasts and equipment statuses</p>
       </div>
@@ -550,7 +711,7 @@ export function LiveStream() {
         </label>
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
           <div className="w-full lg:w-1/2">
-            <CustomSelect 
+            <CustomSelect
               value={selectedSlot}
               onChange={(val) => setSelectedSlot(val)}
               disabled={streamState !== 'idle'}
@@ -564,9 +725,152 @@ export function LiveStream() {
         </div>
       </section>
 
+      {/* ── Camera & Mic Selection Panel (idle only) ─────────────────────────── */}
+      {streamState === 'idle' && (
+        <section className="bg-surface-container-lowest rounded-xl soft-shadow border border-[#F0E6D2] p-6 mb-6">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="font-display text-headline-sm text-on-surface font-bold flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">videocam</span>
+              Camera & Audio Source
+            </h3>
+            <button
+              onClick={detectDevices}
+              disabled={isDetectingDevices}
+              title="Refresh connected devices"
+              className="flex items-center gap-1.5 px-4 py-2 border border-outline-variant text-on-surface-variant hover:bg-surface-container-low hover:text-primary rounded-full text-sm font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              <span className={`material-symbols-outlined text-[18px] ${isDetectingDevices ? 'animate-spin' : ''}`}>
+                {isDetectingDevices ? 'progress_activity' : 'refresh'}
+              </span>
+              {isDetectingDevices ? 'Detecting…' : 'Refresh Devices'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            {/* Left: Camera selector + preview */}
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-label-md text-on-surface-variant font-bold uppercase tracking-wider mb-2">
+                  <span className="material-symbols-outlined text-[14px] align-middle mr-1">videocam</span>
+                  Video Source
+                </label>
+                {videoDevices.length > 0 ? (
+                  <CustomSelect
+                    value={selectedCameraId}
+                    onChange={(val) => setSelectedCameraId(val)}
+                    options={videoDevices.map(d => ({ value: d.deviceId, label: d.label }))}
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 p-3 bg-surface border border-outline-variant rounded-lg text-body-sm text-on-surface-variant font-medium">
+                    <span className="material-symbols-outlined text-[18px] text-amber-500">videocam_off</span>
+                    {isDetectingDevices ? 'Detecting cameras…' : 'No cameras detected. Click "Refresh Devices".'}
+                  </div>
+                )}
+                {/* Device type hint */}
+                {selectedCameraId && (
+                  <p className="text-body-sm text-on-surface-variant mt-1.5 font-medium">
+                    <span className="material-symbols-outlined text-[13px] align-middle mr-0.5">info</span>
+                    Supports: Laptop webcam, USB cameras, HDMI capture cards, OBS Virtual Camera, EpocCam, DroidCam, Camo, and mobile webcam mode.
+                  </p>
+                )}
+              </div>
+
+              {/* Microphone selector */}
+              <div>
+                <label className="block text-label-md text-on-surface-variant font-bold uppercase tracking-wider mb-2">
+                  <span className="material-symbols-outlined text-[14px] align-middle mr-1">mic</span>
+                  Audio Source (Microphone)
+                </label>
+                {audioDevices.length > 0 ? (
+                  <CustomSelect
+                    value={selectedMicId}
+                    onChange={(val) => setSelectedMicId(val)}
+                    options={audioDevices.map(d => ({ value: d.deviceId, label: d.label }))}
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 p-3 bg-surface border border-outline-variant rounded-lg text-body-sm text-on-surface-variant font-medium">
+                    <span className="material-symbols-outlined text-[18px] text-amber-500">mic_off</span>
+                    {isDetectingDevices ? 'Detecting microphones…' : 'No microphones detected. Click "Refresh Devices".'}
+                  </div>
+                )}
+              </div>
+
+              {/* Selected summary badges */}
+              {(selectedCameraId || selectedMicId) && (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {selectedCameraId && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold border border-primary/20">
+                      <span className="material-symbols-outlined text-[12px]">videocam</span>
+                      {truncateLabel(selectedCameraLabel, 28)}
+                    </span>
+                  )}
+                  {selectedMicId && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold border border-primary/20">
+                      <span className="material-symbols-outlined text-[12px]">mic</span>
+                      {truncateLabel(selectedMicLabel, 28)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Right: Live camera preview */}
+            <div className="flex flex-col gap-2">
+              <label className="block text-label-md text-on-surface-variant font-bold uppercase tracking-wider">
+                <span className="material-symbols-outlined text-[14px] align-middle mr-1">preview</span>
+                Camera Preview
+              </label>
+              <div className="relative aspect-video bg-[#0f0f1a] rounded-xl overflow-hidden border border-[#2D2D4A] flex items-center justify-center">
+                {permissionGranted && selectedCameraId ? (
+                  <video
+                    ref={previewVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="text-center px-6">
+                    <span className="material-symbols-outlined text-gray-600 text-[48px] mb-2 block">
+                      {isDetectingDevices ? 'progress_activity' : 'videocam_off'}
+                    </span>
+                    <p className="text-gray-500 text-sm font-medium">
+                      {isDetectingDevices
+                        ? 'Detecting cameras…'
+                        : videoDevices.length === 0
+                          ? 'No camera detected. Connect a device and click Refresh.'
+                          : 'Select a camera to preview'}
+                    </p>
+                  </div>
+                )}
+                {/* LIVE PREVIEW badge */}
+                {permissionGranted && selectedCameraId && (
+                  <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 px-3 py-1 rounded-full">
+                    <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-white text-xs font-bold tracking-wide">PREVIEW</span>
+                  </div>
+                )}
+                {/* Camera label overlay */}
+                {permissionGranted && selectedCameraId && (
+                  <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end pointer-events-none">
+                    <span className="bg-black/60 px-2 py-1 rounded text-white text-xs font-semibold max-w-[70%] truncate">
+                      {selectedCameraLabel}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <p className="text-body-sm text-on-surface-variant font-medium">
+                Preview updates automatically when you select a different device. This stream is local only — not broadcast.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Bento Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        
+
         {/* Pre-Stream Checklist */}
         <div className="lg:col-span-4 bg-surface-container-lowest rounded-xl soft-shadow border border-[#F0E6D2] p-6 flex flex-col justify-between">
           <div>
@@ -595,30 +899,70 @@ export function LiveStream() {
                   <p className="text-body-sm text-on-surface-variant font-medium">{booking ? booking.scheduledDate : 'N/A'}</p>
                 </div>
               </li>
+              {/* Camera readiness */}
+              <li className={`flex items-start gap-3 -mx-2 p-2 rounded-lg border ${
+                videoDevices.length > 0 && selectedCameraId
+                  ? 'bg-green-50 border-green-100'
+                  : 'bg-amber-50 border-amber-100'
+              }`}>
+                <span className={`material-symbols-outlined ${videoDevices.length > 0 && selectedCameraId ? 'text-green-600' : 'text-amber-500'}`}>
+                  {videoDevices.length > 0 && selectedCameraId ? 'videocam' : 'videocam_off'}
+                </span>
+                <div>
+                  <p className={`text-button font-bold ${videoDevices.length > 0 && selectedCameraId ? 'text-green-700' : 'text-amber-700'}`}>
+                    Camera Source
+                  </p>
+                  <p className={`text-body-sm font-semibold ${videoDevices.length > 0 && selectedCameraId ? 'text-green-600' : 'text-amber-600'}`}>
+                    {videoDevices.length > 0 && selectedCameraId
+                      ? truncateLabel(selectedCameraLabel, 30)
+                      : 'No camera selected'}
+                  </p>
+                </div>
+              </li>
+              {/* Mic readiness */}
+              <li className={`flex items-start gap-3 -mx-2 p-2 rounded-lg border ${
+                audioDevices.length > 0 && selectedMicId
+                  ? 'bg-green-50 border-green-100'
+                  : 'bg-amber-50 border-amber-100'
+              }`}>
+                <span className={`material-symbols-outlined ${audioDevices.length > 0 && selectedMicId ? 'text-green-600' : 'text-amber-500'}`}>
+                  {audioDevices.length > 0 && selectedMicId ? 'mic' : 'mic_off'}
+                </span>
+                <div>
+                  <p className={`text-button font-bold ${audioDevices.length > 0 && selectedMicId ? 'text-green-700' : 'text-amber-700'}`}>
+                    Microphone
+                  </p>
+                  <p className={`text-body-sm font-semibold ${audioDevices.length > 0 && selectedMicId ? 'text-green-600' : 'text-amber-600'}`}>
+                    {audioDevices.length > 0 && selectedMicId
+                      ? truncateLabel(selectedMicLabel, 30)
+                      : 'No microphone selected'}
+                  </p>
+                </div>
+              </li>
             </ul>
           </div>
         </div>
 
         {/* Stream Status Control Panel */}
         <div className="lg:col-span-8 bg-[#1A1A2E] rounded-xl shadow-lg border border-[#2D2D4A] p-8 flex flex-col items-center justify-center text-center relative overflow-hidden min-h-[400px]">
-          <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at center, #ffffff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-          
+          <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at center, #ffffff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+
           <div className="z-10 flex flex-col items-center w-full max-w-md">
-            
+
             {/* Status Indicator */}
             <div className="flex items-center gap-2 mb-4">
               <div className={`w-3.5 h-3.5 rounded-full ${
-                streamState === 'live' 
-                  ? 'bg-red-500 animate-pulse' 
-                  : streamState === 'ended' 
-                    ? 'bg-yellow-500' 
+                streamState === 'live'
+                  ? 'bg-red-500 animate-pulse'
+                  : streamState === 'ended'
+                    ? 'bg-yellow-500'
                     : 'bg-gray-500'
-              }`}></div>
+              }`} />
               <span className={`font-mono text-headline-sm font-bold tracking-widest ${
-                streamState === 'live' 
-                  ? 'text-red-500' 
-                  : streamState === 'ended' 
-                    ? 'text-yellow-500' 
+                streamState === 'live'
+                  ? 'text-red-500'
+                  : streamState === 'ended'
+                    ? 'text-yellow-500'
                     : 'text-gray-400'
               }`}>
                 {streamState.toUpperCase()}
@@ -636,11 +980,11 @@ export function LiveStream() {
                 <p className="text-label-md text-gray-400 uppercase tracking-wider">Viewers</p>
                 <p className="text-headline-sm mt-1">{viewers !== null ? viewers : '—'}</p>
               </div>
-              <div className="w-px bg-[#2D2D4A]"></div>
+              <div className="w-px bg-[#2D2D4A]" />
               <div className="text-center flex-1">
                 <p className="text-label-md text-gray-400 uppercase tracking-wider">Health</p>
                 <p className={`text-headline-sm mt-1 ${
-                  streamHealth === 'Excellent' ? 'text-green-400' 
+                  streamHealth === 'Excellent' ? 'text-green-400'
                   : streamHealth === 'Good' ? 'text-blue-400'
                   : streamHealth === 'Fair' ? 'text-yellow-400'
                   : streamHealth === 'Poor' ? 'text-red-400'
@@ -649,11 +993,13 @@ export function LiveStream() {
                   {streamHealth}
                 </p>
               </div>
-              <div className="w-px bg-[#2D2D4A]"></div>
+              <div className="w-px bg-[#2D2D4A]" />
               <div className="text-center flex-1">
                 <p className="text-label-md text-gray-400 uppercase tracking-wider">Source</p>
-                <p className="text-headline-sm mt-1">
-                  {streamState === 'live' ? 'Agora RTC' : '—'}
+                <p className="text-headline-sm mt-1 text-xs leading-tight mt-2" title={selectedCameraLabel}>
+                  {streamState === 'live'
+                    ? truncateLabel(selectedCameraLabel, 16)
+                    : '—'}
                 </p>
               </div>
             </div>
@@ -661,7 +1007,7 @@ export function LiveStream() {
             {/* Action Buttons */}
             <div className="w-full flex flex-col gap-4 font-bold">
               {streamState !== 'live' ? (
-                <button 
+                <button
                   onClick={handleStartStream}
                   disabled={!booking || streamState === 'ended'}
                   className="w-full bg-primary hover:bg-[#b04b00] disabled:opacity-50 text-on-primary text-headline-sm py-4 px-6 rounded-full flex items-center justify-center gap-2 transition-transform shadow-lg cursor-pointer"
@@ -670,7 +1016,7 @@ export function LiveStream() {
                   Start Broadcast Live
                 </button>
               ) : (
-                <button 
+                <button
                   onClick={handleStopStream}
                   className="w-full bg-[#ea4335] hover:bg-[#c5221f] text-white text-headline-sm py-4 px-6 rounded-full flex items-center justify-center gap-2 transition-transform shadow-lg cursor-pointer"
                 >
@@ -687,7 +1033,7 @@ export function LiveStream() {
 
       {/* Stream Setup Accordion */}
       <section className="bg-surface-container-lowest rounded-xl soft-shadow border border-[#F0E6D2] mt-6 overflow-hidden">
-        <button 
+        <button
           onClick={() => setIsAccordionOpen(!isAccordionOpen)}
           className="w-full px-6 py-4 flex items-center justify-between hover:bg-surface-container-low transition-colors group cursor-pointer font-bold"
         >
@@ -698,11 +1044,10 @@ export function LiveStream() {
             expand_more
           </span>
         </button>
-        
+
         {isAccordionOpen && (
           <div className="px-6 pb-6 pt-4 border-t border-outline-variant/30 bg-surface-bright/50 font-medium">
             <div className="space-y-4">
-              {/* Agora Channel Info (shown when live) */}
               {agoraChannelName ? (
                 <>
                   <div>
@@ -710,12 +1055,12 @@ export function LiveStream() {
                       Agora Channel Name
                     </label>
                     <div className="flex gap-2">
-                      <input 
-                        readOnly 
+                      <input
+                        readOnly
                         value={agoraChannelName}
                         className="flex-1 bg-surface border border-outline-variant rounded-lg p-2.5 text-body-sm font-mono"
                       />
-                      <button 
+                      <button
                         onClick={() => handleCopy(agoraChannelName, 'Channel Name')}
                         className="px-4 py-2 border border-primary text-primary hover:bg-primary/5 rounded-lg text-xs font-bold cursor-pointer"
                       >
@@ -734,8 +1079,8 @@ export function LiveStream() {
                     Agora App ID
                   </label>
                   <div className="flex gap-2">
-                    <input 
-                      readOnly 
+                    <input
+                      readOnly
                       value={import.meta.env.VITE_AGORA_APP_ID || 'Not configured — add VITE_AGORA_APP_ID to .env'}
                       className="flex-1 bg-surface border border-outline-variant rounded-lg p-2.5 text-body-sm font-mono"
                     />
@@ -757,6 +1102,7 @@ export function LiveStream() {
             <span className="material-symbols-outlined text-red-500 animate-pulse">video_call</span>
             Live 1:1 Call Session
           </h4>
+
           {agoraError && (
             <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
               <span className="material-symbols-outlined text-yellow-600 text-[18px] mt-0.5">warning</span>
@@ -793,10 +1139,85 @@ export function LiveStream() {
               <div className="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-full text-white text-xs font-semibold">
                 Pujari (You)
               </div>
+
+              {/* Live camera hot-switch overlay */}
+              <div className="absolute top-3 right-3 z-20 flex flex-col gap-2">
+                {/* Camera switcher */}
+                <div className="relative group">
+                  <button
+                    title="Switch Camera"
+                    disabled={isSwitchingCamera}
+                    className="flex items-center gap-1 bg-black/70 hover:bg-black/90 text-white px-2.5 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm transition-colors disabled:opacity-60 cursor-pointer"
+                  >
+                    <span className={`material-symbols-outlined text-[14px] ${isSwitchingCamera ? 'animate-spin' : ''}`}>
+                      {isSwitchingCamera ? 'progress_activity' : 'cameraswitch'}
+                    </span>
+                    <span className="max-w-[80px] truncate">{truncateLabel(selectedCameraLabel, 12)}</span>
+                  </button>
+                  {/* Camera dropdown on hover */}
+                  {!isSwitchingCamera && videoDevices.length > 1 && (
+                    <div className="absolute right-0 top-full mt-1 hidden group-hover:block bg-[#1a1a2e] border border-[#3D3D5A] rounded-xl shadow-2xl py-1 min-w-[200px] z-30">
+                      <p className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Switch Camera</p>
+                      {videoDevices.map(d => (
+                        <button
+                          key={d.deviceId}
+                          onClick={() => handleLiveCameraSwitch(d.deviceId)}
+                          className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer ${
+                            d.deviceId === selectedCameraId
+                              ? 'text-primary bg-primary/10'
+                              : 'text-gray-300 hover:bg-white/10'
+                          }`}
+                        >
+                          {d.deviceId === selectedCameraId && (
+                            <span className="material-symbols-outlined text-[12px] text-primary">check</span>
+                          )}
+                          <span className="truncate">{d.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Mic switcher */}
+                <div className="relative group">
+                  <button
+                    title="Switch Microphone"
+                    disabled={isSwitchingMic}
+                    className="flex items-center gap-1 bg-black/70 hover:bg-black/90 text-white px-2.5 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm transition-colors disabled:opacity-60 cursor-pointer"
+                  >
+                    <span className={`material-symbols-outlined text-[14px] ${isSwitchingMic ? 'animate-spin' : ''}`}>
+                      {isSwitchingMic ? 'progress_activity' : 'mic'}
+                    </span>
+                    <span className="max-w-[80px] truncate">{truncateLabel(selectedMicLabel, 12)}</span>
+                  </button>
+                  {/* Mic dropdown on hover */}
+                  {!isSwitchingMic && audioDevices.length > 1 && (
+                    <div className="absolute right-0 top-full mt-1 hidden group-hover:block bg-[#1a1a2e] border border-[#3D3D5A] rounded-xl shadow-2xl py-1 min-w-[200px] z-30">
+                      <p className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Switch Microphone</p>
+                      {audioDevices.map(d => (
+                        <button
+                          key={d.deviceId}
+                          onClick={() => handleLiveMicSwitch(d.deviceId)}
+                          className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer ${
+                            d.deviceId === selectedMicId
+                              ? 'text-primary bg-primary/10'
+                              : 'text-gray-300 hover:bg-white/10'
+                          }`}
+                        >
+                          {d.deviceId === selectedMicId && (
+                            <span className="material-symbols-outlined text-[12px] text-primary">check</span>
+                          )}
+                          <span className="truncate">{d.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Call Controls for Pujari */}
+          {/* Call Controls */}
           <div className="flex items-center justify-center gap-4 mt-6">
             <button
               onClick={handleToggleMute}
@@ -838,19 +1259,19 @@ export function LiveStream() {
               <span className="material-symbols-outlined text-[32px]">check_circle</span>
               <h3 className="font-display text-headline-sm text-on-surface font-bold">Broadcast Completed</h3>
             </div>
-            
+
             <p className="text-body-md text-on-surface-variant font-medium mb-6">
               The live stream has ended. Would you like to notify devotees that the stream has ended and the recording will be processed?
             </p>
 
             <div className="flex gap-3 justify-end font-semibold">
-              <button 
+              <button
                 onClick={() => handleModalSubmit(false)}
                 className="px-6 py-2 border border-outline-variant text-on-surface rounded-full hover:bg-surface-container-low transition-colors cursor-pointer"
               >
                 No
               </button>
-              <button 
+              <button
                 onClick={() => handleModalSubmit(true)}
                 className="px-6 py-2 bg-primary text-white rounded-full hover:bg-[#b04b00] transition-colors shadow-sm cursor-pointer"
               >

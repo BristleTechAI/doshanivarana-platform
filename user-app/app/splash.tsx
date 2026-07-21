@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import { View, Text } from 'react-native';
+import { View, Text, Image } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useLanguage } from '../src/old_app/context/LanguageContext';
 import { useTheme } from '../src/old_app/context/ThemeContext';
@@ -22,19 +22,14 @@ export default function SplashScreen() {
 
   return (
     <View className="flex-1 flex-col items-center justify-center bg-background px-6">
-      {/* DOSHANIVARANA Wordmark */}
-      <Animated.Text
-        entering={FadeIn.duration(2500)}
-        className="text-4xl font-bold text-primary mb-8 text-center"
-        style={{ fontFamily: "System" }} // Ideally load 'Anek Devanagari' via expo-font
-      >
-        DOSHANIVARANA
-      </Animated.Text>
-
-      {/* Lotus/Diya Motif */}
-      <Text className="text-6xl mb-6 opacity-80" style={{ color: '#9A1515' }}>
-        🪔
-      </Text>
+      {/* DOSHANIVARANA Logo */}
+      <Animated.View entering={FadeIn.duration(2000)} className="items-center justify-center mb-6">
+        <Image
+          source={require('../assets/logo.png')}
+          style={{ width: 220, height: 220 }}
+          resizeMode="contain"
+        />
+      </Animated.View>
 
       {/* Tagline */}
       <Animated.Text

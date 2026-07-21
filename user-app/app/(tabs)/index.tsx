@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback } from 'react';
-import { ScrollView, View, Text, Pressable, Modal } from 'react-native';
+import { ScrollView, View, Text, Pressable, Modal, Image } from 'react-native';
 import { Link } from 'expo-router';
 import { User, Bell, X, Languages, Check } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -205,13 +205,15 @@ export default function Home() {
       >
         <View className="flex-row items-center gap-3">
           <Link href="/(tabs)/profile" asChild>
-            <Pressable className="w-10 h-10 rounded-full border border-primary bg-primary/5 items-center justify-center active:bg-primary/20">
+            <Pressable className="w-10 h-10 rounded-full border border-primary bg-primary/5 items-center justify-center active:bg-primary/20 overflow-hidden">
               <User size={18} color="#F97316" />
             </Pressable>
           </Link>
-          <Text className="text-xl font-bold text-primary tracking-wider" style={{ fontFamily: 'System' }}>
-            DOSHANIVARANA
-          </Text>
+          <Image
+            source={require('../../assets/logo.png')}
+            style={{ width: 140, height: 38 }}
+            resizeMode="contain"
+          />
         </View>
         <View className="flex-row items-center gap-2">
           {/* Language Selector */}

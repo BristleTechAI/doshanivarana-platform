@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { Link } from 'expo-router';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Image } from 'react-native';
 import { useLanguage } from '../src/old_app/context/LanguageContext';
 import { useTheme } from '../src/old_app/context/ThemeContext';
 
@@ -11,13 +11,12 @@ export default function WelcomeScreen() {
   return (
     <View className="flex-1 flex-col bg-background px-6">
       {/* Logo */}
-      <View className="pt-12 pb-8 items-center">
-        <Text
-          className="text-2xl font-bold text-primary"
-          style={{ fontFamily: 'System' }} // Would use 'Anek Devanagari' when custom fonts are loaded
-        >
-          DOSHANIVARANA
-        </Text>
+      <View className="pt-12 pb-4 items-center">
+        <Image
+          source={require('../assets/logo.png')}
+          style={{ width: 140, height: 140 }}
+          resizeMode="contain"
+        />
       </View>
 
       {/* Main Content */}

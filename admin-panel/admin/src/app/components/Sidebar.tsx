@@ -104,10 +104,10 @@ function SidebarContent({ collapsed, onClose, isMobile = false }: SidebarContent
         }}
       >
         <div
-          className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
-          style={{ backgroundColor: "#C76A00", boxShadow: "0 4px 12px rgba(199,106,0,0.35)" }}
+          className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden bg-white/10"
+          style={{ boxShadow: "0 4px 12px rgba(199,106,0,0.35)" }}
         >
-          <span className="text-white select-none" style={{ fontSize: "17px" }}>🕉</span>
+          <img src="/logo.png" alt="Doshanivarana Logo" className="w-full h-full object-contain p-0.5" />
         </div>
         {showLabels && (
           <div className="flex-1 min-w-0">

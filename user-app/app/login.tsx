@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useRef } from 'react';
-import { View, Text, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Phone, Lock } from 'lucide-react-native';
 import { useLanguage } from '../src/old_app/context/LanguageContext';
@@ -218,11 +218,13 @@ export default function LoginScreen() {
         </View>
 
         {/* Brand Header */}
-        <View className="items-center mb-10">
-          <Text className="text-3xl font-bold text-primary mb-2" style={{ fontFamily: 'System' }}>
-            DOSHANIVARANA
-          </Text>
-          <Text className="text-sm text-center" style={{ fontFamily: 'System', color: theme === 'dark' ? '#A8A29E' : '#78716C' }}>
+        <View className="items-center mb-6">
+          <Image
+            source={require('../assets/logo.png')}
+            style={{ width: 120, height: 120 }}
+            resizeMode="contain"
+          />
+          <Text className="text-sm text-center mt-2" style={{ fontFamily: 'System', color: theme === 'dark' ? '#A8A29E' : '#78716C' }}>
             {t('login.brandSubtitle')}
           </Text>
         </View>

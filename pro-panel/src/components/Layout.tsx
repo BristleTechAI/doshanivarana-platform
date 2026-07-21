@@ -116,7 +116,7 @@ export function Layout({ unreadNotifications: legacyUnread, setUnreadNotificatio
       <div>
         <div className="p-6 border-b border-outline-variant flex flex-col items-start gap-3">
           <div className="w-12 h-12 rounded-full overflow-hidden border border-outline-variant flex items-center justify-center">
-            <img src="/logo.jpg" alt="Doshanivarana Logo" className="w-full h-full object-cover" />
+            <img src="/logo.png" alt="Doshanivarana Logo" className="w-full h-full object-cover" />
           </div>
           <div>
             <div className="font-display text-headline-md font-bold text-primary">Doshanivarana</div>
